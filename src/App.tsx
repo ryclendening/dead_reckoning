@@ -7,7 +7,7 @@ import { applyRound, attritionCreditAt, battleScoreAt, callReinforcement, effect
 import { snapToHex } from './game/hex'
 import type { Asset, CombatEvent, MatchState, Point, ReinforcementType, Squadron } from './game/types'
 
-const SAVE_KEY='dead-reckoning-mvp-v8'
+const SAVE_KEY='dead-reckoning-mvp-v9'
 function loadMatch():MatchState{try{const saved=localStorage.getItem(SAVE_KEY);if(!saved)return createMatch();const parsed=JSON.parse(saved) as MatchState;return parsed.phase==='execute'?{...parsed,phase:'plan'}:parsed}catch{return createMatch()}}
 
 export default function App(){

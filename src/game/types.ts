@@ -20,12 +20,12 @@ export interface DefenseCue {
   strength: number; rangeBonus: number; damageReduction: number
 }
 export interface EnemyFlight {
-  id: string; callsign: string; role: 'fighter' | 'strike'; aircraft: number
+  id: string; callsign: string; role: 'fighter' | 'strike'; aircraft: number; initialAircraft: number
   route: Point[]; detectionWindows: DetectionWindow[]; target: 'base' | 'decoy'
 }
 export interface Asset {
   id: string; kind: 'base' | 'decoy' | 'radar' | 'sam' | 'aaa'; position: Point
-  intel: IntelLevel; confidence: number; health: number; hidden: boolean
+  intel: IntelLevel; confidence: number; health: number; maxHealth: number; hidden: boolean; struck: boolean
 }
 export interface CombatEvent {
   id: string; time: number; tone: 'info' | 'friendly' | 'warning' | 'danger'; title: string; detail: string; position?: Point

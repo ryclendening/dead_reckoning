@@ -7,11 +7,11 @@ export const PLAYER_RADAR = snapToHex([-6.7, 5.8])
 export const ENEMY_BASE = snapToHex([7.4, -11.1])
 
 export const initialPlayerAssets: Asset[] = [
-  { id:'p-base', kind:'base', position:PLAYER_BASE, intel:'confirmed', confidence:100, health:100, hidden:false },
-  { id:'p-decoy', kind:'decoy', position:PLAYER_DECOY, intel:'confirmed', confidence:100, health:60, hidden:false },
-  { id:'p-radar', kind:'radar', position:PLAYER_RADAR, intel:'confirmed', confidence:100, health:100, hidden:false },
-  { id:'p-sam', kind:'sam', position:snapToHex([-2.8,7.2]), intel:'confirmed', confidence:100, health:100, hidden:false },
-  { id:'p-aaa', kind:'aaa', position:snapToHex([-7.2,9.1]), intel:'confirmed', confidence:100, health:100, hidden:false },
+  { id:'p-base', kind:'base', position:PLAYER_BASE, intel:'confirmed', confidence:100, health:100, maxHealth:100, hidden:false, struck:false },
+  { id:'p-decoy', kind:'decoy', position:PLAYER_DECOY, intel:'confirmed', confidence:100, health:60, maxHealth:60, hidden:false, struck:false },
+  { id:'p-radar', kind:'radar', position:PLAYER_RADAR, intel:'confirmed', confidence:100, health:100, maxHealth:100, hidden:false, struck:false },
+  { id:'p-sam', kind:'sam', position:snapToHex([-2.8,7.2]), intel:'confirmed', confidence:100, health:100, maxHealth:100, hidden:false, struck:false },
+  { id:'p-aaa', kind:'aaa', position:snapToHex([-7.2,9.1]), intel:'confirmed', confidence:100, health:100, maxHealth:100, hidden:false, struck:false },
 ]
 
 const route = (...points: [number, number][]) => points
@@ -23,11 +23,11 @@ export const initialSquadrons: Squadron[] = [
 ]
 
 export const initialAssets: Asset[] = [
-  { id:'e-base', kind:'base', position:ENEMY_BASE, intel:'unknown', confidence:0, health:100, hidden:true },
-  { id:'e-decoy', kind:'decoy', position:snapToHex([-4.8,-9.6]), intel:'suspected', confidence:28, health:50, hidden:true },
-  { id:'e-radar', kind:'radar', position:snapToHex([3.8,-4.8]), intel:'suspected', confidence:35, health:70, hidden:true },
-  { id:'e-sam', kind:'sam', position:snapToHex([-4.6,-3.4]), intel:'unknown', confidence:0, health:65, hidden:true },
-  { id:'e-aaa', kind:'aaa', position:snapToHex([7.8,-6.6]), intel:'unknown', confidence:0, health:55, hidden:true },
+  { id:'e-base', kind:'base', position:ENEMY_BASE, intel:'unknown', confidence:0, health:100, maxHealth:100, hidden:true, struck:false },
+  { id:'e-decoy', kind:'decoy', position:snapToHex([-4.8,-9.6]), intel:'suspected', confidence:28, health:50, maxHealth:50, hidden:true, struck:false },
+  { id:'e-radar', kind:'radar', position:snapToHex([3.8,-4.8]), intel:'suspected', confidence:35, health:70, maxHealth:70, hidden:true, struck:false },
+  { id:'e-sam', kind:'sam', position:snapToHex([-4.6,-3.4]), intel:'unknown', confidence:0, health:65, maxHealth:65, hidden:true, struck:false },
+  { id:'e-aaa', kind:'aaa', position:snapToHex([7.8,-6.6]), intel:'unknown', confidence:0, health:55, maxHealth:55, hidden:true, struck:false },
 ]
 
 export const createMatch = (): MatchState => ({
