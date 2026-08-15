@@ -2,7 +2,7 @@ import { memo, useEffect, useMemo, useRef, useState } from 'react'
 import { Canvas, ThreeEvent, useFrame, useThree } from '@react-three/fiber'
 import { Billboard, Line, Text } from '@react-three/drei'
 import * as THREE from 'three'
-import { effectiveSensorRange, RADAR_RANGE } from '../game/engine'
+import { effectiveSensorRange, EXECUTION_SECONDS, RADAR_RANGE } from '../game/engine'
 import { axialToPoint, HEX_RADIUS, snapToHex } from '../game/hex'
 import type { Asset, CombatEvent, DefenseCue, EnemyFlight, Phase, Point, ReinforcementCall, RoundResult, Squadron } from '../game/types'
 
@@ -12,6 +12,7 @@ const airDamageTitles=new Set(['DAMAGE REPORTED','OVEREXTENSION DAMAGE'])
 const groundDamageTitles=new Set(['WEAPONS IMPACT','TARGET DESTROYED','HOME BASE STRUCK','DEFENSE SITE DAMAGED'])
 const to3=(p:Point,y=.13):[number,number,number]=>[p[0],y,p[1]]
 const flightCurve=(route:Point[],altitude:number)=>{const points=route.map(p=>new THREE.Vector3(p[0],altitude,p[1]));if(points.length===2)points.splice(1,0,points[0].clone().lerp(points[1],.5));return new THREE.CatmullRomCurve3(points)}
+const flightPoint=(curve:THREE.CatmullRomCurve3,progress:number)=>{const normalized=Math.min(.999,Math.max(0,progress));const point=curve.getPoint(normalized);const altitude=Math.min(1,normalized/.055,(1-normalized)/.085);point.y=.15+.45*Math.max(0,altitude);return point}
 
 function CameraRig(){
   const {camera,size}=useThree()
@@ -42,14 +43,26 @@ function Terrain({phase}:{phase:Phase}){
   </group>
 }
 
-function HealthBar3D({fraction,label,position=[0,.83,0],enemy=false}:{fraction:number;label:string;position?:[number,number,number];enemy?:boolean}){
+function HealthBar3D({fraction,label,position=[0,.83,0],enemy=false,segments}:{fraction:number;label:string;position?:[number,number,number];enemy?:boolean;segments?:{current:number;total:number;damaged:number}}){
   const value=clamp01(fraction)
-  const width=1.08
+  const width=segments?1.5:1.08
   const color=value>.62?(enemy?hostile:friendly):value>.32?amber:hostile
+  const fill=useRef<THREE.Mesh>(null)
+  const flash=useRef<THREE.Mesh>(null)
+  const content=useRef<THREE.Group>(null)
+  const displayed=useRef(value)
+  const previous=useRef(value)
+  const hitAge=useRef(2)
+  useEffect(()=>{if(value<previous.current-.01)hitAge.current=0;previous.current=value},[value])
+  useFrame((_,delta)=>{displayed.current=THREE.MathUtils.damp(displayed.current,value,11,delta);const shown=Math.max(.02,displayed.current);if(fill.current){fill.current.scale.x=shown;fill.current.position.x=-width*(1-shown)/2}hitAge.current+=delta;const pulse=Math.max(0,1-hitAge.current/1.15);if(content.current)content.current.scale.setScalar(1+pulse*.2);if(flash.current){const material=flash.current.material as THREE.MeshBasicMaterial;material.opacity=pulse*.72}})
   return <Billboard position={position} follow lockZ={false}>
-    <mesh renderOrder={30}><planeGeometry args={[width,.14]}/><meshBasicMaterial color="#090b09" transparent opacity={.9} depthTest={false} depthWrite={false}/></mesh>
-    <mesh position={[-width*(1-value)/2,0,.008]} scale={[Math.max(.025,value),1,1]} renderOrder={31}><planeGeometry args={[width-.08,.075]}/><meshBasicMaterial color={color} depthTest={false} depthWrite={false}/></mesh>
-    <Text position={[0,.16,.012]} fontSize={.13} color="#f2efdc" anchorX="center" anchorY="middle" renderOrder={32}>{label}</Text>
+    <group ref={content}>
+      <mesh renderOrder={29} ref={flash}><planeGeometry args={[width+.18,.3]}/><meshBasicMaterial color="#ff6a45" transparent opacity={0} depthTest={false} depthWrite={false}/></mesh>
+      <mesh renderOrder={30}><planeGeometry args={[width,.18]}/><meshBasicMaterial color="#090b09" transparent opacity={.94} depthTest={false} depthWrite={false}/></mesh>
+      <mesh ref={fill} position={[-width*(1-value)/2,0,.008]} scale={[Math.max(.02,value),1,1]} renderOrder={31}><planeGeometry args={[width-.1,.1]}/><meshBasicMaterial color={color} depthTest={false} depthWrite={false}/></mesh>
+      <Text position={[0,.22,.012]} fontSize={segments?.17:.14} color="#f2efdc" anchorX="center" anchorY="middle" renderOrder={32}>{label}</Text>
+      {segments?<group position={[-width/2+.17,-.18,.012]}>{Array.from({length:segments.total},(_,index)=>{const alive=index<segments.current;const damaged=alive&&index>=segments.current-segments.damaged;return <mesh key={index} position={[index*.34,0,0]} renderOrder={32}><planeGeometry args={[.26,.09]}/><meshBasicMaterial color={!alive?'#372421':damaged?amber:enemy?hostile:friendly} transparent opacity={alive?1:.62} depthTest={false} depthWrite={false}/></mesh>})}</group>:null}
+    </group>
   </Billboard>
 }
 
@@ -132,8 +145,8 @@ function Flight({squadron,route,progress,active,selected,status,activeEvent}:{sq
   const curve=useMemo(()=>flightCurve(route,.6),[route])
   const reactionEvent=activeEvent?.detail.includes(squadron.callsign)&&(airLossTitles.has(activeEvent.title)||airDamageTitles.has(activeEvent.title)||activeEvent.title==='WEAPONS IMPACT')?activeEvent:undefined
   useEffect(()=>{if(reactionEvent&&reaction.current.id!==reactionEvent.id)reaction.current={id:reactionEvent.id,age:0,kind:reactionEvent.title==='WEAPONS IMPACT'?'strike':'damage'}},[reactionEvent])
-  useFrame((_,delta)=>{if(ref.current&&active){const p=curve.getPoint(Math.min(.999,progress));const q=curve.getPoint(Math.min(.999,progress+.01));ref.current.position.copy(p);ref.current.lookAt(q)}if(!modelRef.current)return;reaction.current.age+=delta;const age=reaction.current.age;if(age<1.35){const fade=1-age/1.35;if(reaction.current.kind==='damage'){modelRef.current.rotation.z=Math.sin(age*23)*.18*fade;modelRef.current.rotation.x=-Math.sin(age*9)*.08*fade;modelRef.current.position.y=Math.sin(age*18)*.055*fade}else{modelRef.current.rotation.z=Math.sin(age*8)*.12*fade;modelRef.current.position.y=-Math.sin(Math.min(1,age*2.5)*Math.PI)*.13*fade}}else{modelRef.current.rotation.set(0,0,0);modelRef.current.position.y=0}})
-  return <group ref={ref} position={curve.getPoint(active?Math.min(.999,progress):0)}><group ref={modelRef}><PlaneModel role={squadron.role}/>{status.hasDamage?<AircraftSmoke/>:null}</group><mesh position={[.12,-.43,.13]} rotation={[-Math.PI/2,0,0]}><circleGeometry args={[.22,12]}/><meshBasicMaterial color="#080a08" transparent opacity={.36}/></mesh>{active?<><HealthBar3D fraction={status.fraction} label={`${status.aircraft}/${squadron.aircraft}${status.damaged?` · ${status.damaged} DMG`:''}`} position={[0,.72,0]}/><group position={[0,-.58,0]}><Ring radius={effectiveSensorRange(squadron)} color={friendly} opacity={selected?.22:.08}/></group></>:null}</group>
+  useFrame((_,delta)=>{if(ref.current&&active){const p=flightPoint(curve,progress);const q=flightPoint(curve,Math.min(.999,progress+.01));ref.current.position.copy(p);ref.current.lookAt(q)}if(!modelRef.current)return;reaction.current.age+=delta;const age=reaction.current.age;if(age<1.35){const fade=1-age/1.35;if(reaction.current.kind==='damage'){modelRef.current.rotation.z=Math.sin(age*23)*.18*fade;modelRef.current.rotation.x=-Math.sin(age*9)*.08*fade;modelRef.current.position.y=Math.sin(age*18)*.055*fade}else{modelRef.current.rotation.z=Math.sin(age*8)*.12*fade;modelRef.current.position.y=-Math.sin(Math.min(1,age*2.5)*Math.PI)*.13*fade}}else{modelRef.current.rotation.set(0,0,0);modelRef.current.position.y=0}})
+  return <group ref={ref} visible={status.aircraft>0} position={flightPoint(curve,active?progress:0)}><group ref={modelRef}><PlaneModel role={squadron.role}/>{status.hasDamage?<AircraftSmoke/>:null}</group><mesh position={[.12,-.43,.13]} rotation={[-Math.PI/2,0,0]}><circleGeometry args={[.22,12]}/><meshBasicMaterial color="#080a08" transparent opacity={.36}/></mesh>{active?<><HealthBar3D fraction={status.fraction} label={`${status.aircraft} / ${squadron.aircraft}${status.damaged?` · ${status.damaged} DMG`:''}`} position={[0,.92,0]} segments={{current:status.aircraft,total:squadron.aircraft,damaged:Math.min(status.aircraft,status.damaged)}}/><group position={[0,-.58,0]}><Ring radius={effectiveSensorRange(squadron)} color={friendly} opacity={selected?.22:.08}/></group></>:null}</group>
 }
 
 function EnemyContact({flight,progress,status,activeEvent}:{flight:EnemyFlight;progress:number;status:FlightStatus;activeEvent?:CombatEvent}){
@@ -144,19 +157,19 @@ function EnemyContact({flight,progress,status,activeEvent}:{flight:EnemyFlight;p
   const curve=useMemo(()=>flightCurve(flight.route,.68),[flight.route])
   const hitEvent=flight.role==='fighter'&&activeEvent?.title==='INTERCEPT SUCCESS'||flight.role==='strike'&&activeEvent?.title==='LAYERED DEFENSE ENGAGES'?activeEvent:undefined
   useEffect(()=>{if(hitEvent&&reaction.current.id!==hitEvent.id)reaction.current={id:hitEvent.id,age:0}},[hitEvent])
-  useFrame((_,delta)=>{if(ref.current){const p=curve.getPoint(Math.min(.999,progress));const q=curve.getPoint(Math.min(.999,progress+.01));ref.current.position.copy(p);ref.current.lookAt(q)}if(!modelRef.current)return;reaction.current.age+=delta;const age=reaction.current.age;if(age<1.35){const fade=1-age/1.35;modelRef.current.rotation.z=Math.sin(age*24)*.22*fade;modelRef.current.rotation.x=-Math.sin(age*10)*.1*fade;modelRef.current.position.y=Math.sin(age*18)*.06*fade}else{modelRef.current.rotation.set(0,0,0);modelRef.current.position.y=0}})
+  useFrame((_,delta)=>{if(ref.current){const p=flightPoint(curve,progress);const q=flightPoint(curve,Math.min(.999,progress+.01));ref.current.position.copy(p);ref.current.lookAt(q)}if(!modelRef.current)return;reaction.current.age+=delta;const age=reaction.current.age;if(age<1.35){const fade=1-age/1.35;modelRef.current.rotation.z=Math.sin(age*24)*.22*fade;modelRef.current.rotation.x=-Math.sin(age*10)*.1*fade;modelRef.current.position.y=Math.sin(age*18)*.06*fade}else{modelRef.current.rotation.set(0,0,0);modelRef.current.position.y=0}})
   if(!window)return null
   const visual=window.source==='visual';const network=window.source==='network'
-  return <group ref={ref} position={curve.getPoint(Math.min(.999,progress))}><group ref={modelRef}><PlaneModel role={flight.role} color={visual?hostile:network?'#9ee6a8':amber}/>{visual&&status.hasDamage?<AircraftSmoke/>:null}</group><Text position={[0,.5,0]} fontSize={.28} color={visual?hostile:network?'#9ee6a8':amber} anchorX="center">{visual?`${flight.callsign} · ${status.aircraft}`:network?'DEFENSE TRACK':'RADAR CONTACT'}</Text>{visual?<><HealthBar3D fraction={status.fraction} label={`${status.aircraft}/${flight.initialAircraft}`} position={[0,.79,0]} enemy/><group position={[0,-.6,0]}><Ring radius={1.1} color={hostile} opacity={.3}/></group></>:null}</group>
+  return <group ref={ref} visible={status.aircraft>0} position={flightPoint(curve,progress)}><group ref={modelRef}><PlaneModel role={flight.role} color={visual?hostile:network?'#9ee6a8':amber}/>{visual&&status.hasDamage?<AircraftSmoke/>:null}</group><Text position={[0,.58,0]} fontSize={.28} color={visual?hostile:network?'#9ee6a8':amber} anchorX="center">{visual?`${flight.callsign} · ${status.aircraft}`:network?'DEFENSE TRACK':'RADAR CONTACT'}</Text>{visual?<><HealthBar3D fraction={status.fraction} label={`${status.aircraft} / ${flight.initialAircraft}`} position={[0,.98,0]} enemy segments={{current:status.aircraft,total:flight.initialAircraft,damaged:0}}/><group position={[0,-.6,0]}><Ring radius={1.1} color={hostile} opacity={.3}/></group></>:null}</group>
 }
 
 function ReinforcementFlight({call,progress}:{call:ReinforcementCall;progress:number}){
-  const ref=useRef<THREE.Group>(null);const start=call.time/18
+  const ref=useRef<THREE.Group>(null);const start=call.time/EXECUTION_SECONDS
   const curve=useMemo(()=>flightCurve(call.route,.74),[call.route])
   const local=clamp01((progress-start)/Math.max(.01,1-start))
-  useFrame(()=>{if(!ref.current)return;const p=curve.getPoint(local);const q=curve.getPoint(Math.min(.999,local+.012));ref.current.position.copy(p);ref.current.lookAt(q)})
+  useFrame(()=>{if(!ref.current)return;const p=flightPoint(curve,local);const q=flightPoint(curve,Math.min(.999,local+.012));ref.current.position.copy(p);ref.current.lookAt(q)})
   if(progress<start)return null
-  return <group><Line points={call.route.map(p=>to3(p,.3))} color="#f1c65b" transparent opacity={.5} dashed dashSize={.18} gapSize={.12} lineWidth={1.2}/><group ref={ref} position={curve.getPoint(local)}><PlaneModel color="#f1c65b" role="fighter"/><Text position={[0,.5,0]} fontSize={.23} color="#f1c65b" anchorX="center">{call.type==='alert-cap'?'ALERT PAIR':'REPLACEMENT'}</Text></group></group>
+  return <group><Line points={call.route.map(p=>to3(p,.3))} color="#f1c65b" transparent opacity={.5} dashed dashSize={.18} gapSize={.12} lineWidth={1.2}/><group ref={ref} position={flightPoint(curve,local)}><PlaneModel color="#f1c65b" role="fighter"/><Text position={[0,.5,0]} fontSize={.23} color="#f1c65b" anchorX="center">{call.type==='alert-cap'?'ALERT PAIR':'REPLACEMENT'}</Text></group></group>
 }
 
 function CombatEffect({event}:{event:CombatEvent}){
@@ -200,7 +213,7 @@ function friendlyStatusAt(squadron:Squadron,result:RoundResult|undefined,progres
   let aircraft=squadron.aircraft
   let damaged=squadron.damaged
   for(const event of result?.events??[]){
-    if(event.time>progress*18||!event.detail.includes(squadron.callsign))continue
+    if(event.time>progress*EXECUTION_SECONDS||!event.detail.includes(squadron.callsign))continue
     if(airLossTitles.has(event.title))aircraft=Math.max(0,aircraft-1)
     if(airDamageTitles.has(event.title))damaged++
   }
@@ -210,7 +223,7 @@ function friendlyStatusAt(squadron:Squadron,result:RoundResult|undefined,progres
 function enemyStatusAt(flight:EnemyFlight,result:RoundResult|undefined,progress:number):FlightStatus{
   let aircraft=flight.initialAircraft
   for(const event of result?.events??[]){
-    if(event.time>progress*18)continue
+    if(event.time>progress*EXECUTION_SECONDS)continue
     if(flight.role==='fighter'&&event.title==='INTERCEPT SUCCESS')aircraft=Math.max(0,aircraft-1)
     if(flight.role==='strike'&&(event.title==='LAYERED DEFENSE ENGAGES'||event.title==='RESERVE CAP ARRIVES'))aircraft=Math.max(0,aircraft-1)
   }
@@ -219,7 +232,7 @@ function enemyStatusAt(flight:EnemyFlight,result:RoundResult|undefined,progress:
 
 function assetAtTime(asset:Asset,result:RoundResult|undefined,progress:number,enemy:boolean,phase:Phase):Asset{
   if(phase!=='execute'||!result)return asset
-  const wasStruck=result.events.some(event=>event.time<=progress*18&&groundDamageTitles.has(event.title)&&event.position&&distance2(event.position,asset.position)<.5)
+  const wasStruck=result.events.some(event=>event.time<=progress*EXECUTION_SECONDS&&groundDamageTitles.has(event.title)&&event.position&&distance2(event.position,asset.position)<.5)
   if(!wasStruck)return asset
   return (enemy?result.assets:result.playerAssets).find(candidate=>candidate.id===asset.id)??asset
 }

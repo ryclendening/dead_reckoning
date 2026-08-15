@@ -101,8 +101,8 @@ The next milestone should not be adding a large quantity of new content. It shou
 |---|---:|:---:|---|---|
 | Pre-match defensive placement | 3.3 | ███░░ | Player places the real base, decoy, radar, SAM, and AAA in friendly territory before locking deployment. | Add placement costs, terrain/coverage consequences, validation, and stronger deception tradeoffs. |
 | Integrated air-defense design | 3.0 | ███░░ | Overlapping sensors and engagement ranges influence detection and raid defense. | Ensure multiple viable network shapes exist and avoid an obvious mathematically optimal cluster. |
-| Pre-match force budget | 0.8 | █░░░░ | The MVP uses a fixed roster and fixed defensive inventory. | Add force points only after core unit values are stable enough to support meaningful composition choices. |
-| Initial force-package construction | 1.0 | █░░░░ | Four required squadron roles are supplied automatically. | Later allow a constrained roster choice without undermining tutorial clarity or balance. |
+| Pre-match force budget | 1.0 | █░░░░ | The MVP uses a fixed roster and fixed defensive inventory. A later **Force Allocation** budget is now explicitly scoped. | Prototype costs only after core unit values are stable enough to support meaningful composition choices. |
+| Initial force-package construction | 1.0 | █░░░░ | Four required squadron roles are supplied automatically. The future Force Allocation screen will support constrained squadron and defense selection. | Preserve recommended starter packages and role guardrails so procurement adds strategy without becoming an onboarding wall. |
 
 ### G. Attrition, readiness, logistics, and momentum
 
@@ -119,8 +119,8 @@ The next milestone should not be adding a large quantity of new content. It shou
 
 | Original brief area | Rating | Progress | Current state | Main gap to next level |
 |---|---:|:---:|---|---|
-| Autonomous 15–30 second execution | 3.2 | ███░░ | An 18-second phase animates friendly packages and only currently observed hostile aircraft. | Improve event spacing, simultaneous action readability, and the relationship between animation and resolution timing. |
-| Execution readability | 2.9 | ███░░ | Contact state, event cards, rings, route changes, unit strength, and defense cueing are visible. | Add missile/weapon visualization and make cause → response → consequence legible without relying on text alone. |
+| Autonomous 15–30 second execution | 3.4 | ███░░ | A 22-second phase includes outbound action and explicit recovery; surviving formations must return and descend before the round closes. | Improve simultaneous-action readability and eventually allow package timing differences without breaking the clear recovery gate. |
+| Execution readability | 3.2 | ███░░ | Contact state, event cards, rings, route changes, segmented aircraft strength, impact reactions, and recovery status are visible. | Continue making cause → response → consequence legible without relying on text alone. |
 | After-action debrief | 3.5 | ████░ | Losses, kills, damage, intelligence, causal doctrine lessons, route history, markers, readiness, and logistics are shown. | Add per-squadron mission outcomes, probable enemy losses, timeline filtering, and clearer next-round recommendations. |
 | Base-destruction victory | 3.2 | ███░░ | Hidden enemy-base damage and destruction lead to victory; loss of the home base leads to defeat. | Tune target confirmation requirements, strike difficulty, and late-game pacing. |
 | Secondary end conditions | 0.5 | █░░░░ | Not implemented, appropriately for MVP. | Consider round-limit score or combat-ineffective surrender only after the primary victory loop is balanced. |
@@ -133,7 +133,7 @@ The next milestone should not be adding a large quantity of new content. It shou
 | Premium portrait-mobile HUD | 3.1 | ███░░ | Strong typography, phase structure, squadron cards, doctrine controls, resource display, and debrief styling exist. | Refine spacing and hierarchy on physical phones and handle shorter/taller viewports gracefully. |
 | Tactical overlays | 3.3 | ███░░ | Radar/SAM/AAA rings, LOS rings, continuous routes, deployment hexes, intel labels, and history overlays are implemented. | Add directional arrows, uncertainty regions, altitude/mission encoding, and selective overlay controls. |
 | Fog and uncertainty presentation | 2.0 | ██░░░ | Unknown enemy models are withheld and contacts disappear outside observation. | Add atmospheric enemy-territory uncertainty, ghost tracks, probable regions, and visual confidence transitions. |
-| Combat effects | 1.7 | ██░░░ | Pulses and moving aircraft communicate activity. | Add contrails, missile trails, SAM launches, tracer/AAA fire, flak bursts, strike release, impacts, smoke, and damage states. |
+| Combat effects | 2.6 | ███░░ | SAM launches, strike impacts, debris, aircraft reactions, segmented strength changes, health bars, and persistent damage smoke communicate key events. | Add contrails, tracer/AAA fire, flak bursts, stronger weapon-release staging, and audio after visual causality is stable. |
 | Aircraft and ground models | 2.0 | ██░░░ | Readable procedural low-poly placeholders distinguish broad unit classes. | Replace with authored stylized models, improve animation, and establish faction silhouettes. |
 | Audio and haptics | 0.0 | ░░░░░ | No meaningful soundscape or haptic layer exists. | Add restrained radar, radio, launch, impact, warning, and phase-transition feedback after visual causality is stable. |
 | Late Cold War atmosphere | 2.5 | ███░░ | Terminology, colors, silhouettes, radar, SAMs, and command presentation support the setting. | Add stronger faction personality, period-inspired sound/design language, and environmental storytelling without requiring strict simulation. |
@@ -181,6 +181,7 @@ The current game has several interacting systems, but the number of truly distin
 - Basic interception, strike, SAM/AAA, damage, and attrition resolution
 - Unknown, suspected, probable, and confirmed fixed-asset intelligence
 - Autonomous execution with a readable event feed
+- Visibly changing formation-strength segments and a recovery gate that waits for surviving flights to land
 - Causal post-round command findings and observed route history
 - Persistent aircraft, readiness, ammunition, runway, and defense damage
 - Limited logistics, campaign score, command points, and scarce aircraft replacements
@@ -235,6 +236,20 @@ Replace the current narrow enemy flight script with an AI commander that chooses
 **Exit criteria:** Server-authoritative hidden state, simultaneous planning, reconnection, deterministic resolution, and secure information boundaries support a complete 1v1 match.
 
 ## Deliberately deferred scope
+
+### Deferred design note — prewar Force Allocation
+
+Use **Force Allocation** as the pre-match resource, keeping it distinct from **Logistics** used for in-campaign sustainment and **Command** used for mid-round intervention.
+
+The eventual setup flow should give each commander a fixed allocation to build an order of battle before ground placement:
+
+- Squadron cadres by role, with aircraft quantity and capability affecting cost
+- Radar, SAM, AAA, decoys, and later specialized defensive measures
+- A small set of recommended starter packages for immediate play
+- Minimum-role or readiness guardrails where needed to prevent nonfunctional builds
+- Clear coverage, sortie, and sustainment consequences before confirming the purchase
+
+This should remain a constrained strategic composition decision—not a large technology tree or a detailed equipment store. Do not implement it until squadron and defense values have enough playtest evidence to support meaningful pricing.
 
 The following remain intentionally outside the current MVP and should not reduce confidence in the prototype’s present purpose:
 
