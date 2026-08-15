@@ -46,7 +46,7 @@ function Terrain({phase}:{phase:Phase}){
 function HealthBar3D({fraction,label,position=[0,.83,0],enemy=false,segments}:{fraction:number;label:string;position?:[number,number,number];enemy?:boolean;segments?:{current:number;total:number;damaged:number}}){
   const value=clamp01(fraction)
   const width=segments?1.5:1.08
-  const color=value>.62?(enemy?hostile:friendly):value>.32?amber:hostile
+  const color=hostile
   const fill=useRef<THREE.Mesh>(null)
   const flash=useRef<THREE.Mesh>(null)
   const content=useRef<THREE.Group>(null)
@@ -58,10 +58,10 @@ function HealthBar3D({fraction,label,position=[0,.83,0],enemy=false,segments}:{f
   return <Billboard position={position} follow lockZ={false}>
     <group ref={content}>
       <mesh renderOrder={29} ref={flash}><planeGeometry args={[width+.18,.3]}/><meshBasicMaterial color="#ff6a45" transparent opacity={0} depthTest={false} depthWrite={false}/></mesh>
-      <mesh renderOrder={30}><planeGeometry args={[width,.18]}/><meshBasicMaterial color="#090b09" transparent opacity={.94} depthTest={false} depthWrite={false}/></mesh>
+      <mesh renderOrder={30}><planeGeometry args={[width,.18]}/><meshBasicMaterial color="#000000" transparent opacity={.98} depthTest={false} depthWrite={false}/></mesh>
       <mesh ref={fill} position={[-width*(1-value)/2,0,.008]} scale={[Math.max(.02,value),1,1]} renderOrder={31}><planeGeometry args={[width-.1,.1]}/><meshBasicMaterial color={color} depthTest={false} depthWrite={false}/></mesh>
       <Text position={[0,.22,.012]} fontSize={segments?.17:.14} color="#f2efdc" anchorX="center" anchorY="middle" renderOrder={32}>{label}</Text>
-      {segments?<group position={[-width/2+.17,-.18,.012]}>{Array.from({length:segments.total},(_,index)=>{const alive=index<segments.current;const damaged=alive&&index>=segments.current-segments.damaged;return <mesh key={index} position={[index*.34,0,0]} renderOrder={32}><planeGeometry args={[.26,.09]}/><meshBasicMaterial color={!alive?'#372421':damaged?amber:enemy?hostile:friendly} transparent opacity={alive?1:.62} depthTest={false} depthWrite={false}/></mesh>})}</group>:null}
+      {segments?<group position={[-width/2+.17,-.18,.012]}>{Array.from({length:segments.total},(_,index)=>{const alive=index<segments.current;const damaged=alive&&index>=segments.current-segments.damaged;return <mesh key={index} position={[index*.34,0,0]} renderOrder={32}><planeGeometry args={[.26,.09]}/><meshBasicMaterial color={!alive?'#372421':damaged?'#a4372e':hostile} transparent opacity={alive?1:.62} depthTest={false} depthWrite={false}/></mesh>})}</group>:null}
     </group>
   </Billboard>
 }
