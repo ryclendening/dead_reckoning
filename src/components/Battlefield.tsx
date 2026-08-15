@@ -43,10 +43,9 @@ function Terrain({phase}:{phase:Phase}){
   </group>
 }
 
-function HealthBar3D({fraction,label,position=[0,.83,0],enemy=false,segments}:{fraction:number;label:string;position?:[number,number,number];enemy?:boolean;segments?:{current:number;total:number;damaged:number}}){
+function HealthBar3D({fraction,label,position=[0,.83,0]}:{fraction:number;label:string;position?:[number,number,number]}){
   const value=clamp01(fraction)
-  const width=segments?1.5:1.08
-  const color=hostile
+  const width=1.08
   const fill=useRef<THREE.Mesh>(null)
   const flash=useRef<THREE.Mesh>(null)
   const content=useRef<THREE.Group>(null)
@@ -57,13 +56,19 @@ function HealthBar3D({fraction,label,position=[0,.83,0],enemy=false,segments}:{f
   useFrame((_,delta)=>{displayed.current=THREE.MathUtils.damp(displayed.current,value,11,delta);const shown=Math.max(.02,displayed.current);if(fill.current){fill.current.scale.x=shown;fill.current.position.x=-width*(1-shown)/2}hitAge.current+=delta;const pulse=Math.max(0,1-hitAge.current/1.15);if(content.current)content.current.scale.setScalar(1+pulse*.2);if(flash.current){const material=flash.current.material as THREE.MeshBasicMaterial;material.opacity=pulse*.72}})
   return <Billboard position={position} follow lockZ={false}>
     <group ref={content}>
-      <mesh renderOrder={29} ref={flash}><planeGeometry args={[width+.18,.3]}/><meshBasicMaterial color="#ff6a45" transparent opacity={0} depthTest={false} depthWrite={false}/></mesh>
-      <mesh renderOrder={30}><planeGeometry args={[width,.18]}/><meshBasicMaterial color="#000000" transparent opacity={.98} depthTest={false} depthWrite={false}/></mesh>
-      <mesh ref={fill} position={[-width*(1-value)/2,0,.008]} scale={[Math.max(.02,value),1,1]} renderOrder={31}><planeGeometry args={[width-.1,.1]}/><meshBasicMaterial color={color} depthTest={false} depthWrite={false}/></mesh>
-      <Text position={[0,.22,.012]} fontSize={segments?.17:.14} color="#f2efdc" anchorX="center" anchorY="middle" renderOrder={32}>{label}</Text>
-      {segments?<group position={[-width/2+.17,-.18,.012]}>{Array.from({length:segments.total},(_,index)=>{const alive=index<segments.current;const damaged=alive&&index>=segments.current-segments.damaged;return <mesh key={index} position={[index*.34,0,0]} renderOrder={32}><planeGeometry args={[.26,.09]}/><meshBasicMaterial color={!alive?'#372421':damaged?'#a4372e':hostile} transparent opacity={alive?1:.62} depthTest={false} depthWrite={false}/></mesh>})}</group>:null}
+      <mesh renderOrder={29} ref={flash}><planeGeometry args={[width+.16,.25]}/><meshBasicMaterial color="#ff5a42" transparent opacity={0} depthTest={false} depthWrite={false}/></mesh>
+      <mesh renderOrder={30}><planeGeometry args={[width,.16]}/><meshBasicMaterial color="#000000" transparent opacity={.98} depthTest={false} depthWrite={false}/></mesh>
+      <mesh ref={fill} position={[-width*(1-value)/2,0,.008]} scale={[Math.max(.02,value),1,1]} renderOrder={31}><planeGeometry args={[width-.09,.075]}/><meshBasicMaterial color={hostile} depthTest={false} depthWrite={false}/></mesh>
+      <Text position={[0,.2,.012]} fontSize={.14} color="#f2efdc" anchorX="center" anchorY="middle" renderOrder={32}>{label}</Text>
     </group>
   </Billboard>
+}
+
+function HitCallout({label}:{label:string}){
+  const ref=useRef<THREE.Group>(null)
+  const age=useRef(0)
+  useFrame((_,delta)=>{age.current+=delta;if(!ref.current)return;const fade=Math.max(0,1-age.current/1.35);ref.current.position.y=age.current*.2;ref.current.scale.setScalar(1+age.current*.12);ref.current.visible=fade>0;ref.current.children.forEach(child=>{const material=(child as THREE.Mesh).material as THREE.MeshBasicMaterial|undefined;if(material)material.opacity=fade})})
+  return <Billboard position={[0,1.28,0]} follow lockZ={false}><group ref={ref}><mesh renderOrder={34}><planeGeometry args={[.72,.24]}/><meshBasicMaterial color="#050505" transparent opacity={.92} depthTest={false} depthWrite={false}/></mesh><Text position={[0,0,.01]} fontSize={.16} color="#ff6653" anchorX="center" anchorY="middle" renderOrder={35}>{label}</Text></group></Billboard>
 }
 
 function DamageSmoke({severity=.3,position=[0,.25,0]}:{severity?:number;position?:[number,number,number]}){
@@ -81,7 +86,7 @@ function Runway({asset,enemy=false}:{asset:Asset;enemy?:boolean}){
     <mesh castShadow><boxGeometry args={[2,.08,.5]}/><meshStandardMaterial color={health>0?'#343732':'#25221f'} roughness={.9}/></mesh>
     {[-.65,0,.65].map(x=><mesh key={x} position={[x,.05,0]}><boxGeometry args={[.25,.012,.035]}/><meshBasicMaterial color={enemy?'#bd5b4a':'#d2cfb5'}/></mesh>)}
     <mesh position={[0,.16,-.46]} castShadow><boxGeometry args={[.48,.25,.45]}/><meshStandardMaterial color={enemy?'#5d4035':'#42585b'}/></mesh>
-    {asset.struck?<HealthBar3D fraction={health/asset.maxHealth} label={`${Math.round(health)}%`} position={[0,.88,0]} enemy={enemy}/>:null}
+    {asset.struck?<HealthBar3D fraction={health/asset.maxHealth} label={`${Math.round(health)}%`} position={[0,.88,0]}/>:null}
     {asset.struck&&health<asset.maxHealth?<DamageSmoke severity={Math.max(.15,severity)} position={[0,.22,-.1]}/>:null}
   </group>
 }
@@ -89,7 +94,7 @@ function Runway({asset,enemy=false}:{asset:Asset;enemy?:boolean}){
 function Radar({asset,enemy=false}:{asset:Asset,enemy?:boolean}){
   const ref=useRef<THREE.Group>(null)
   useFrame((_,d)=>{if(ref.current)ref.current.rotation.y+=d*.45})
-  return <group position={to3(asset.position,.15)}><mesh castShadow position={[0,.18,0]}><cylinderGeometry args={[.24,.3,.36,8]}/><meshStandardMaterial color={asset.health>0?'#55584d':'#292522'}/></mesh><group ref={ref} position={[0,.5,0]} rotation={[0,0,.2]}><mesh castShadow><sphereGeometry args={[.32,8,5,0,Math.PI]}/><meshStandardMaterial color={enemy?'#8f604d':'#b9c1ac'} side={THREE.DoubleSide}/></mesh></group>{asset.health>0?<Ring radius={enemy?2.6:RADAR_RANGE} color={enemy?hostile:friendly}/>:null}{asset.struck?<HealthBar3D fraction={asset.health/asset.maxHealth} label={`${Math.round(asset.health)}%`} position={[0,1.08,0]} enemy={enemy}/>:null}{asset.struck&&asset.health<asset.maxHealth?<DamageSmoke severity={1-asset.health/asset.maxHealth} position={[0,.45,0]}/>:null}</group>
+  return <group position={to3(asset.position,.15)}><mesh castShadow position={[0,.18,0]}><cylinderGeometry args={[.24,.3,.36,8]}/><meshStandardMaterial color={asset.health>0?'#55584d':'#292522'}/></mesh><group ref={ref} position={[0,.5,0]} rotation={[0,0,.2]}><mesh castShadow><sphereGeometry args={[.32,8,5,0,Math.PI]}/><meshStandardMaterial color={enemy?'#8f604d':'#b9c1ac'} side={THREE.DoubleSide}/></mesh></group>{asset.health>0?<Ring radius={enemy?2.6:RADAR_RANGE} color={enemy?hostile:friendly}/>:null}{asset.struck?<HealthBar3D fraction={asset.health/asset.maxHealth} label={`${Math.round(asset.health)}%`} position={[0,1.08,0]}/>:null}{asset.struck&&asset.health<asset.maxHealth?<DamageSmoke severity={1-asset.health/asset.maxHealth} position={[0,.45,0]}/>:null}</group>
 }
 
 function DefenseNetworkCue({cue,radar}:{cue:DefenseCue;radar:Point}){
@@ -110,7 +115,7 @@ function Defense({asset,enemy=true,selected=false}:{asset:Asset;enemy?:boolean;s
     <mesh castShadow><cylinderGeometry args={[.34,.42,.15,8]}/><meshStandardMaterial color={asset.health>0?'#7a493d':'#292522'}/></mesh>
     {asset.kind==='sam'?[-.18,.18].map(x=><mesh key={x} position={[x,.35,0]} rotation={[0,0,-.28]} castShadow><cylinderGeometry args={[.045,.065,.62,6]}/><meshStandardMaterial color="#aa9a75"/></mesh>):<mesh position={[0,.28,0]}><boxGeometry args={[.45,.28,.2]}/><meshStandardMaterial color="#4d4036"/></mesh>}
     <Ring radius={asset.kind==='sam'?3.2:1.9} color={enemy?hostile:friendly} opacity={selected?.65:.25}/>
-    {asset.struck?<HealthBar3D fraction={asset.health/asset.maxHealth} label={`${Math.round(asset.health)}%`} position={[0,.98,0]} enemy={enemy}/>:null}
+    {asset.struck?<HealthBar3D fraction={asset.health/asset.maxHealth} label={`${Math.round(asset.health)}%`} position={[0,.98,0]}/>:null}
     {asset.struck&&asset.health<asset.maxHealth?<DamageSmoke severity={1-asset.health/asset.maxHealth} position={[0,.3,0]}/>:null}
   </group>
 }
@@ -146,7 +151,9 @@ function Flight({squadron,route,progress,active,selected,status,activeEvent}:{sq
   const reactionEvent=activeEvent?.detail.includes(squadron.callsign)&&(airLossTitles.has(activeEvent.title)||airDamageTitles.has(activeEvent.title)||activeEvent.title==='WEAPONS IMPACT')?activeEvent:undefined
   useEffect(()=>{if(reactionEvent&&reaction.current.id!==reactionEvent.id)reaction.current={id:reactionEvent.id,age:0,kind:reactionEvent.title==='WEAPONS IMPACT'?'strike':'damage'}},[reactionEvent])
   useFrame((_,delta)=>{if(ref.current&&active){const p=flightPoint(curve,progress);const q=flightPoint(curve,Math.min(.999,progress+.01));ref.current.position.copy(p);ref.current.lookAt(q)}if(!modelRef.current)return;reaction.current.age+=delta;const age=reaction.current.age;if(age<1.35){const fade=1-age/1.35;if(reaction.current.kind==='damage'){modelRef.current.rotation.z=Math.sin(age*23)*.18*fade;modelRef.current.rotation.x=-Math.sin(age*9)*.08*fade;modelRef.current.position.y=Math.sin(age*18)*.055*fade}else{modelRef.current.rotation.z=Math.sin(age*8)*.12*fade;modelRef.current.position.y=-Math.sin(Math.min(1,age*2.5)*Math.PI)*.13*fade}}else{modelRef.current.rotation.set(0,0,0);modelRef.current.position.y=0}})
-  return <group ref={ref} visible={status.aircraft>0} position={flightPoint(curve,active?progress:0)}><group ref={modelRef}><PlaneModel role={squadron.role}/>{status.hasDamage?<AircraftSmoke/>:null}</group><mesh position={[.12,-.43,.13]} rotation={[-Math.PI/2,0,0]}><circleGeometry args={[.22,12]}/><meshBasicMaterial color="#080a08" transparent opacity={.36}/></mesh>{active?<><HealthBar3D fraction={status.fraction} label={`${status.aircraft} / ${squadron.aircraft}${status.damaged?` · ${status.damaged} DMG`:''}`} position={[0,.92,0]} segments={{current:status.aircraft,total:squadron.aircraft,damaged:Math.min(status.aircraft,status.damaged)}}/><group position={[0,-.58,0]}><Ring radius={effectiveSensorRange(squadron)} color={friendly} opacity={selected?.22:.08}/></group></>:null}</group>
+  const damageEvent=reactionEvent&&(airLossTitles.has(reactionEvent.title)||airDamageTitles.has(reactionEvent.title))?reactionEvent:undefined
+  const calloutLabel=damageEvent&&airLossTitles.has(damageEvent.title)?'−1 AIRCRAFT':damageEvent?'HIT · DAMAGE':''
+  return <group ref={ref} visible={status.aircraft>0} position={flightPoint(curve,active?progress:0)}><group ref={modelRef}><PlaneModel role={squadron.role}/>{status.hasDamage?<AircraftSmoke/>:null}</group><mesh position={[.12,-.43,.13]} rotation={[-Math.PI/2,0,0]}><circleGeometry args={[.22,12]}/><meshBasicMaterial color="#080a08" transparent opacity={.36}/></mesh>{active?<>{status.hasDamage?<HealthBar3D fraction={status.fraction} label={`${status.aircraft} / ${squadron.aircraft}${status.damaged?` · ${status.damaged} DMG`:''}`} position={[0,.88,0]}/>:null}{damageEvent?<HitCallout key={damageEvent.id} label={calloutLabel}/>:null}<group position={[0,-.58,0]}><Ring radius={effectiveSensorRange(squadron)} color={friendly} opacity={selected?.22:.08}/></group></>:null}</group>
 }
 
 function EnemyContact({flight,progress,status,activeEvent}:{flight:EnemyFlight;progress:number;status:FlightStatus;activeEvent?:CombatEvent}){
@@ -160,7 +167,8 @@ function EnemyContact({flight,progress,status,activeEvent}:{flight:EnemyFlight;p
   useFrame((_,delta)=>{if(ref.current){const p=flightPoint(curve,progress);const q=flightPoint(curve,Math.min(.999,progress+.01));ref.current.position.copy(p);ref.current.lookAt(q)}if(!modelRef.current)return;reaction.current.age+=delta;const age=reaction.current.age;if(age<1.35){const fade=1-age/1.35;modelRef.current.rotation.z=Math.sin(age*24)*.22*fade;modelRef.current.rotation.x=-Math.sin(age*10)*.1*fade;modelRef.current.position.y=Math.sin(age*18)*.06*fade}else{modelRef.current.rotation.set(0,0,0);modelRef.current.position.y=0}})
   if(!window)return null
   const visual=window.source==='visual';const network=window.source==='network'
-  return <group ref={ref} visible={status.aircraft>0} position={flightPoint(curve,progress)}><group ref={modelRef}><PlaneModel role={flight.role} color={visual?hostile:network?'#9ee6a8':amber}/>{visual&&status.hasDamage?<AircraftSmoke/>:null}</group><Text position={[0,.58,0]} fontSize={.28} color={visual?hostile:network?'#9ee6a8':amber} anchorX="center">{visual?`${flight.callsign} · ${status.aircraft}`:network?'DEFENSE TRACK':'RADAR CONTACT'}</Text>{visual?<><HealthBar3D fraction={status.fraction} label={`${status.aircraft} / ${flight.initialAircraft}`} position={[0,.98,0]} enemy segments={{current:status.aircraft,total:flight.initialAircraft,damaged:0}}/><group position={[0,-.6,0]}><Ring radius={1.1} color={hostile} opacity={.3}/></group></>:null}</group>
+  const damageEvent=hitEvent&&status.hasDamage?hitEvent:undefined
+  return <group ref={ref} visible={status.aircraft>0} position={flightPoint(curve,progress)}><group ref={modelRef}><PlaneModel role={flight.role} color={visual?hostile:network?'#9ee6a8':amber}/>{visual&&status.hasDamage?<AircraftSmoke/>:null}</group><Text position={[0,.58,0]} fontSize={.28} color={visual?hostile:network?'#9ee6a8':amber} anchorX="center">{visual?`${flight.callsign} · ${status.aircraft}`:network?'DEFENSE TRACK':'RADAR CONTACT'}</Text>{visual?<>{status.hasDamage?<HealthBar3D fraction={status.fraction} label={`${status.aircraft} / ${flight.initialAircraft}`} position={[0,.94,0]}/>:null}{damageEvent?<HitCallout key={damageEvent.id} label="−1 AIRCRAFT"/>:null}<group position={[0,-.6,0]}><Ring radius={1.1} color={hostile} opacity={.3}/></group></>:null}</group>
 }
 
 function ReinforcementFlight({call,progress}:{call:ReinforcementCall;progress:number}){
