@@ -5,10 +5,31 @@ import { HealthBars, OrdersPanel, PhaseRail, SquadronRail, TopBar } from './comp
 import { createMatch, PRESETS } from './game/data'
 import { applyRound, attritionCreditAt, battleScoreAt, callReinforcement, effectiveSensorRange, EXECUTION_SECONDS, RADAR_RANGE, rearmSquadron, REINFORCEMENT_OPTIONS, repairDefense, repairRunway, repairSquadron, resolveRound, restoreReadiness, serviceSquadronCost, supportCreditsAt } from './game/engine'
 import { snapToHex } from './game/hex'
-import type { Asset, CombatEvent, MatchState, Point, ReinforcementType, Squadron } from './game/types'
+import type { Asset, CombatEvent, DebugScenario, MatchState, Point, ReinforcementType, Squadron } from './game/types'
 
-const SAVE_KEY='dead-reckoning-mvp-v9'
-function loadMatch():MatchState{try{const saved=localStorage.getItem(SAVE_KEY);if(!saved)return createMatch();const parsed=JSON.parse(saved) as MatchState;return parsed.phase==='execute'?{...parsed,phase:'plan'}:parsed}catch{return createMatch()}}
+const SAVE_KEY='dead-reckoning-mvp-v11'
+const LEGACY_SAVE_KEYS=['dead-reckoning-mvp-v10','dead-reckoning-mvp-v9']
+function normalizeMatch(input:MatchState):MatchState{
+  const fresh=createMatch()
+  const compatible=input.squadrons?.filter(s=>s.role==='fighter'||s.role==='recon')??[]
+  if(compatible.length!==fresh.squadrons.length)return {...fresh,debugScenario:input.debugScenario??'campaign'}
+  const squadrons=compatible.map(s=>({...s,mission:s.role==='fighter'?'CAP' as const:'RECON' as const,targetPriority:'opportunity' as const,selectedTargetId:undefined,strength:s.strength??Math.max(0,Math.min(100,(s.aircraft/Math.max(1,s.maxAircraft))*100)),morale:s.morale??Math.round(48+s.readiness*.42),status:s.status??'enroute' as const}))
+  return {...fresh,...input,phase:input.phase==='execute'?'plan':input.phase,squadrons,debugScenario:input.debugScenario??'campaign',lastResult:input.phase==='execute'?undefined:input.lastResult}
+}
+function loadMatch():MatchState{try{const saved=localStorage.getItem(SAVE_KEY)??LEGACY_SAVE_KEYS.map(k=>localStorage.getItem(k)).find(Boolean);if(!saved)return createMatch();return normalizeMatch(JSON.parse(saved) as MatchState)}catch{return createMatch()}}
+function makeScenario(scenario:DebugScenario):MatchState{
+  const match=createMatch()
+  match.debugScenario=scenario
+  if(scenario==='campaign')return match
+  match.phase='plan'
+  match.squadrons=match.squadrons.map(s=>{
+    if(scenario==='fighter-duel')return s.id==='viper'?{...s,route:[[-7.8,11.2],[-3.5,3.5],[.5,-.5]],aggression:'aggressive',risk:'press'}:{...s,aircraft:0,strength:0}
+    if(scenario==='recon-recovery')return s.id==='raven'?{...s,route:[[-7.8,11.2],[-3.5,4.5],[1.4,-.9],[4,-5.3],[1.4,-.9],[-7.8,11.2]],risk:'preserve'}:{...s,aircraft:s.id==='viper'?4:0,strength:s.id==='viper'?100:0}
+    if(scenario==='recon-loss')return s.id==='raven'?{...s,route:[[-7.8,11.2],[-3.5,4.5],[1.4,-.9],[4,-5.3]],risk:'press',aggression:'aggressive'}:{...s,aircraft:s.id==='viper'?4:0,strength:s.id==='viper'?100:0}
+    return s
+  })
+  return match
+}
 
 export default function App(){
   const [match,setMatch]=useState<MatchState>(loadMatch)
@@ -38,11 +59,11 @@ export default function App(){
   },[match.phase,speed]) // progress intentionally resumes from the value captured when speed/phase changes
 
   const nextRound=()=>setMatch(m=>({...m,round:m.round+1,phase:'plan',lastResult:undefined}))
-  const restart=()=>{localStorage.removeItem(SAVE_KEY);setMatch(createMatch());setProgress(0);setActiveEvent(undefined)}
+  const restart=()=>{localStorage.removeItem(SAVE_KEY);for(const key of LEGACY_SAVE_KEYS)localStorage.removeItem(key);setMatch(m=>makeScenario(m.debugScenario??'campaign'));setProgress(0);setActiveEvent(undefined)}
 
   return <main className="app-shell">
     <div className={`game-frame phase-${match.phase}`}>
-      <TopBar round={match.round} intel={intel} logistics={match.logistics} replacements={match.replacements} score={match.campaignScore??0} phase={match.phase}/>
+      <TopBar round={match.round} intel={intel} logistics={match.logistics} replacements={match.replacements} score={match.campaignScore??0} phase={match.phase} debugScenario={match.debugScenario??'campaign'} onDebugScenario={debugScenario=>setMatch(m=>({...m,debugScenario}))} onReboot={restart}/>
       <div className="map-wrap"><Battlefield squadrons={match.squadrons} assets={match.enemyAssets} playerAssets={match.playerAssets} selectedId={match.selectedId} placementId={placementId} phase={match.phase} progress={progress} activeEvent={activeEvent} executionResult={match.phase==='execute'?resultRef.current:match.phase==='debrief'?match.lastResult:undefined} onRoute={setRoute} onPlace={placeAsset}/><PhaseRail phase={match.phase}/><HealthBars player={match.playerBaseHealth} enemy={match.enemyBaseHealth} enemyKnown={enemyBaseKnown} exposure={match.baseExposure??6}/>
         {match.phase==='deploy'?<div className="map-tip deploy-tip"><span>TAP HEX</span> PLACE SELECTED ASSET · FRIENDLY TERRITORY ONLY</div>:null}
         {match.phase==='plan'?<><div className="sensor-legend"><b>LOS {effectiveSensorRange(selected).toFixed(1)}</b><span>RADAR {RADAR_RANGE.toFixed(1)}</span></div><div className="map-tip"><span>TAP / DRAG</span> FREEHAND ROUTE · RINGS SHOW OBSERVATION</div></>:null}

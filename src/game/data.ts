@@ -16,22 +16,22 @@ export const initialPlayerAssets: Asset[] = [
 
 const route = (...points: [number, number][]) => points
 export const initialSquadrons: Squadron[] = [
-  { id:'viper', callsign:'VIPER 1', role:'interceptor', mission:'CAP', aggression:'aggressive', risk:'preserve', targetPriority:'opportunity', aircraft:4, maxAircraft:4, damaged:0, readiness:92, ammo:100, route:route(PLAYER_BASE,[-6,5.5],[-3.2,1],[-6,5.5],PLAYER_BASE) },
-  { id:'falcon', callsign:'FALCON 2', role:'fighter', mission:'ESCORT', aggression:'balanced', risk:'normal', targetPriority:'opportunity', aircraft:4, maxAircraft:4, damaged:0, readiness:89, ammo:100, route:route(PLAYER_BASE,[-3.5,6],[0,1.2],[3,-3.5]) },
-  { id:'hawk', callsign:'HAWK 3', role:'strike', mission:'STRIKE', aggression:'balanced', risk:'press', targetPriority:'air-defense', aircraft:4, maxAircraft:4, damaged:0, readiness:84, ammo:100, route:route(PLAYER_BASE,[-3.5,7],[1,1],[5,-7]) },
-  { id:'raven', callsign:'RAVEN 4', role:'recon', mission:'RECON', aggression:'cautious', risk:'preserve', targetPriority:'opportunity', aircraft:4, maxAircraft:4, damaged:0, readiness:96, ammo:100, route:route(PLAYER_BASE,[-3,5],[1,0],[5,-7],[1,0],PLAYER_BASE) },
+  { id:'viper', callsign:'VIPER 1', role:'fighter', mission:'CAP', aggression:'aggressive', risk:'normal', targetPriority:'opportunity', aircraft:4, maxAircraft:4, damaged:0, readiness:92, ammo:100, strength:100, morale:86, route:route(PLAYER_BASE,[-6,5.5],[-3.2,1],[-6,5.5],PLAYER_BASE) },
+  { id:'falcon', callsign:'FALCON 2', role:'fighter', mission:'CAP', aggression:'balanced', risk:'normal', targetPriority:'opportunity', aircraft:4, maxAircraft:4, damaged:0, readiness:89, ammo:100, strength:100, morale:78, route:route(PLAYER_BASE,[-3.5,6],[0,1.2],[3,-3.5],PLAYER_BASE) },
+  { id:'raven', callsign:'RAVEN 3', role:'recon', mission:'RECON', aggression:'cautious', risk:'preserve', targetPriority:'opportunity', aircraft:4, maxAircraft:4, damaged:0, readiness:96, ammo:100, strength:100, morale:84, route:route(PLAYER_BASE,[-3,5],[1,0],[5,-7],[1,0],PLAYER_BASE) },
+  { id:'ghost', callsign:'GHOST 4', role:'recon', mission:'RECON', aggression:'cautious', risk:'preserve', targetPriority:'opportunity', aircraft:4, maxAircraft:4, damaged:0, readiness:94, ammo:100, strength:100, morale:90, route:route(PLAYER_BASE,[-5.2,5.2],[-1.5,-.3],[3.6,-5.8],[.4,.8],PLAYER_BASE) },
 ]
 
 export const initialAssets: Asset[] = [
   { id:'e-base', kind:'base', position:ENEMY_BASE, intel:'unknown', confidence:0, health:100, maxHealth:100, hidden:true, struck:false },
-  { id:'e-decoy', kind:'decoy', position:snapToHex([-4.8,-9.6]), intel:'suspected', confidence:28, health:50, maxHealth:50, hidden:true, struck:false },
-  { id:'e-radar', kind:'radar', position:snapToHex([3.8,-4.8]), intel:'suspected', confidence:35, health:70, maxHealth:70, hidden:true, struck:false },
+  { id:'e-decoy', kind:'decoy', position:snapToHex([-4.8,-9.6]), intel:'unknown', confidence:0, health:50, maxHealth:50, hidden:true, struck:false },
+  { id:'e-radar', kind:'radar', position:snapToHex([3.8,-4.8]), intel:'unknown', confidence:0, health:70, maxHealth:70, hidden:true, struck:false },
   { id:'e-sam', kind:'sam', position:snapToHex([-4.6,-3.4]), intel:'unknown', confidence:0, health:65, maxHealth:65, hidden:true, struck:false },
   { id:'e-aaa', kind:'aaa', position:snapToHex([7.8,-6.6]), intel:'unknown', confidence:0, health:55, maxHealth:55, hidden:true, struck:false },
 ]
 
 export const createMatch = (): MatchState => ({
-  round:1, phase:'deploy', logistics:10, command:2, replacements:3, selectedId:'raven',
+  round:1, phase:'plan', logistics:10, command:2, replacements:3, selectedId:'raven',
   squadrons:structuredClone(initialSquadrons), enemyAssets:structuredClone(initialAssets), playerAssets:structuredClone(initialPlayerAssets),
   playerBaseHealth:100, enemyBaseHealth:100, baseExposure:6, campaignScore:0, seed:7301,
 })

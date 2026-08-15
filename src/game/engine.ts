@@ -1,263 +1,175 @@
 import { ENEMY_BASE } from './data'
-import type { Asset, CombatEvent, DefenseCue, DetectionWindow, DoctrineLesson, EnemyFlight, IntelLevel, MatchState, Point, ReinforcementCall, ReinforcementType, RoundResult, Squadron } from './types'
+import type { Asset, CombatEvent, CombatExchange, CombatSequence, ContactObservation, DefenseCue, DetectionWindow, DoctrineLesson, EnemyFlight, IntelLevel, IntelReport, MatchState, Point, ReinforcementCall, ReinforcementType, RoundResult, Squadron, WeaponEffect, WeaponKind } from './types'
 
-export const SENSOR_RANGE: Record<Squadron['role'], number> = { interceptor:4.2, fighter:3.6, strike:2.1, recon:4.8 }
+export const SENSOR_RANGE: Record<Squadron['role'], number>={fighter:4.2,recon:4.9}
 export const RADAR_RANGE=6.4
 export const EXECUTION_SECONDS=22
 export const REINFORCEMENT_OPTIONS:Record<ReinforcementType,{label:string;scoreCost:number;commandCost:number;reserveCost:number;summary:string}>={
-  'alert-cap':{label:'ALERT INTERCEPTORS',scoreCost:3,commandCost:1,reserveCost:1,summary:'Break up the inbound raid before weapons release.'},
+  'alert-cap':{label:'ALERT FIGHTERS',scoreCost:3,commandCost:1,reserveCost:1,summary:'Vector a reserve pair to the current fighter contact.'},
   'replacement-flight':{label:'REPLACEMENT FLIGHT',scoreCost:4,commandCost:1,reserveCost:1,summary:'Restore one observed combat loss for the next round.'},
 }
-const distance=(a:Point,b:Point)=>Math.hypot(a[0]-b[0],a[1]-b[1])
-const levelFor=(confidence:number):IntelLevel=>confidence>=90?'confirmed':confidence>=65?'probable':confidence>=25?'suspected':'unknown'
-const segmentDistance=(point:Point,a:Point,b:Point)=>{const dx=b[0]-a[0],dy=b[1]-a[1];if(dx===0&&dy===0)return distance(point,a);const t=clamp(((point[0]-a[0])*dx+(point[1]-a[1])*dy)/(dx*dx+dy*dy));return distance(point,[a[0]+t*dx,a[1]+t*dy])}
-const routeNear=(route:Point[],point:Point,radius:number)=>route.length===1?distance(route[0],point)<=radius:route.slice(1).some((p,i)=>segmentDistance(point,route[i],p)<=radius)
-const rand=(seed:number)=>{const x=Math.sin(seed)*10000;return x-Math.floor(x)}
 const clamp=(v:number,min=0,max=1)=>Math.max(min,Math.min(max,v))
-const formationStrength=(sq:Squadron)=>sq.maxAircraft===0?0:clamp(sq.aircraft/sq.maxAircraft)
-export const effectiveSensorRange=(sq:Squadron)=>SENSOR_RANGE[sq.role]*(.68+.32*formationStrength(sq))
-const assetPosition=(assets:Asset[],kind:Asset['kind'],fallback:Point):Point=>assets.find(a=>a.kind===kind)?.position??fallback
-const ensureRecovery=(route:Point[],base:Point)=>route.length<2||distance(route.at(-1)!,base)<.3?route:[...route,base]
+const distance=(a:Point,b:Point)=>Math.hypot(a[0]-b[0],a[1]-b[1])
+const rand=(seed:number)=>{const x=Math.sin(seed)*10000;return x-Math.floor(x)}
+const levelFor=(confidence:number):IntelLevel=>confidence>=90?'confirmed':confidence>=65?'probable':confidence>=25?'suspected':'unknown'
+const strengthOf=(unit:{strength?:number;aircraft:number;maxAircraft?:number;initialAircraft?:number})=>unit.strength??unit.aircraft/Math.max(1,unit.maxAircraft??unit.initialAircraft??unit.aircraft)*100
+const aircraftFor=(strength:number,max:number)=>strength<=0?0:Math.min(max,Math.max(1,Math.ceil(strength/25)))
+export const effectiveSensorRange=(sq:Squadron)=>SENSOR_RANGE[sq.role]*(.68+.32*clamp(strengthOf(sq)/100))
+const ensureRecovery=(route:Point[],base:Point)=>route.length>1&&distance(route.at(-1)!,base)<.35?route:[...route,base]
 
 function routePoint(route:Point[],progress:number):Point{
   if(route.length<2)return route[0]??[0,0]
-  const lengths=route.slice(1).map((p,i)=>distance(route[i],p));const total=lengths.reduce((a,b)=>a+b,0)
+  const lengths=route.slice(1).map((point,index)=>distance(route[index],point));const total=lengths.reduce((sum,n)=>sum+n,0)
   let remaining=clamp(progress)*total
   for(let i=0;i<lengths.length;i++){if(remaining<=lengths[i]){const f=lengths[i]===0?0:remaining/lengths[i];return [route[i][0]+(route[i+1][0]-route[i][0])*f,route[i][1]+(route[i+1][1]-route[i][1])*f]}remaining-=lengths[i]}
   return route.at(-1)!
 }
+function closestEncounter(first:Point[],second:Point[]){let best={distance:Infinity,point:second[0]??[0,0] as Point,progress:0};for(let i=0;i<=60;i++){const progress=i/60;const point=routePoint(second,progress);const d=distance(routePoint(first,progress),point);if(d<best.distance)best={distance:d,point,progress}}return best}
+function closestRouteProgress(route:Point[],point:Point){let best={distance:Infinity,progress:0,point:route[0]??[0,0] as Point};for(let i=0;i<=80;i++){const progress=i/80;const sample=routePoint(route,progress);const d=distance(sample,point);if(d<best.distance)best={distance:d,progress,point:sample}}return best}
+function nearRoute(route:Point[],point:Point,radius:number){for(let i=1;i<route.length;i++){const a=route[i-1],b=route[i];const dx=b[0]-a[0],dy=b[1]-a[1];const t=clamp(((point[0]-a[0])*dx+(point[1]-a[1])*dy)/Math.max(.001,dx*dx+dy*dy));if(distance(point,[a[0]+dx*t,a[1]+dy*t])<=radius)return true}return false}
+function playerBase(state:MatchState):Point{return state.playerAssets.find(a=>a.kind==='base')?.position??[-7.8,11.2]}
+function enemyFlights():EnemyFlight[]{return [
+  {id:'red-fighter',callsign:'BOGEY 1',role:'fighter',aircraft:4,initialAircraft:4,strength:100,morale:74,status:'enroute',target:'decoy',route:[ENEMY_BASE,[5,-6],[.4,-.5],[-3,3],[.4,-.5],[5,-6],ENEMY_BASE],detectionWindows:[]},
+  {id:'red-recon',callsign:'SPECTER',role:'recon',aircraft:2,initialAircraft:2,strength:100,morale:70,status:'enroute',target:'base',route:[ENEMY_BASE,[4,-5],[1,.5],[-2.4,4.2],[1,.5],[4,-5],ENEMY_BASE],detectionWindows:[]},
+]}
+function damage(unit:{strength?:number;morale?:number;aircraft:number;maxAircraft?:number;initialAircraft?:number},amount:number){const before=unit.aircraft;const max=unit.maxAircraft??unit.initialAircraft??before;unit.strength=Math.max(0,strengthOf(unit)-amount);unit.aircraft=aircraftFor(unit.strength,max);unit.morale=Math.max(0,(unit.morale??70)-8-(unit.aircraft<before?18:0));return {before,after:unit.aircraft,strength:unit.strength,morale:unit.morale}}
+function weapon(id:string,kind:WeaponKind,sourceId:string,targetId:string,time:number,from:Point,to:Point,hit:boolean,amount:number):WeaponEffect{const travel=kind==='gun'||kind==='aaa' ? .34 : kind==='sam' ? 1.05 : .62;return {id,kind,sourceId,targetId,start:time,end:time+travel,from,to,hit,damage:amount}}
 
-function closestEncounter(friendly:Point[],hostile:Point[]){
-  let best={distance:Infinity,point:hostile[0],progress:0}
-  for(let i=0;i<=60;i++){const progress=i/60;const enemy=routePoint(hostile,progress);const own=routePoint(friendly,progress);const d=distance(own,enemy);if(d<best.distance)best={distance:d,point:enemy,progress}}
-  return best
-}
-
-function makeEnemyFlights(state:MatchState,roll:number):EnemyFlight[]{
-  const playerBase=assetPosition(state.playerAssets,'base',[-7.8,11.2]);const playerDecoy=assetPosition(state.playerAssets,'decoy',[6.8,9.2])
-  const baseExposure=state.baseExposure??6
-  const baseTargetChance=clamp(.08+state.round*.025+baseExposure*.008,.1,.82)
-  const target:EnemyFlight['target']=rand(roll)<baseTargetChance?'base':'decoy'
-  const aimpoint=target==='base'?playerBase:playerDecoy
-  return [
-    {id:'red-fighter',callsign:'BOGEY 1',role:'fighter',aircraft:4,initialAircraft:4,target,route:[ENEMY_BASE,[5,-6],[1,-1],[-2,3],[1,-1],[5,-6],ENEMY_BASE],detectionWindows:[]},
-    {id:'red-strike',callsign:'RAIDER',role:'strike',aircraft:3,initialAircraft:3,target,route:[ENEMY_BASE,[5,-7],[2,-2],aimpoint,[2,-2],[5,-7],ENEMY_BASE],detectionWindows:[]},
-  ]
-}
-
-function buildExecutionRoute(sq:Squadron,flights:EnemyFlight[],radarCanSee:boolean,add:(tone:CombatEvent['tone'],title:string,detail:string,position?:Point,time?:number)=>void):Point[]{
-  const base=[...sq.route] as Point[]
-  if(base.length<2)return base
-  const hostile=flights[0];const encounter=closestEncounter(base,hostile.route);const sensorRange=effectiveSensorRange(sq);const visual=encounter.distance<=sensorRange
-  const canReact=visual||radarCanSee
-  if(sq.mission==='CAP'&&canReact){
-    if(sq.aggression==='cautious'){
-      add('friendly','CONTACT SHADOWED',`${sq.callsign} holds its patrol geometry and passes the track to the defensive network.`,encounter.point,6.2)
-      return base
-    }
-    if(sq.aggression==='balanced'&&encounter.distance>sensorRange*1.12)return base
-    const lead=routePoint(hostile.route,clamp(encounter.progress+(sq.aggression==='aggressive'?.12:.04)))
-    const insert=Math.max(1,Math.floor(base.length*.55));base.splice(insert,0,encounter.point)
-    if(sq.aggression==='aggressive')base.splice(insert+1,0,lead)
-    add('friendly','CAP DIVERTS',`${sq.callsign} ${sq.aggression==='aggressive'?'pursues beyond the patrol line':'intercepts inside its assigned sector'}.`,encounter.point,6.6)
-  } else if(sq.mission==='ESCORT'&&canReact&&sq.aggression==='aggressive'){
-    const insert=Math.max(1,base.length-1);base.splice(insert,0,encounter.point)
-    add('warning','ESCORT PEELS OFF',`${sq.callsign} briefly chases the contact, then rejoins the strike package.`,encounter.point,7.1)
+function dogfight(round:number,index:number,friendly:Squadron,hostile:EnemyFlight,location:Point,start:number,seed:number,add:(tone:CombatEvent['tone'],title:string,detail:string,position?:Point,time?:number)=>void){
+  const exchanges:CombatExchange[]=[];const effects:WeaponEffect[]=[];let roll=seed;const friendlyBreak=friendly.risk==='preserve'?55:friendly.risk==='normal'?35:15
+  add('danger','DOGFIGHT MERGED',`${friendly.callsign} and ${hostile.callsign} stay engaged until one formation is destroyed or breaks contact.`,location,start)
+  let i=0
+  while(strengthOf(friendly)>0&&strengthOf(hostile)>0&&(friendly.morale??70)>=friendlyBreak&&(hostile.morale??70)>=28&&i<32){
+    if(strengthOf(friendly)<=0||strengthOf(hostile)<=0||(friendly.morale??70)<friendlyBreak||(hostile.morale??70)<28)break
+    const friendlyAttacks=rand(roll++)<.54+(friendly.readiness-80)/180;const attacker=friendlyAttacks?friendly:hostile;const defender=friendlyAttacks?hostile:friendly;const kind:WeaponKind=rand(roll++)<.45?'air-to-air-missile':'gun';const hit=rand(roll++)<.72;const amount=hit?(kind==='gun'?Math.round(12+rand(roll++)*7):Math.round(26+rand(roll++)*12)):0;const applied=hit?damage(defender,amount):{before:defender.aircraft,after:defender.aircraft,strength:strengthOf(defender),morale:defender.morale??70};const time=start+.42+i*.58
+    exchanges.push({id:`fight-${round}-${index}-${i}`,time,attackerId:attacker.id,defenderId:defender.id,weapon:kind,damage:amount,moraleDamage:hit?8:0,hit,position:location,targetStrength:applied.strength,targetMorale:applied.morale})
+    effects.push(weapon(`weapon-fight-${round}-${index}-${i}`,kind,attacker.id,defender.id,time-.16,[location[0]+(friendlyAttacks ? -.55 : .55),location[1]+.2],[location[0]+(friendlyAttacks ? .5 : -.5),location[1]-.2],hit,amount))
+    if(hit&&applied.after<applied.before)add(friendlyAttacks?'friendly':'danger',friendlyAttacks?'ENEMY AIRCRAFT LOST':'AIRCRAFT LOST',friendlyAttacks?`${hostile.callsign} loses an aircraft.`:`${friendly.callsign} loses an aircraft.`,location,time+.18)
+    else if(hit)add(friendlyAttacks?'friendly':'warning','DAMAGE REPORTED',`${defender.callsign} takes ${amount}% formation damage.`,location,time+.18)
+    i++
   }
-  return base
-}
-
-function detectionWindows(flight:EnemyFlight,squadrons:Squadron[],routes:Record<string,Point[]>,radar:Asset):DetectionWindow[]{
-  const samples:Array<{p:number;source:'radar'|'visual';observer?:string}>=[]
-  for(let i=0;i<=60;i++){const p=i/60;const enemy=routePoint(flight.route,p)
-    const observer=squadrons.find(s=>s.aircraft>0&&s.mission==='CAP'&&distance(enemy,routePoint(routes[s.id]??s.route,p))<=effectiveSensorRange(s))
-    if(observer){samples.push({p,source:'visual',observer:observer.callsign});continue}
-    if(radar.health>0&&distance(enemy,radar.position)<=RADAR_RANGE*(.55+.45*radar.health/100))samples.push({p,source:'radar'})
+  if(strengthOf(friendly)>0&&strengthOf(hostile)>0&&(friendly.morale??70)>=friendlyBreak&&(hostile.morale??70)>=28){
+    const weaker=strengthOf(friendly)<=strengthOf(hostile)?friendly:hostile
+    weaker.morale=weaker===friendly?friendlyBreak-1:27
   }
-  const windows:DetectionWindow[]=[]
-  for(const sample of samples){const last=windows.at(-1);if(last&&last.source===sample.source&&last.observer===sample.observer&&sample.p-last.end<.04)last.end=Math.min(1,sample.p+.035);else windows.push({start:Math.max(0,sample.p-.02),end:Math.min(1,sample.p+.035),source:sample.source,observer:sample.observer})}
-  return windows
+  friendly.status=strengthOf(friendly)<=0?'destroyed':(friendly.morale??70)<friendlyBreak?'disengaging':'rtb';hostile.status=strengthOf(hostile)<=0?'destroyed':(hostile.morale??70)<28?'disengaging':'rtb'
+  const reason=friendly.status==='destroyed'?`${friendly.callsign} destroyed`:hostile.status==='destroyed'?`${hostile.callsign} destroyed`:friendly.status==='disengaging'?`${friendly.callsign} breaks contact: morale ${friendly.morale}%`:hostile.status==='disengaging'?`${hostile.callsign} breaks contact: morale ${hostile.morale}%`:'both formations disengage after the sustained exchange'
+  add(hostile.status==='destroyed'||hostile.status==='disengaging'?'friendly':'warning','DOGFIGHT ENDS',reason,location,start+Math.max(3.8,exchanges.length*.58+.7))
+  return {sequence:{id:`dogfight-${round}-${index}`,kind:'dogfight' as const,participantIds:[friendly.id,hostile.id],location,start,end:start+Math.min(7,Math.max(4.2,exchanges.length*.58+1)),exchanges,finalDisposition:{[friendly.id]:friendly.status,[hostile.id]:hostile.status},moraleBreakReason:reason},effects,roll}
 }
 
-function buildDefenseCues(flight:EnemyFlight,squadrons:Squadron[],windows:DetectionWindow[]):DefenseCue[]{
-  return windows.flatMap((window,index)=>{
-    if(window.source!=='visual'||!window.observer)return []
-    const observer=squadrons.find(s=>s.callsign===window.observer)
-    if(!observer||observer.mission!=='CAP')return []
-    if(observer.aggression==='aggressive'&&observer.risk!=='preserve')return []
-    const discipline=observer.aggression==='cautious'?.26:observer.aggression==='balanced'?.11:-.08
-    const preservation=observer.risk==='preserve'?.16:observer.risk==='normal'?.05:-.04
-    const strength=clamp(.18+discipline+preservation+(observer.readiness/100)*.18+formationStrength(observer)*.14,.12,.88)
-    return [{id:`cue-${flight.id}-${index}`,flightId:flight.id,start:window.start,end:Math.min(1,window.end+.1+strength*.08),observer:observer.callsign,strength,rangeBonus:.6+strength*1.8,damageReduction:.12+strength*.4}]
-  })
-}
-
-function addNetworkTracking(flight:EnemyFlight,cues:DefenseCue[]){
-  for(const cue of cues){
-    const directEnd=flight.detectionWindows.filter(w=>w.observer===cue.observer&&w.end<=cue.end).at(-1)?.end??cue.start
-    if(cue.end>directEnd+.02)flight.detectionWindows.push({start:directEnd,end:cue.end,source:'network',observer:cue.observer})
+function groundDefenseEngagement(params:{round:number;index:number;asset:Asset;target:Squadron|EnemyFlight;route:Point[];friendlyDefense:boolean;seed:number;add:(tone:CombatEvent['tone'],title:string,detail:string,position?:Point,time?:number)=>void}){
+  const {round,index,asset,target,route,friendlyDefense,add}=params
+  if((asset.kind!=='sam'&&asset.kind!=='aaa')||asset.health<=0||target.aircraft<=0)return undefined
+  const track=closestRouteProgress(route,asset.position);const range=asset.kind==='sam'?3.2:1.9
+  if(track.distance>range)return undefined
+  let roll=params.seed;const kind:WeaponKind=asset.kind;const shots=kind==='sam'?1:5;const start=clamp(track.progress*EXECUTION_SECONDS,3.6,16.5)
+  const title=kind==='sam'?'SAM LAUNCH':'AAA FIRING'
+  add(friendlyDefense?'friendly':'danger',title,`${kind.toUpperCase()} site opens fire on ${target.callsign}; ${kind==='sam'?'missile inbound':'tracer burst visible'}.`,asset.position,start)
+  const exchanges:CombatExchange[]=[];const effects:WeaponEffect[]=[]
+  for(let shot=0;shot<shots&&target.aircraft>0;shot++){
+    const time=start+shot*(kind==='sam' ? 0 : .22);const hit=rand(roll++)<(kind==='sam' ? .64 : .42);const amount=hit?(kind==='sam'?Math.round(30+rand(roll++)*20):Math.round(7+rand(roll++)*6)):0
+    const applied=hit?damage(target,amount):{before:target.aircraft,after:target.aircraft,strength:strengthOf(target),morale:target.morale??70}
+    const aim:[number,number]=[track.point[0]+(rand(roll++)-.5)*.35,track.point[1]+(rand(roll++)-.5)*.35]
+    const exchange:CombatExchange={id:`defense-${round}-${index}-${shot}`,time,attackerId:asset.id,defenderId:target.id,weapon:kind,damage:amount,moraleDamage:hit?8:0,hit,position:track.point,targetStrength:applied.strength,targetMorale:applied.morale}
+    exchanges.push(exchange);effects.push(weapon(`weapon-${exchange.id}`,kind,asset.id,target.id,time,asset.position,aim,hit,amount))
+    if(hit&&applied.after<applied.before)add(friendlyDefense?'friendly':'danger',friendlyDefense?'ENEMY AIRCRAFT LOST':'AIRCRAFT LOST',`${target.callsign} loses an aircraft to ${kind.toUpperCase()} fire.`,track.point,time+(kind==='sam'?1.05:.38))
   }
-  flight.detectionWindows.sort((a,b)=>a.start-b.start)
+  if(target.aircraft<=0)target.status='destroyed'
+  const end=start+(kind==='sam'?1.35:1.55)
+  return {sequence:{id:`defense-${round}-${index}`,kind:'defense' as const,participantIds:[asset.id,target.id],location:track.point,start,end,exchanges,finalDisposition:{[target.id]:target.status??'enroute'}},effects,roll}
 }
 
-function deriveLessons(events:CombatEvent[],flights:EnemyFlight[]):DoctrineLesson[]{
-  const lessons:DoctrineLesson[]=[];const add=(title:string,detail:string,tone:DoctrineLesson['tone'])=>{if(!lessons.some(x=>x.title===title))lessons.push({title,detail,tone})}
-  for(const event of events){
-    if(event.title==='CONTACT SHADOWED')add('Conservative CAP strengthened the network',`${event.detail} Holding station preserved coverage instead of chasing the first contact.`,'friendly')
-    if(event.title==='CAP DIVERTS')add('Aggression changed the flown route',`${event.detail} The pursuit created an opening behind the patrol.`,'warning')
-    if(event.title==='ABORT THRESHOLD')add('Preserve Force caused an abort',event.detail,'warning')
-    if(event.title==='TRACKED BY FIRE CONTROL')add('Risk posture accepted defensive exposure',event.detail,'danger')
-    if(event.title==='AIRCRAFT LOST'||event.title==='PURSUIT LOSS')add('Attrition carries into the next round',`${event.detail} The smaller formation now has reduced sensor and combat power.`,'danger')
-    if(event.title==='ORIGIN TRACE RISK')add('Direct routes are exposing the home base',`${event.detail} Add an offset leg before crossing the forward line to distort the enemy backtrace.`,'warning')
-    if(event.title==='ORIGIN TRACE DENIED')add('Indirect routing protected the base',event.detail,'friendly')
+function reconPursuit(round:number,index:number,recon:Squadron,hostile:EnemyFlight,location:Point,start:number,seed:number,add:(tone:CombatEvent['tone'],title:string,detail:string,position?:Point,time?:number)=>void){
+  let roll=seed;const exchanges:CombatExchange[]=[];const effects:WeaponEffect[]=[]
+  add('warning','RECON PRESSES ON',`${recon.callsign} accepts fighter pursuit and continues the collection route under ${recon.risk.toUpperCase()} doctrine.`,location,start)
+  for(let shot=0;shot<4&&recon.aircraft>0;shot++){
+    const time=start+.45+shot*.62;const kind:WeaponKind=shot%2===0?'air-to-air-missile':'gun';const hit=rand(roll++)<.58;const amount=hit?(kind==='gun'?Math.round(12+rand(roll++)*7):Math.round(24+rand(roll++)*12)):0;const applied=hit?damage(recon,amount):{before:recon.aircraft,after:recon.aircraft,strength:strengthOf(recon),morale:recon.morale??70}
+    const exchange:CombatExchange={id:`pursuit-${round}-${index}-${shot}`,time,attackerId:hostile.id,defenderId:recon.id,weapon:kind,damage:amount,moraleDamage:hit?8:0,hit,position:location,targetStrength:applied.strength,targetMorale:applied.morale}
+    exchanges.push(exchange);effects.push(weapon(`weapon-${exchange.id}`,kind,hostile.id,recon.id,time-.18,[location[0]+.55,location[1]-.25],[location[0]-.5,location[1]+.2],hit,amount))
+    if(hit&&applied.after<applied.before)add('danger','AIRCRAFT LOST',`${recon.callsign} loses an aircraft while pressing through fighter pursuit.`,location,time+.2)
+    else if(hit)add('warning','DAMAGE REPORTED',`${recon.callsign} takes ${amount}% damage but continues collection.`,location,time+.2)
   }
-  if(flights.some(f=>f.detectionWindows.some(w=>w.end<.92)))add('A contact disappeared when observation ended','The route history shows only detected portions of the hostile track; movement outside radar, visual, or shared-network coverage remains hidden.','warning')
-  return lessons.slice(0,4)
+  recon.status=recon.aircraft<=0?'destroyed':'enroute';const end=start+Math.max(3.8,exchanges.length*.62+1)
+  add(recon.status==='destroyed'?'danger':'warning',recon.status==='destroyed'?'RECON DESTROYED':'RECON ESCAPES PURSUIT',recon.status==='destroyed'?`${recon.callsign} is destroyed before the report can return.`:`${recon.callsign} opens the distance and continues the mission.`,location,end-.25)
+  return {sequence:{id:`pursuit-${round}-${index}`,kind:'pursuit' as const,participantIds:[hostile.id,recon.id],location,start,end,exchanges,finalDisposition:{[recon.id]:recon.status,[hostile.id]:'rtb' as const}},effects,roll}
 }
 
-function originTraceQuality(route:Point[],base:Point){
-  const forwardLine=2.4
-  for(let i=1;i<route.length;i++){
-    const a=route[i-1],b=route[i]
-    if(a[1]>forwardLine&&b[1]<=forwardLine&&Math.abs(b[1]-a[1])>.01){
-      const t=(base[1]-a[1])/(b[1]-a[1]);const inferredX=a[0]+(b[0]-a[0])*t
-      return clamp(1-Math.abs(inferredX-base[0])/8)
-    }
-  }
-  return 0
-}
-
-function updateBaseExposure(current:number,squadrons:Squadron[],routes:Record<string,Point[]>,base:Point){
-  const traces=squadrons.map(s=>originTraceQuality(routes[s.id]??s.route,base)).filter(n=>n>0)
-  const strong=traces.filter(n=>n>.62).length
-  const evidence=traces.reduce((sum,n)=>sum+n,0)
-  const delta=Math.round(evidence*3.2+Math.max(0,strong-1)*1.8-4)
-  const next=Math.round(clamp((current??6)+delta,0,100))
-  return {next,delta:next-(current??6),strong}
-}
-
-const SCORE_VALUES:Record<string,number>={
-  'RADAR CONTACT':1,'VISUAL CONTACT':1,'DEFENSE NETWORK CUED':1,'INTEL UPDATED':2,
-  'INTERCEPT SUCCESS':2,'LAYERED DEFENSE ENGAGES':2,'WEAPONS IMPACT':2,'TARGET DESTROYED':3,
-  'RAID DEFEATED':2,'RESERVE CAP ARRIVES':0,'REPLACEMENT FLIGHT INBOUND':0,
-}
-export function battleScoreAt(result:RoundResult,seconds:number){return result.events.reduce((sum,event)=>event.time<=seconds?sum+(SCORE_VALUES[event.title]??0):sum,0)}
-export function attritionCreditAt(result:RoundResult,seconds:number){return result.events.reduce((sum,event)=>event.time<=seconds&&(event.title==='AIRCRAFT LOST'||event.title==='PURSUIT LOSS'||event.title==='HOME BASE STRUCK')?sum+2:sum,0)}
-export function supportCreditsAt(result:RoundResult,seconds:number){const spent=result.reinforcementCalls.reduce((sum,call)=>sum+call.scoreCost,0);return Math.max(0,battleScoreAt(result,seconds)+attritionCreditAt(result,seconds)-spent)}
-
-function strikePriority(asset:Asset,priority:Squadron['targetPriority']){
-  if(priority==='airfield')return asset.kind==='base'||asset.kind==='decoy'?0:3
-  if(priority==='radar')return asset.kind==='radar'?0:asset.kind==='sam'||asset.kind==='aaa'?2:3
-  if(priority==='air-defense')return asset.kind==='sam'?0:asset.kind==='aaa'?1:asset.kind==='radar'?2:3
-  return 1
-}
+export function battleScoreAt(result:RoundResult,seconds:number){return result.events.reduce((score,event)=>event.time>seconds?score:score+(event.title==='INTEL RECOVERED'?2:event.title==='ENEMY AIRCRAFT LOST'?2:event.title==='DOGFIGHT ENDS'?1:0),0)}
+export function attritionCreditAt(result:RoundResult,seconds:number){return result.events.reduce((score,event)=>event.time<=seconds&&(event.title==='AIRCRAFT LOST'||event.title==='ENEMY AIRCRAFT LOST')?score+2:score,0)}
+export function supportCreditsAt(result:RoundResult,seconds:number){return Math.max(0,battleScoreAt(result,seconds)+attritionCreditAt(result,seconds)-result.reinforcementCalls.reduce((sum,call)=>sum+call.scoreCost,0))}
 
 export function resolveRound(state:MatchState):RoundResult{
-  const squadrons:Squadron[]=structuredClone(state.squadrons);const assets:Asset[]=structuredClone(state.enemyAssets);const playerAssets:Asset[]=structuredClone(state.playerAssets)
-  const playerBase=assetPosition(playerAssets,'base',[-7.8,11.2]);const radar=playerAssets.find(a=>a.kind==='radar')??{id:'fallback-radar',kind:'radar',position:[-6.7,5.8] as Point,intel:'confirmed' as const,confidence:100,health:0,maxHealth:100,hidden:false,struck:false}
-  const events:CombatEvent[]=[];const intelGained:string[]=[];let enemyLosses=0,friendlyLosses=0,enemyBaseDamage=0,baseDamage=0,cursor=2,roll=state.seed+state.round*31
-  const add=(tone:CombatEvent['tone'],title:string,detail:string,position?:Point,time?:number)=>{events.push({id:`${state.round}-${events.length}`,time:time??cursor,tone,title,detail,position});if(time===undefined)cursor+=1.65}
-  add('info','SORTIES AIRBORNE',`${squadrons.reduce((n,s)=>n+s.aircraft,0)} aircraft committed. Doctrine control is now autonomous.`,undefined,.8)
-  const enemyFlights=makeEnemyFlights(state,roll++)
-  const radarCanSee=radar.health>0&&enemyFlights.some(f=>Array.from({length:31},(_,i)=>routePoint(f.route,i/30)).some(p=>distance(p,radar.position)<=RADAR_RANGE*(.55+.45*radar.health/100)))
-  const executionRoutes:Record<string,Point[]>={}
-  for(const sq of squadrons)executionRoutes[sq.id]=sq.aircraft>0?ensureRecovery(buildExecutionRoute(sq,enemyFlights,radarCanSee,add),playerBase):sq.route
-  const defenseCues:DefenseCue[]=[]
-  for(const flight of enemyFlights){
-    flight.detectionWindows=detectionWindows(flight,squadrons,executionRoutes,radar)
-    const cues=buildDefenseCues(flight,squadrons,flight.detectionWindows);defenseCues.push(...cues);addNetworkTracking(flight,cues)
-    const first=flight.detectionWindows[0]
-    if(first)add(first.source==='radar'?'warning':'friendly',first.source==='radar'?'RADAR CONTACT':'VISUAL CONTACT',first.source==='radar'?`Unknown aircraft enter the early-warning envelope. Track quality is intermittent.`:`${first.observer} identifies ${flight.aircraft} hostile aircraft.`,routePoint(flight.route,first.start),Math.max(1.4,first.start*EXECUTION_SECONDS))
+  const base=playerBase(state);const squadrons:Squadron[]=structuredClone(state.squadrons).map(s=>({...s,strength:strengthOf(s),morale:s.morale??70,status:'enroute'}));const assets=structuredClone(state.enemyAssets);const playerAssets=structuredClone(state.playerAssets);const flights=enemyFlights();const events:CombatEvent[]=[];const add=(tone:CombatEvent['tone'],title:string,detail:string,position?:Point,time=2)=>events.push({id:`${state.round}-${events.length}`,tone,title,detail,position,time});const executionRoutes:Record<string,Point[]>={};const combatSequences:CombatSequence[]=[];const weaponEffects:WeaponEffect[]=[];const contactObservations:ContactObservation[]=[];const intelReports:IntelReport[]=[];const defenseCues:DefenseCue[]=[];let roll=state.seed+state.round*31
+  add('info','SORTIES AIRBORNE',`${squadrons.reduce((total,s)=>total+s.aircraft,0)} aircraft committed: fighters protect, recon observes.`,undefined,.8)
+  for(const sq of squadrons)executionRoutes[sq.id]=ensureRecovery(sq.route,base)
+  for(const flight of flights){
+    const radar=playerAssets.find(a=>a.kind==='radar')
+    if(!radar||radar.health<=0)continue
+    flight.detectionWindows=[{start:.2,end:.62,source:'radar'}]
+    contactObservations.push({id:`track-${flight.id}`,observerId:'radar',targetId:flight.id,start:4.4,end:13.6,source:'radar',confidence:32,position:routePoint(flight.route,.4),recovered:true})
+    add('warning','RADAR CONTACT',`Radar holds an uncertain track on ${flight.callsign}.`,routePoint(flight.route,.2),4.3)
   }
-  const strongestCue=defenseCues.reduce<DefenseCue|undefined>((best,cue)=>!best||cue.strength>best.strength?cue:best,undefined)
-  if(strongestCue)add('friendly','DEFENSE NETWORK CUED',`${strongestCue.observer} shares a stable track. Radar and local defenses gain ${strongestCue.rangeBonus.toFixed(1)} range and faster reaction.`,routePoint(enemyFlights.find(f=>f.id===strongestCue.flightId)!.route,strongestCue.start),Math.max(2,strongestCue.start*EXECUTION_SECONDS+.5))
-
+  const hostile=flights.find(f=>f.role==='fighter')!
   for(const sq of squadrons){
-    if(sq.aircraft<=0){add('danger','SQUADRON GROUNDED',`${sq.callsign} has no serviceable aircraft and cannot launch.`);continue}
-    const route=executionRoutes[sq.id];const readinessFactor=sq.readiness/100;const startingAmmo=sq.ammo
-    sq.readiness=Math.max(20,sq.readiness-(sq.risk==='press'?16:sq.risk==='normal'?11:7));sq.ammo=Math.max(0,sq.ammo-(sq.mission==='STRIKE'?45:25))
-    const threat=assets.filter(a=>(a.kind==='sam'||a.kind==='aaa')&&a.health>0).find(a=>routeNear(route,a.position,a.kind==='sam'?3.2:1.9))
-    let effectiveRoute=route
-    if(threat&&sq.risk==='preserve'){
-      const stop=Math.max(2,route.findIndex(p=>distance(p,threat.position)<(threat.kind==='sam'?3.2:1.9)));effectiveRoute=route.slice(0,stop);effectiveRoute.push(playerBase);executionRoutes[sq.id]=effectiveRoute
-      add('warning','ABORT THRESHOLD',`${sq.callsign} detects a threat and turns home under Preserve Force doctrine.`,threat.position)
-    } else if(threat){
-      add('danger','TRACKED BY FIRE CONTROL',`${sq.callsign} ${sq.risk==='press'?'presses through':'crosses'} an active ${threat.kind.toUpperCase()} envelope.`,threat.position)
-      const lossChance=(sq.risk==='press'?.5:.3)*(1.15-readinessFactor)
-      if(rand(roll++)<lossChance&&sq.aircraft>0){sq.aircraft--;friendlyLosses++;sq.readiness=Math.max(15,sq.readiness-12);add('danger','AIRCRAFT LOST',`${sq.callsign} loses one aircraft before exiting the threat ring. Replacement will cost 4 logistics.`)}else if(rand(roll++)<.48){sq.damaged++;sq.readiness=Math.max(15,sq.readiness-8);add('warning','DAMAGE REPORTED',`${sq.callsign} is hit but ${sq.risk==='press'?'continues toward the objective':'disengages'}.`)}
-    }
-    const nearby=assets.filter(a=>routeNear(effectiveRoute,a.position,sq.role==='recon'?3.8:2.1))
-    if(sq.role==='recon'){for(const a of nearby){const old=a.intel;const gain=32+(sq.risk==='press'?16:0);a.confidence=Math.min(100,a.confidence+gain);a.intel=levelFor(a.confidence);a.hidden=false;if(old!==a.intel){const label=a.kind==='base'?'AIRFIELD':a.kind.toUpperCase();intelGained.push(`${label} ${a.intel.toUpperCase()} · ${a.confidence}%`);add('friendly','INTEL UPDATED',`${sq.callsign} resolves a ${label.toLowerCase()} signature to ${a.intel} confidence.`,a.position)}}if(!nearby.length)add('warning','RECON NEGATIVE',`${sq.callsign} finds no fixed signatures in its observation footprint.`)}
-    if(sq.mission==='CAP'){
-      const encounter=closestEncounter(effectiveRoute,enemyFlights[0].route);const sensorRange=effectiveSensorRange(sq);const engageRange=sq.aggression==='aggressive'?sensorRange*1.7:sq.aggression==='balanced'?sensorRange:sensorRange*.45
-      if(encounter.distance<=engageRange){
-        const riskBonus=sq.risk==='press'?.14:sq.risk==='preserve'?-.06:0;const killChance=clamp(.28+readinessFactor*.24+formationStrength(sq)*.2+riskBonus,.12,.82);const kill=rand(roll++)<killChance
-        const engagementTime=clamp(encounter.progress*EXECUTION_SECONDS,2,EXECUTION_SECONDS-5)
-        enemyLosses+=kill?1:0;enemyFlights[0].aircraft=Math.max(0,enemyFlights[0].aircraft-(kill?1:0));add(kill?'friendly':'warning',kill?'INTERCEPT SUCCESS':'CONTACT BREAKS',kill?`${sq.callsign} destroys one hostile after a ${sq.aggression} pursuit.`:`${sq.callsign} reaches its doctrine limit and returns to patrol.`,encounter.point,engagementTime)
-        const diverted=sq.aggression==='aggressive'&&route.length>sq.route.length
-        if(diverted){
-          sq.readiness=Math.max(10,sq.readiness-9);sq.ammo=Math.max(0,sq.ammo-15)
-          add('warning','PATROL SECTOR OPEN',`${sq.callsign} is displaced from station; the defensive network temporarily loses coverage behind the pursuit.`,route[Math.min(route.length-1,Math.floor(route.length*.65))],engagementTime+.55)
-          const posture=sq.risk==='press'?1.45:sq.risk==='normal'?1:.55;const exposure=(kill?.72:1.18)*posture*(1.2-readinessFactor)
-          if(rand(roll++)<.3*exposure&&sq.aircraft>0){sq.aircraft--;friendlyLosses++;sq.readiness=Math.max(10,sq.readiness-16);add('danger','PURSUIT LOSS',`${sq.callsign} loses an aircraft beyond mutual support. Replacement will cost 4 logistics.`,encounter.point,engagementTime+1.05)}else if(rand(roll++)<.34*posture){sq.damaged++;sq.readiness=Math.max(10,sq.readiness-10);add('warning','OVEREXTENSION DAMAGE',`${sq.callsign} returns with a damaged aircraft after the deep pursuit.`,encounter.point,engagementTime+1.05)}
-        }
-      }
-    }
-    if(sq.role==='strike'&&startingAmmo>=35){const target=assets.filter(a=>a.health>0&&a.intel!=='unknown'&&routeNear(effectiveRoute,a.position,2.4)).sort((a,b)=>strikePriority(a,sq.targetPriority)-strikePriority(b,sq.targetPriority)||distance(effectiveRoute.at(-1)!,a.position)-distance(effectiveRoute.at(-1)!,b.position))[0];if(target){const escort=squadrons.some(s=>s.role==='fighter'&&s.mission==='ESCORT'&&s.aircraft>1);const dmg=Math.round((22+rand(roll++)*20)*(escort?1.2:.82)*(sq.risk==='press'?1.25:.85)*(.45+.55*formationStrength(sq)));target.health=Math.max(0,target.health-dmg);target.struck=true;if(target.kind==='base')enemyBaseDamage=Math.min(state.enemyBaseHealth,dmg);target.hidden=false;target.confidence=Math.max(target.confidence,75);target.intel=levelFor(target.confidence);add('friendly','WEAPONS IMPACT',`${sq.callsign} follows ${sq.targetPriority.replace('-',' ')} priority and reports ${dmg}% damage on a ${target.intel==='confirmed'?'confirmed':'possible'} ${target.kind}.`,target.position);if(target.health===0)add('friendly','TARGET DESTROYED',`Enemy ${target.kind} is out of action.`,target.position)}else add('warning','NO VALID TARGET',`${sq.callsign} releases no weapons; no known target matching the route and priority enters the attack footprint.`)}else if(sq.role==='strike')add('warning','PACKAGE NOT ARMED',`${sq.callsign} cannot strike with ${startingAmmo}% ordnance. Rearm before committing.`)
+    if(sq.aircraft<=0){executionRoutes[sq.id]=sq.route;continue}
+    const encounter=closestEncounter(sq.route,hostile.route)
+    const hostileActive=hostile.status!=='destroyed'&&hostile.status!=='disengaging'&&hostile.status!=='rtb'
+    if(sq.role==='fighter'&&hostileActive&&encounter.distance<=effectiveSensorRange(sq)*1.35){
+      executionRoutes[sq.id]=[sq.route[0],encounter.point,base]
+      const start=clamp(encounter.progress*EXECUTION_SECONDS,3,13)
+      const result=dogfight(state.round,combatSequences.length,sq,hostile,encounter.point,start,roll,add)
+      roll=result.roll;combatSequences.push(result.sequence);weaponEffects.push(...result.effects)
+      hostile.detectionWindows.push({start:Math.max(0,start/EXECUTION_SECONDS-.04),end:Math.min(1,result.sequence.end/EXECUTION_SECONDS+.04),source:'visual',observer:sq.callsign})
+    }else if(sq.role==='recon'&&hostileActive&&encounter.distance<=effectiveSensorRange(sq)*1.15){
+      const start=Math.max(3,encounter.progress*EXECUTION_SECONDS)
+      const pressesOn=sq.aggression==='aggressive'||sq.risk==='press'
+      if(!pressesOn){executionRoutes[sq.id]=[sq.route[0],encounter.point,base];sq.status='disengaging';add('warning','RECON BREAKS CONTACT',`${sq.callsign} aborts collection after fighter contact under ${sq.risk.toUpperCase()} doctrine.`,encounter.point,start)}
+      else{const result=reconPursuit(state.round,combatSequences.length,sq,hostile,encounter.point,start,roll,add);roll=result.roll;combatSequences.push(result.sequence);weaponEffects.push(...result.effects);if(sq.status==='destroyed')executionRoutes[sq.id]=[sq.route[0],encounter.point]}
+    }else executionRoutes[sq.id]=ensureRecovery(sq.route,base)
   }
-
-  const raider=enemyFlights.find(f=>f.role==='strike')!
-  const raidCue=defenseCues.filter(c=>c.flightId===raider.id).reduce<DefenseCue|undefined>((best,cue)=>!best||cue.strength>best.strength?cue:best,undefined)
-  if(raider.target==='base'){
-    const coveringDefenses=playerAssets.filter(a=>(a.kind==='sam'||a.kind==='aaa')&&a.health>0&&routeNear(raider.route,a.position,(a.kind==='sam'?3.2:1.9)+(raidCue?.rangeBonus??0)))
-    for(const defense of coveringDefenses){const shotChance=(defense.kind==='sam'?.2:.1)+(defense.health/100)*.12+(raidCue?.strength??0)*.34;if(rand(roll++)<shotChance&&raider.aircraft>0){raider.aircraft--;enemyLosses++;add('friendly','LAYERED DEFENSE ENGAGES',`${defense.kind.toUpperCase()} ${raidCue?`uses ${raidCue.observer}'s shared track`:'acquires locally'} and destroys one raider before weapons release.`,defense.position,12.5)}}
-    const rawDamage=10+rand(roll++)*17;const formationPenalty=raider.aircraft/3;baseDamage=Math.max(0,Math.round(rawDamage*formationPenalty*(1-(raidCue?.damageReduction??0))))
-    if(baseDamage>0){const baseAsset=playerAssets.find(a=>a.kind==='base');if(baseAsset){baseAsset.health=Math.max(0,state.playerBaseHealth-baseDamage);baseAsset.struck=true}add('danger','HOME BASE STRUCK',`Observed impacts damage the runway complex by ${baseDamage}%${raidCue?' after the cued defense disrupts the attack':''}.`,playerBase,14.2);const collateral=playerAssets.filter(a=>a.kind==='radar'||a.kind==='sam'||a.kind==='aaa').sort((a,b)=>distance(a.position,playerBase)-distance(b.position,playerBase))[0];if(collateral&&rand(roll++)<.45){const damage=Math.round(10+rand(roll++)*16);collateral.health=Math.max(0,collateral.health-damage);collateral.struck=true;add('danger','DEFENSE SITE DAMAGED',`${collateral.kind.toUpperCase()} takes ${damage}% collateral damage and will need logistics to restore.`,collateral.position,15)}}else add('friendly','RAID DEFEATED',`The layered defensive network breaks up the attack before it can damage the base.`,playerBase,14.2)
+  for(const sq of squadrons){
+    if(sq.aircraft<=0)continue
+    for(const asset of assets.filter(a=>a.kind==='sam'||a.kind==='aaa')){
+      const result=groundDefenseEngagement({round:state.round,index:combatSequences.length,asset,target:sq,route:executionRoutes[sq.id],friendlyDefense:false,seed:roll,add})
+      if(!result)continue
+      roll=result.roll;combatSequences.push(result.sequence);weaponEffects.push(...result.effects);asset.hidden=false;asset.confidence=Math.max(asset.confidence,78);asset.intel=levelFor(asset.confidence)
+      if(sq.status==='destroyed')break
+    }
   }
-  if(enemyBaseDamage>0)intelGained.push(`Enemy airbase damaged · ${Math.max(0,state.enemyBaseHealth-enemyBaseDamage)}% integrity`)
-  const exposure=updateBaseExposure(state.baseExposure??6,squadrons,executionRoutes,playerBase)
-  if(exposure.delta>=3)add('warning','ORIGIN TRACE RISK',`${exposure.strong} departure vector${exposure.strong===1?'':'s'} can be backtraced toward the home sector. Enemy base confidence rises to ${exposure.next}%.`,playerBase,17.15)
-  else if(exposure.delta<0)add('friendly','ORIGIN TRACE DENIED',`Offset ingress routes break the enemy backtrace. Home-base exposure falls to ${exposure.next}%.`,playerBase,17.15)
-  add('friendly','RECOVERY COMPLETE','Every surviving friendly formation is back on the runway. The round can now close.',playerBase,EXECUTION_SECONDS-.8)
-  events.sort((a,b)=>a.time-b.time)
-  const lessons=deriveLessons(events,enemyFlights)
-  const result:RoundResult={events,squadrons,assets,enemyLosses,friendlyLosses,intelGained,baseDamage,enemyBaseDamage,logistics:Math.min(15,state.logistics+5),command:Math.min(3,state.command+1),executionRoutes,enemyFlights,defenseCues,defensiveAwareness:Math.round((strongestCue?.strength??0)*100),lessons,playerAssets,reinforcementCalls:[],roundScore:0,baseExposure:exposure.next,baseExposureDelta:exposure.delta}
-  result.roundScore=battleScoreAt(result,Infinity)
-  return result
+  for(const flight of flights){
+    if(flight.aircraft<=0)continue
+    for(const asset of playerAssets.filter(a=>a.kind==='sam'||a.kind==='aaa')){
+      const result=groundDefenseEngagement({round:state.round,index:combatSequences.length,asset,target:flight,route:flight.route,friendlyDefense:true,seed:roll,add})
+      if(!result)continue
+      roll=result.roll;combatSequences.push(result.sequence);weaponEffects.push(...result.effects)
+      if(flight.status==='destroyed')break
+    }
+  }
+  for(const sq of squadrons){
+    if(sq.aircraft<=0)continue
+    const route=executionRoutes[sq.id]
+    sq.readiness=Math.max(25,sq.readiness-(sq.role==='fighter'?12:7));sq.ammo=Math.max(0,sq.ammo-(sq.role==='fighter'?28:8))
+    if(sq.role!=='recon')continue
+    const recovered=sq.status!=='destroyed'&&distance(route.at(-1)!,base)<.35
+    const observed=assets.filter(asset=>nearRoute(route,asset.position,3.8))
+    for(const asset of observed){
+      contactObservations.push({id:`ground-${sq.id}-${asset.id}`,observerId:sq.id,targetId:asset.id,start:7,end:16,source:'visual',confidence:90,position:asset.position,recovered})
+      intelReports.push({id:`intel-${sq.id}-${asset.id}`,observerId:sq.id,assetId:asset.id,confidence:90,recovered,detail:`${sq.callsign} ${recovered?'recovered':'lost'} observation of ${asset.kind}.`})
+      if(recovered){asset.confidence=Math.max(asset.confidence,90);asset.intel=levelFor(asset.confidence);asset.hidden=false;add('friendly','INTEL RECOVERED',`${sq.callsign} returns with confirmed ${asset.kind.toUpperCase()} coordinates.`,asset.position,16)}
+      else add('danger','INTEL LOST',`${sq.callsign} saw a fixed signature, but its report did not return.`,asset.position,16)
+    }
+    if(!observed.length)add('warning','RECON NEGATIVE',`${sq.callsign} finds no fixed signatures on this route.`,undefined,16)
+  }
+  add('friendly','RECOVERY COMPLETE','Surviving formations are back at base. Review the dogfight and recovered intelligence.',base,21.2);events.sort((a,b)=>a.time-b.time)
+  const enemyLosses=flights.reduce((sum,flight)=>sum+flight.initialAircraft-flight.aircraft,0);const friendlyLosses=squadrons.reduce((sum,sq)=>sum+sq.maxAircraft-sq.aircraft,0);const lessons:DoctrineLesson[]=events.filter(event=>['DOGFIGHT ENDS','RECON BREAKS CONTACT','INTEL RECOVERED','INTEL LOST'].includes(event.title)).slice(0,4).map(event=>({title:event.title,detail:event.detail,tone:event.tone==='danger'?'danger':event.tone==='warning'?'warning':'friendly'}));const result:RoundResult={events,squadrons,assets,enemyLosses,friendlyLosses,intelGained:intelReports.filter(report=>report.recovered).map(report=>report.detail),baseDamage:0,enemyBaseDamage:0,logistics:Math.min(15,state.logistics+4),command:Math.min(3,state.command+1),executionRoutes,enemyFlights:flights,defenseCues,defensiveAwareness:0,lessons,playerAssets,reinforcementCalls:[],roundScore:0,baseExposure:state.baseExposure,baseExposureDelta:0,combatSequences,weaponEffects,contactObservations,intelReports};result.roundScore=battleScoreAt(result,Infinity);return result
 }
 
-export function applyRound(state:MatchState,result:RoundResult):MatchState{const enemyBaseHealth=Math.max(0,state.enemyBaseHealth-result.enemyBaseDamage);const playerBaseHealth=Math.max(0,state.playerBaseHealth-result.baseDamage);return {...state,phase:enemyBaseHealth<=0?'victory':playerBaseHealth<=0?'defeat':'debrief',squadrons:result.squadrons,enemyAssets:result.assets,playerAssets:result.playerAssets,enemyBaseHealth,playerBaseHealth,baseExposure:result.baseExposure,campaignScore:(state.campaignScore??0)+result.roundScore,logistics:result.logistics,command:result.command,lastResult:result,seed:state.seed+97}}
-
-export function callReinforcement(result:RoundResult,type:ReinforcementType,time:number,playerBase:Point):RoundResult{
-  if(result.reinforcementCalls.some(call=>call.type===type))return result
-  const next=structuredClone(result);const option=REINFORCEMENT_OPTIONS[type]
-  let call:ReinforcementCall
-  if(type==='alert-cap'){
-    const raider=next.enemyFlights.find(f=>f.role==='strike')!
-    const intercept=routePoint(raider.route,clamp(time/EXECUTION_SECONDS+.1))
-    const previousDamage=next.baseDamage;const reduction=Math.min(previousDamage,Math.max(5,Math.round(previousDamage*.42)))
-    next.baseDamage=Math.max(0,previousDamage-reduction)
-    if(raider.aircraft>0){raider.aircraft--;next.enemyLosses++}
-    const strikeEvent=next.events.find(event=>event.title==='HOME BASE STRUCK')
-    if(strikeEvent){strikeEvent.detail=next.baseDamage>0?`Alert interceptors disrupt the raid; observed runway damage is limited to ${next.baseDamage}%.`:`Alert interceptors break up the raid before effective weapons release.`;if(next.baseDamage===0){strikeEvent.title='RAID DEFEATED';strikeEvent.tone='friendly'}}
-    call={id:`reserve-${next.reinforcementCalls.length}`,type,time:Math.min(16.8,time+.45),scoreCost:option.scoreCost,title:'RESERVE CAP ARRIVES',detail:`An alert pair vectors onto RAIDER, destroys one aircraft, and prevents ${reduction}% projected base damage.`,route:[playerBase,intercept,playerBase]}
-  }else{
-    const observedLosses=next.events.filter(event=>event.time<=time&&(event.title==='AIRCRAFT LOST'||event.title==='PURSUIT LOSS'))
-    const target=next.squadrons.filter(s=>s.aircraft<s.maxAircraft&&observedLosses.some(event=>event.detail.includes(s.callsign))).sort((a,b)=>a.aircraft/a.maxAircraft-b.aircraft/b.maxAircraft)[0]
-    if(!target)return result
-    target.aircraft=Math.min(target.maxAircraft,target.aircraft+1);target.readiness=Math.max(target.readiness,55)
-    call={id:`reserve-${next.reinforcementCalls.length}`,type,time:Math.min(17.1,time+.45),scoreCost:option.scoreCost,title:'REPLACEMENT FLIGHT INBOUND',detail:`One reserve aircraft ferries into ${target.callsign}. The formation will begin next round at ${target.aircraft}/${target.maxAircraft}.`,route:[[-9.5,13.3],playerBase],targetSquadronId:target.id}
-  }
-  next.command=Math.max(0,next.command-option.commandCost)
-  next.reinforcementCalls.push(call)
-  next.lessons=[{title:'Reserve authority changed the battle',detail:call.detail,tone:'friendly' as const},...next.lessons.filter(lesson=>lesson.title!=='Reserve authority changed the battle')].slice(0,4)
-  next.events.push({id:`support-${type}-${next.reinforcementCalls.length}`,time:call.time,tone:'friendly',title:call.title,detail:call.detail,position:call.route[1]})
-  next.events.sort((a,b)=>a.time-b.time)
-  return next
-}
+export function applyRound(state:MatchState,result:RoundResult):MatchState{return {...state,phase:'debrief',squadrons:result.squadrons,enemyAssets:result.assets,playerAssets:result.playerAssets,lastResult:result,logistics:result.logistics,command:result.command,campaignScore:state.campaignScore+result.roundScore,seed:state.seed+97}}
+export function callReinforcement(result:RoundResult,type:ReinforcementType,time:number,base:Point):RoundResult{if(result.reinforcementCalls.some(call=>call.type===type))return result;const next=structuredClone(result);const option=REINFORCEMENT_OPTIONS[type];const target=next.squadrons.find(s=>s.aircraft<s.maxAircraft);if(type==='replacement-flight'&&!target)return result;if(target&&type==='replacement-flight')target.aircraft=Math.min(target.maxAircraft,target.aircraft+1);const call:ReinforcementCall={id:`reserve-${next.reinforcementCalls.length}`,type,time:Math.min(19,time+.5),scoreCost:option.scoreCost,title:type==='alert-cap'?'ALERT FIGHTERS ARRIVE':'REPLACEMENT FLIGHT INBOUND',detail:type==='alert-cap'?'A reserve fighter pair is ready for the next contact.':`One replacement aircraft ferries into ${target!.callsign}.`,route:[base,[-4,5],base],targetSquadronId:target?.id};next.reinforcementCalls.push(call);next.events.push({id:call.id,time:call.time,tone:'friendly',title:call.title,detail:call.detail,position:base});next.events.sort((a,b)=>a.time-b.time);return next}
 export function serviceSquadronCost(sq:Squadron){return sq.damaged>0?2:sq.aircraft<sq.maxAircraft?4:0}
-export function repairSquadron(state:MatchState,id:string):MatchState{const target=state.squadrons.find(s=>s.id===id);if(!target)return state;const cost=serviceSquadronCost(target);const replacing=target.damaged===0&&target.aircraft<target.maxAircraft;if(cost===0||state.logistics<cost||replacing&&state.replacements<1)return state;return {...state,logistics:state.logistics-cost,replacements:state.replacements-(replacing?1:0),squadrons:state.squadrons.map(s=>s.id!==id?s:s.damaged>0?{...s,damaged:s.damaged-1,readiness:Math.min(100,s.readiness+14)}:{...s,aircraft:Math.min(s.maxAircraft,s.aircraft+1),readiness:Math.min(100,s.readiness+6)})}}
-export function rearmSquadron(state:MatchState,id:string):MatchState{if(state.logistics<1)return state;return {...state,logistics:state.logistics-1,squadrons:state.squadrons.map(s=>s.id===id?{...s,ammo:Math.min(100,s.ammo+50)}:s)}}
-export function restoreReadiness(state:MatchState,id:string):MatchState{if(state.logistics<1)return state;return {...state,logistics:state.logistics-1,squadrons:state.squadrons.map(s=>s.id===id?{...s,readiness:Math.min(100,s.readiness+16)}:s)}}
-export function repairDefense(state:MatchState,id:string):MatchState{if(state.logistics<2)return state;return {...state,logistics:state.logistics-2,playerAssets:state.playerAssets.map(a=>a.id===id?{...a,health:Math.min(100,a.health+28)}:a)}}
-export function repairRunway(state:MatchState):MatchState{if(state.logistics<3||state.playerBaseHealth>=100)return state;const health=Math.min(100,state.playerBaseHealth+18);return {...state,logistics:state.logistics-3,playerBaseHealth:health,playerAssets:state.playerAssets.map(asset=>asset.kind==='base'?{...asset,health}:asset)}}
+export function repairSquadron(state:MatchState,id:string):MatchState{const target=state.squadrons.find(s=>s.id===id);const cost=target?serviceSquadronCost(target):0;if(!target||cost===0||state.logistics<cost)return state;return {...state,logistics:state.logistics-cost,squadrons:state.squadrons.map(s=>s.id!==id?s:s.damaged>0?{...s,damaged:s.damaged-1,readiness:Math.min(100,s.readiness+14)}:{...s,aircraft:Math.min(s.maxAircraft,s.aircraft+1),strength:Math.min(100,strengthOf(s)+25)})}}
+export function rearmSquadron(state:MatchState,id:string):MatchState{return state.logistics<1?state:{...state,logistics:state.logistics-1,squadrons:state.squadrons.map(s=>s.id===id?{...s,ammo:100}:s)}}
+export function restoreReadiness(state:MatchState,id:string):MatchState{return state.logistics<1?state:{...state,logistics:state.logistics-1,squadrons:state.squadrons.map(s=>s.id===id?{...s,readiness:Math.min(100,s.readiness+16)}:s)}}
+export function repairDefense(state:MatchState,id:string):MatchState{return state.logistics<2?state:{...state,logistics:state.logistics-2,playerAssets:state.playerAssets.map(a=>a.id===id?{...a,health:Math.min(100,a.health+28)}:a)}}
+export function repairRunway(state:MatchState):MatchState{return state.logistics<3||state.playerBaseHealth===100?state:{...state,logistics:state.logistics-3,playerBaseHealth:Math.min(100,state.playerBaseHealth+18)}}

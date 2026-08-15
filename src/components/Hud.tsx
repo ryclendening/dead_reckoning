@@ -1,24 +1,25 @@
-import { Crosshair, Eye, Gauge, Map, Radar, Shield, Trophy, Wrench, Zap } from 'lucide-react'
-import type { Aggression, Mission, Risk, Squadron, TargetPriority } from '../game/types'
+import { Crosshair, Eye, Gauge, Map, Radar, RotateCcw, Trophy, Wrench, Zap } from 'lucide-react'
+import type { Aggression, DebugScenario, Mission, Risk, Squadron } from '../game/types'
 
-const ROLE_ICONS={interceptor:Shield,fighter:Crosshair,strike:Zap,recon:Eye}
-export function TopBar({round,intel,logistics,replacements,score,phase}:{round:number,intel:number,logistics:number,replacements:number,score:number,phase:string}){
-  return <header className="topbar"><div className="brand"><b>DEAD RECKONING</b><small>AIR COMMAND</small></div><div className="round"><small>ROUND {String(round).padStart(2,'0')}</small><strong>{phase==='execute'?'OBSERVE':phase==='debrief'?'AFTER ACTION':phase==='deploy'?'DEPLOY':phase.toUpperCase()}</strong></div><div className="resources"><span title="Known enemy assets"><Radar/> {intel}</span><span title="Logistics"><Wrench/> {logistics}</span><span title="Reserve aircraft"><Zap/> {replacements}</span><span title="Campaign score"><Trophy/> {score}</span></div></header>
+const ROLE_ICONS={fighter:Crosshair,recon:Eye}
+export function TopBar({round,intel,logistics,replacements,score,phase,debugScenario,onDebugScenario,onReboot}:{round:number;intel:number;logistics:number;replacements:number;score:number;phase:string;debugScenario:DebugScenario;onDebugScenario:(scenario:DebugScenario)=>void;onReboot:()=>void}){
+  const scenarios:DebugScenario[]=['campaign','fighter-duel','recon-recovery','recon-loss']
+  return <header className="topbar"><div className="brand"><b>DEAD RECKONING</b><small>AIR COMMAND</small></div><div className="round"><small>ROUND {String(round).padStart(2,'0')}</small><strong>{phase==='execute'?'OBSERVE':phase==='debrief'?'AFTER ACTION':phase==='deploy'?'DEPLOY':phase.toUpperCase()}</strong></div><div className="resources"><span title="Known enemy assets"><Radar/> {intel}</span><span title="Logistics"><Wrench/> {logistics}</span><span title="Reserve aircraft"><Zap/> {replacements}</span><span title="Campaign score"><Trophy/> {score}</span></div><div className="reboot-cluster"><select value={debugScenario} onChange={e=>onDebugScenario(e.target.value as DebugScenario)} title="Deterministic debug scenario">{scenarios.map(s=><option key={s} value={s}>{s.replaceAll('-',' ').toUpperCase()}</option>)}</select><button className="reboot" onClick={onReboot} title="Clear saved campaign and return to deployment"><RotateCcw/> REBOOT</button></div></header>
 }
 
 export function SquadronRail({squadrons,selectedId,onSelect}:{squadrons:Squadron[];selectedId:string;onSelect:(id:string)=>void}){
-  return <div className="squadron-rail">{squadrons.map((s,i)=>{const Icon=ROLE_ICONS[s.role];return <button key={s.id} className={s.id===selectedId?'active':''} onClick={()=>onSelect(s.id)}><span className="sq-number">0{i+1}</span><Icon/><span className="sq-name">{s.callsign.split(' ')[0]}</span><span className="readiness"><i style={{width:`${s.readiness}%`}}/></span></button>})}</div>
+  return <div className="squadron-rail">{squadrons.map((s,i)=>{const Icon=ROLE_ICONS[s.role]??Crosshair;return <button key={s.id} className={s.id===selectedId?'active':''} onClick={()=>onSelect(s.id)}><span className="sq-number">0{i+1}</span><Icon/><span className="sq-name">{s.callsign.split(' ')[0]}</span><span className="readiness"><i style={{width:`${s.readiness}%`}}/></span></button>})}</div>
 }
 
-const missions:Record<Squadron['role'],Mission[]>={interceptor:['CAP','ESCORT'],fighter:['ESCORT','CAP'],strike:['STRIKE','ESCORT'],recon:['RECON']}
+const missions:Record<Squadron['role'],Mission[]>={fighter:['CAP'],recon:['RECON']}
 export function OrdersPanel({squadron,onChange,onPreset,onClear,onCommit}:{squadron:Squadron;onChange:(patch:Partial<Squadron>)=>void;onPreset:(name:string)=>void;onClear:()=>void;onCommit:()=>void}){
   const Icon=ROLE_ICONS[squadron.role]
   const doctrineSummary=squadron.mission==='CAP'
     ? squadron.aggression==='aggressive'?'EXTENDED PURSUIT · COVERAGE GAP + ATTRITION RISK':squadron.aggression==='cautious'?'SHADOWS CONTACTS · CUES DEFENSE NETWORK':'LOCAL INTERCEPT · LIMITED DEFENSE CUEING'
-    : squadron.mission==='ESCORT'&&squadron.aggression==='aggressive'?'MAY PEEL OFF · REJOINS STRIKE PACKAGE':squadron.risk==='press'?'CROSSES THREAT RINGS · ACCEPTS ATTRITION':squadron.risk==='preserve'?'ABORTS AT FIRST CONFIRMED THREAT':'FOLLOWS ROUTE · STANDARD ABORT THRESHOLD'
+    : squadron.aggression==='aggressive'?'CONTINUES COLLECTION UNDER THREAT':squadron.risk==='preserve'?'ABORTS COLLECTION ON FIGHTER CONTACT':'CONTINUES COLLECTION WITH STANDARD ABORT THRESHOLD'
   return <section className="orders"><div className="orders-head"><div className="role-mark"><Icon/></div><div><h2>{squadron.callsign}</h2><p>{squadron.role.toUpperCase()} · {squadron.aircraft}/{squadron.maxAircraft} AIRCRAFT</p></div><div className="stat"><strong>{squadron.readiness}%</strong><small>READY</small></div></div>
     <div className="doctrine"><label>MISSION<select value={squadron.mission} onChange={e=>onChange({mission:e.target.value as Mission})}>{missions[squadron.role].map(x=><option key={x}>{x}</option>)}</select></label><label>AGGRESSION<select value={squadron.aggression} onChange={e=>onChange({aggression:e.target.value as Aggression})}><option value="cautious">CAUTIOUS</option><option value="balanced">BALANCED</option><option value="aggressive">AGGRESSIVE</option></select></label><label>RISK<select value={squadron.risk} onChange={e=>onChange({risk:e.target.value as Risk})}><option value="preserve">PRESERVE</option><option value="normal">NORMAL</option><option value="press">PRESS ATTACK</option></select></label></div>
-    <div className="doctrine-readout"><Gauge/> {doctrineSummary}</div>{squadron.mission==='STRIKE'?<label className="target-priority">TARGET PRIORITY<select value={squadron.targetPriority} onChange={e=>onChange({targetPriority:e.target.value as TargetPriority})}><option value="air-defense">OPEN CORRIDOR · SAM / AAA</option><option value="radar">BLIND NETWORK · RADAR</option><option value="airfield">DECISIVE STRIKE · AIRFIELD</option><option value="opportunity">NEAREST KNOWN TARGET</option></select></label>:null}<div className="route-row"><span><Map/> TAP / DRAG MAP</span>{['River run','Northern gap','Deep probe'].map(p=><button key={p} onClick={()=>onPreset(p)}>{p}</button>)}<button onClick={onClear}>CLEAR</button></div>
+    <div className="doctrine-readout"><Gauge/> {doctrineSummary}</div><div className="route-row"><span><Map/> TAP / DRAG MAP</span>{['River run','Northern gap','Deep probe'].map(p=><button key={p} onClick={()=>onPreset(p)}>{p}</button>)}<button onClick={onClear}>CLEAR</button></div>
     <button className="commit" disabled={squadron.route.length<2} onClick={onCommit}>COMMIT ORDERS <span>››</span></button>
   </section>
 }
