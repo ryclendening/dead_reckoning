@@ -4,10 +4,11 @@ import { Line, Text } from '@react-three/drei'
 import * as THREE from 'three'
 import { effectiveSensorRange, RADAR_RANGE } from '../game/engine'
 import { axialToPoint, HEX_RADIUS, snapToHex } from '../game/hex'
-import type { Asset, CombatEvent, DefenseCue, EnemyFlight, Phase, Point, RoundResult, Squadron } from '../game/types'
+import type { Asset, CombatEvent, DefenseCue, EnemyFlight, Phase, Point, ReinforcementCall, RoundResult, Squadron } from '../game/types'
 
 const friendly='#55d6df', amber='#d99a25', hostile='#de4f3f'
 const to3=(p:Point,y=.13):[number,number,number]=>[p[0],y,p[1]]
+const flightCurve=(route:Point[],altitude:number)=>{const points=route.map(p=>new THREE.Vector3(p[0],altitude,p[1]));if(points.length===2)points.splice(1,0,points[0].clone().lerp(points[1],.5));return new THREE.CatmullRomCurve3(points)}
 
 function CameraRig(){
   const {camera,size}=useThree()
@@ -89,18 +90,27 @@ function Route({squadron,selected}:{squadron:Squadron,selected:boolean}){
 
 function Flight({squadron,route,progress,active,selected}:{squadron:Squadron,route:Point[],progress:number,active:boolean,selected:boolean}){
   const ref=useRef<THREE.Group>(null)
-  const curve=useMemo(()=>new THREE.CatmullRomCurve3(route.map(p=>new THREE.Vector3(p[0],.6,p[1]))),[route])
+  const curve=useMemo(()=>flightCurve(route,.6),[route])
   useFrame(()=>{if(!ref.current||!active)return;const p=curve.getPoint(Math.min(.999,progress));const q=curve.getPoint(Math.min(.999,progress+.01));ref.current.position.copy(p);ref.current.lookAt(q)})
   return <group ref={ref} position={curve.getPoint(active?Math.min(.999,progress):0)}><PlaneModel role={squadron.role}/><mesh position={[.12,-.43,.13]} rotation={[-Math.PI/2,0,0]}><circleGeometry args={[.22,12]}/><meshBasicMaterial color="#080a08" transparent opacity={.36}/></mesh>{active?<group position={[0,-.58,0]}><Ring radius={effectiveSensorRange(squadron)} color={friendly} opacity={selected?.22:.08}/></group>:null}</group>
 }
 
 function EnemyContact({flight,progress}:{flight:EnemyFlight,progress:number}){
   const window=flight.detectionWindows.find(w=>progress>=w.start&&progress<=w.end)
-  const ref=useRef<THREE.Group>(null);const curve=useMemo(()=>new THREE.CatmullRomCurve3(flight.route.map(p=>new THREE.Vector3(p[0],.68,p[1]))),[flight.route])
+  const ref=useRef<THREE.Group>(null);const curve=useMemo(()=>flightCurve(flight.route,.68),[flight.route])
   useFrame(()=>{if(!ref.current)return;const p=curve.getPoint(Math.min(.999,progress));const q=curve.getPoint(Math.min(.999,progress+.01));ref.current.position.copy(p);ref.current.lookAt(q)})
   if(!window)return null
   const visual=window.source==='visual';const network=window.source==='network'
   return <group ref={ref} position={curve.getPoint(Math.min(.999,progress))}><PlaneModel role={flight.role} color={visual?hostile:network?'#9ee6a8':amber}/><Text position={[0,.5,0]} fontSize={.28} color={visual?hostile:network?'#9ee6a8':amber} anchorX="center">{visual?`${flight.callsign} · ${flight.aircraft}`:network?'DEFENSE TRACK':'RADAR CONTACT'}</Text>{visual?<group position={[0,-.6,0]}><Ring radius={1.1} color={hostile} opacity={.3}/></group>:null}</group>
+}
+
+function ReinforcementFlight({call,progress}:{call:ReinforcementCall;progress:number}){
+  const ref=useRef<THREE.Group>(null);const start=call.time/18
+  const curve=useMemo(()=>flightCurve(call.route,.74),[call.route])
+  const local=clamp01((progress-start)/Math.max(.01,1-start))
+  useFrame(()=>{if(!ref.current)return;const p=curve.getPoint(local);const q=curve.getPoint(Math.min(.999,local+.012));ref.current.position.copy(p);ref.current.lookAt(q)})
+  if(progress<start)return null
+  return <group><Line points={call.route.map(p=>to3(p,.3))} color="#f1c65b" transparent opacity={.5} dashed dashSize={.18} gapSize={.12} lineWidth={1.2}/><group ref={ref} position={curve.getPoint(local)}><PlaneModel color="#f1c65b" role="fighter"/><Text position={[0,.5,0]} fontSize={.23} color="#f1c65b" anchorX="center">{call.type==='alert-cap'?'ALERT PAIR':'REPLACEMENT'}</Text></group></group>
 }
 
 function EventPulse({event}:{event:CombatEvent}){
@@ -155,6 +165,7 @@ function BattlefieldScene({squadrons,assets,playerAssets,selectedId,placementId,
     {phase!=='deploy'?squadrons.map(s=><Route key={s.id} squadron={s} selected={phase==='plan'&&s.id===selectedId}/>):null}
     {squadrons.filter(s=>(executionResult?.executionRoutes[s.id]??s.route).length>=2).map(s=><Flight key={s.id} squadron={s} route={executionResult?.executionRoutes[s.id]??s.route} active={phase==='execute'} progress={progress} selected={s.id===selectedId}/>) }
     {phase==='execute'?executionResult?.enemyFlights.map(f=><EnemyContact key={f.id} flight={f} progress={progress}/>):null}
+    {phase==='execute'?executionResult?.reinforcementCalls.map(call=><ReinforcementFlight key={call.id} call={call} progress={progress}/>):null}
     {phase==='execute'?executionResult?.defenseCues?.filter(c=>progress>=c.start&&progress<=c.end).map(c=><DefenseNetworkCue key={c.id} cue={c} radar={playerRadar}/>):null}
     {phase==='debrief'&&executionResult?<HistoryOverlay result={executionResult}/>:null}
     {activeEvent?<EventPulse event={activeEvent}/>:null}
@@ -162,5 +173,6 @@ function BattlefieldScene({squadrons,assets,playerAssets,selectedId,placementId,
   </>
 }
 const distance2=(a:Point,b:Point)=>Math.hypot(a[0]-b[0],a[1]-b[1])
+const clamp01=(value:number)=>Math.max(0,Math.min(1,value))
 
 export const Battlefield=memo(function Battlefield(props:Props){return <Canvas orthographic shadows="basic" dpr={[1,1.5]} gl={{antialias:true,powerPreference:'high-performance'}}><CameraRig/><BattlefieldScene {...props}/></Canvas>})

@@ -23,8 +23,8 @@ Progress bars use five blocks: `█` is achieved maturity and `░` is remaining
 
 | Product dimension | Rating | Progress | Assessment |
 |---|---:|:---:|---|
-| Core playable MVP | **3.3 / 5** | ███░░ | A credible end-to-end prototype exists and demonstrates the intended command loop. |
-| Strategic gameplay depth | **2.7 / 5** | ███░░ | Doctrine, detection, attrition, logistics, and defense interact, but the solution space is still relatively narrow. |
+| Core playable MVP | **3.5 / 5** | ████░ | A credible end-to-end prototype exists and now supports meaningful route-security and mid-round reserve decisions. |
+| Strategic gameplay depth | **3.1 / 5** | ███░░ | Doctrine, detection, route deception, target priority, attrition, logistics, and limited call-ins now interact. |
 | Graphics and presentation | **2.7 / 5** | ███░░ | The angled 3D diorama has a strong identity; combat effects and environmental polish remain early. |
 | Mobile interaction and UX | **2.9 / 5** | ███░░ | Portrait layout and touch routing work, but device testing, accessibility, and interaction refinement remain. |
 | Technical foundation | **3.5 / 5** | ████░ | Simulation and rendering are separated and state is serializable, providing a good base for future multiplayer. |
@@ -57,7 +57,7 @@ The next milestone should not be adding a large quantity of new content. It shou
 | Unknown → suspected → probable → confirmed | 3.2 | ███░░ | Confidence values and all four states are implemented and improved through reconnaissance. | Support repeated observations from more sources, confidence decay, and stale mobile intelligence. |
 | Enemy aircraft visibility | 3.3 | ███░░ | Aircraft appear only during radar, CAP visual, or shared-network detection windows. | Improve track uncertainty, intermittent position estimates, identification progression, and reacquisition feedback. |
 | Deduction rather than random guessing | 2.5 | ███░░ | Recon routes, detection windows, asset reveals, and debrief history provide evidence. | Add richer evidence: emissions, scramble bearings, strike reports, probable regions, and competing interpretations. |
-| Route-origin intelligence | 1.0 | █░░░░ | Indirect routing is possible, but observed departures and returns do not yet reveal likely base regions. | Implement confidence accumulation from repeated vectors and allow deceptive routing to counter it. |
+| Route-origin intelligence | 2.8 | ███░░ | Direct forward-line ingress vectors raise home-base exposure and enemy real-base targeting probability; offset routes reduce exposure. | Add uncertainty regions, repeated bearing evidence, and stronger visual explanation of the inferred backtrace. |
 | Intelligence staleness and relocation | 0.5 | █░░░░ | Fixed assets retain their learned state. | Add age, decay, relocation rules for mobile defenses, and last-known-position presentation. |
 
 ### C. Route planning and map interaction
@@ -92,8 +92,8 @@ The next milestone should not be adding a large quantity of new content. It shou
 | SAM and AAA engagement layers | 3.0 | ███░░ | Placement and route-ring intersection affect threat exposure and defensive shots. | Differentiate acquisition, launch, missile flight, evasion, altitude, ammunition, and suppression. |
 | Defensive deception | 2.2 | ██░░░ | A real base and decoy can be positioned, and AI initially favors the decoy. | Make enemy targeting evidence-driven; add false emitters, silent systems, and decoy credibility. |
 | Basic air combat | 2.7 | ███░░ | Intercepts, kills, damage, losses, escort benefits, and readiness/formation effects resolve. | Add engagement quality, matchup differences, disengagement, uncertainty in claims, and stronger visual causality. |
-| Strike resolution | 2.8 | ███░░ | Strike aircraft require ammunition, choose reachable fixed assets, apply damage, and can destroy the real base. | Add explicit targeting, weapon selection at a high level, suppression, coordinated packages, and clearer miss/abort outcomes. |
-| Limited emergency commands | 1.8 | ██░░░ | Abort and 1×/2× execution controls exist. | Add command-point-based recall or reserve scramble; consider pause only for accessibility/testing. |
+| Strike resolution | 3.1 | ███░░ | Strike aircraft require ammunition and choose only known reachable targets according to air-defense, radar, airfield, or opportunity priority. | Add suppression, coordinated packages, and clearer miss/abort outcomes without introducing weapon-level micromanagement. |
+| Limited emergency commands | 3.0 | ███░░ | Abort, speed control, scored alert interceptors, and attrition-gated replacement flights provide constrained execution agency. | Tune costs and timing across full matches; consider one recall option only if playtests show a clear need. |
 
 ### F. Defensive setup and force construction
 
@@ -112,7 +112,7 @@ The next milestone should not be adding a large quantity of new content. It shou
 | Squadron readiness | 3.2 | ███░░ | Readiness falls with use and risk; it affects combat and can be restored between rounds. | Make sortie availability and rotation pressure more visible and mechanically distinct. |
 | Ammunition and rearm | 3.0 | ███░░ | Missions consume ammunition; under-armed strike packages cannot attack; rearm costs logistics. | Add clearer pre-commit warnings and tune ammunition consumption by mission/engagement. |
 | Between-round logistics | 3.3 | ███░░ | Limited points repair aircraft, replace losses, restore readiness, rearm, and repair runway/defenses. | Balance the budget across full matches and improve comparison of competing repair choices. |
-| Limited reinforcements | 2.8 | ███░░ | A scarce three-aircraft replacement pool exists in addition to logistics cost. | Decide whether and how replacements replenish, and communicate their campaign value more strongly. |
+| Limited reinforcements | 3.4 | ███░░ | The scarce reserve pool funds either between-round replacements or once-per-round scored call-ins, creating an immediate-versus-long-term tradeoff. | Tune replenishment and comeback behavior across complete matches and prevent an optimal automatic purchase order. |
 | Breakthrough momentum | 2.5 | ███░░ | Intel gains, destroyed defenses, depleted squadrons, and damaged bases produce emergent momentum. | Strengthen early/mid/breakthrough/end-game pacing and let network collapse create unmistakable strategic openings. |
 
 ### H. Round execution, debrief, and victory
@@ -162,7 +162,7 @@ The current game has several interacting systems, but the number of truly distin
 | Spatial | 3.0 | Route geometry, radar/weapon rings, base/decoy placement, friendly territory | Terrain effects, corridors, altitude bands, emissions, editable waypoints |
 | Informational | 2.8 | Hidden assets, confidence levels, intermittent aircraft observation | Competing hypotheses, bearings, stale tracks, repeated route-origin inference |
 | Doctrinal | 3.2 | Mission × aggression × risk interactions | Target priorities, pursuit limits, reserve triggers, matchup-aware behavior |
-| Operational | 3.0 | Readiness, ammunition, damage, aircraft losses, repairs | Rotation, sortie availability, package timing, scarce command interventions |
+| Operational | 3.3 | Readiness, ammunition, damage, losses, repairs, command points, and finite mid-round reserve calls | Rotation, sortie availability, package timing, and broader multi-round tuning |
 | Defensive | 2.8 | Radar coverage, shared tracks, SAM/AAA overlap, decoy targeting | Emission control, mobile/silent assets, false emitters, suppression corridors |
 | Economic | 2.7 | Limited logistics and scarce replacements | Better long-horizon tradeoffs without adding routine bookkeeping |
 | Adversarial | 2.0 | Scripted enemy flights and probabilistic target choice | AI plans that scout, infer, deceive, preserve forces, and adapt over rounds |
@@ -183,7 +183,10 @@ The current game has several interacting systems, but the number of truly distin
 - Autonomous execution with a readable event feed
 - Causal post-round command findings and observed route history
 - Persistent aircraft, readiness, ammunition, runway, and defense damage
-- Limited logistics and scarce aircraft replacements
+- Limited logistics, campaign score, command points, and scarce aircraft replacements
+- Mid-round alert interceptors and attrition-gated replacement flights
+- Route-origin exposure that rewards indirect ingress and strengthens the decoy game
+- High-level strike target priorities without weapon-level micromanagement
 - Hidden-base destruction victory and home-base defeat
 - A distinct portrait 3D Cold War command-diorama presentation
 

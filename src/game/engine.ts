@@ -1,8 +1,12 @@
 import { ENEMY_BASE } from './data'
-import type { Asset, CombatEvent, DefenseCue, DetectionWindow, DoctrineLesson, EnemyFlight, IntelLevel, MatchState, Point, RoundResult, Squadron } from './types'
+import type { Asset, CombatEvent, DefenseCue, DetectionWindow, DoctrineLesson, EnemyFlight, IntelLevel, MatchState, Point, ReinforcementCall, ReinforcementType, RoundResult, Squadron } from './types'
 
 export const SENSOR_RANGE: Record<Squadron['role'], number> = { interceptor:4.2, fighter:3.6, strike:2.1, recon:4.8 }
 export const RADAR_RANGE=6.4
+export const REINFORCEMENT_OPTIONS:Record<ReinforcementType,{label:string;scoreCost:number;commandCost:number;reserveCost:number;summary:string}>={
+  'alert-cap':{label:'ALERT INTERCEPTORS',scoreCost:3,commandCost:1,reserveCost:1,summary:'Break up the inbound raid before weapons release.'},
+  'replacement-flight':{label:'REPLACEMENT FLIGHT',scoreCost:4,commandCost:1,reserveCost:1,summary:'Restore one observed combat loss for the next round.'},
+}
 const distance=(a:Point,b:Point)=>Math.hypot(a[0]-b[0],a[1]-b[1])
 const levelFor=(confidence:number):IntelLevel=>confidence>=90?'confirmed':confidence>=65?'probable':confidence>=25?'suspected':'unknown'
 const segmentDistance=(point:Point,a:Point,b:Point)=>{const dx=b[0]-a[0],dy=b[1]-a[1];if(dx===0&&dy===0)return distance(point,a);const t=clamp(((point[0]-a[0])*dx+(point[1]-a[1])*dy)/(dx*dx+dy*dy));return distance(point,[a[0]+t*dx,a[1]+t*dy])}
@@ -29,7 +33,9 @@ function closestEncounter(friendly:Point[],hostile:Point[]){
 
 function makeEnemyFlights(state:MatchState,roll:number):EnemyFlight[]{
   const playerBase=assetPosition(state.playerAssets,'base',[-7.8,11.2]);const playerDecoy=assetPosition(state.playerAssets,'decoy',[6.8,9.2])
-  const target:EnemyFlight['target']=rand(roll)<(state.round<3?.72:.38)?'decoy':'base'
+  const baseExposure=state.baseExposure??6
+  const baseTargetChance=clamp(.08+state.round*.025+baseExposure*.008,.1,.82)
+  const target:EnemyFlight['target']=rand(roll)<baseTargetChance?'base':'decoy'
   const aimpoint=target==='base'?playerBase:playerDecoy
   return [
     {id:'red-fighter',callsign:'BOGEY 1',role:'fighter',aircraft:4,target,route:[ENEMY_BASE,[5,-6],[1,-1],[-2,3],[1,-1],[5,-6],ENEMY_BASE],detectionWindows:[]},
@@ -100,9 +106,48 @@ function deriveLessons(events:CombatEvent[],flights:EnemyFlight[]):DoctrineLesso
     if(event.title==='ABORT THRESHOLD')add('Preserve Force caused an abort',event.detail,'warning')
     if(event.title==='TRACKED BY FIRE CONTROL')add('Risk posture accepted defensive exposure',event.detail,'danger')
     if(event.title==='AIRCRAFT LOST'||event.title==='PURSUIT LOSS')add('Attrition carries into the next round',`${event.detail} The smaller formation now has reduced sensor and combat power.`,'danger')
+    if(event.title==='ORIGIN TRACE RISK')add('Direct routes are exposing the home base',`${event.detail} Add an offset leg before crossing the forward line to distort the enemy backtrace.`,'warning')
+    if(event.title==='ORIGIN TRACE DENIED')add('Indirect routing protected the base',event.detail,'friendly')
   }
   if(flights.some(f=>f.detectionWindows.some(w=>w.end<.92)))add('A contact disappeared when observation ended','The route history shows only detected portions of the hostile track; movement outside radar, visual, or shared-network coverage remains hidden.','warning')
   return lessons.slice(0,4)
+}
+
+function originTraceQuality(route:Point[],base:Point){
+  const forwardLine=2.4
+  for(let i=1;i<route.length;i++){
+    const a=route[i-1],b=route[i]
+    if(a[1]>forwardLine&&b[1]<=forwardLine&&Math.abs(b[1]-a[1])>.01){
+      const t=(base[1]-a[1])/(b[1]-a[1]);const inferredX=a[0]+(b[0]-a[0])*t
+      return clamp(1-Math.abs(inferredX-base[0])/8)
+    }
+  }
+  return 0
+}
+
+function updateBaseExposure(current:number,squadrons:Squadron[],routes:Record<string,Point[]>,base:Point){
+  const traces=squadrons.map(s=>originTraceQuality(routes[s.id]??s.route,base)).filter(n=>n>0)
+  const strong=traces.filter(n=>n>.62).length
+  const evidence=traces.reduce((sum,n)=>sum+n,0)
+  const delta=Math.round(evidence*3.2+Math.max(0,strong-1)*1.8-4)
+  const next=Math.round(clamp((current??6)+delta,0,100))
+  return {next,delta:next-(current??6),strong}
+}
+
+const SCORE_VALUES:Record<string,number>={
+  'RADAR CONTACT':1,'VISUAL CONTACT':1,'DEFENSE NETWORK CUED':1,'INTEL UPDATED':2,
+  'INTERCEPT SUCCESS':2,'LAYERED DEFENSE ENGAGES':2,'WEAPONS IMPACT':2,'TARGET DESTROYED':3,
+  'RAID DEFEATED':2,'RESERVE CAP ARRIVES':0,'REPLACEMENT FLIGHT INBOUND':0,
+}
+export function battleScoreAt(result:RoundResult,seconds:number){return result.events.reduce((sum,event)=>event.time<=seconds?sum+(SCORE_VALUES[event.title]??0):sum,0)}
+export function attritionCreditAt(result:RoundResult,seconds:number){return result.events.reduce((sum,event)=>event.time<=seconds&&(event.title==='AIRCRAFT LOST'||event.title==='PURSUIT LOSS'||event.title==='HOME BASE STRUCK')?sum+2:sum,0)}
+export function supportCreditsAt(result:RoundResult,seconds:number){const spent=result.reinforcementCalls.reduce((sum,call)=>sum+call.scoreCost,0);return Math.max(0,battleScoreAt(result,seconds)+attritionCreditAt(result,seconds)-spent)}
+
+function strikePriority(asset:Asset,priority:Squadron['targetPriority']){
+  if(priority==='airfield')return asset.kind==='base'||asset.kind==='decoy'?0:3
+  if(priority==='radar')return asset.kind==='radar'?0:asset.kind==='sam'||asset.kind==='aaa'?2:3
+  if(priority==='air-defense')return asset.kind==='sam'?0:asset.kind==='aaa'?1:asset.kind==='radar'?2:3
+  return 1
 }
 
 export function resolveRound(state:MatchState):RoundResult{
@@ -155,7 +200,7 @@ export function resolveRound(state:MatchState):RoundResult{
         }
       }
     }
-    if(sq.role==='strike'&&startingAmmo>=35){const target=assets.filter(a=>a.health>0&&routeNear(effectiveRoute,a.position,2.4)).sort((a,b)=>distance(effectiveRoute.at(-1)!,a.position)-distance(effectiveRoute.at(-1)!,b.position))[0];if(target){const escort=squadrons.some(s=>s.role==='fighter'&&s.mission==='ESCORT'&&s.aircraft>1);const dmg=Math.round((22+rand(roll++)*20)*(escort?1.2:.82)*(sq.risk==='press'?1.25:.85)*(.45+.55*formationStrength(sq)));target.health=Math.max(0,target.health-dmg);if(target.kind==='base')enemyBaseDamage=Math.min(state.enemyBaseHealth,dmg);target.hidden=false;target.confidence=Math.max(target.confidence,75);target.intel=levelFor(target.confidence);add('friendly','WEAPONS IMPACT',`${sq.callsign} reports ${dmg}% damage on a ${target.intel==='confirmed'?'confirmed':'possible'} ${target.kind}.`,target.position);if(target.health===0)add('friendly','TARGET DESTROYED',`Enemy ${target.kind} is out of action.`,target.position)}else add('warning','NO VALID TARGET',`${sq.callsign} releases no weapons; its autonomous route never reaches an aimpoint.`)}else if(sq.role==='strike')add('warning','PACKAGE NOT ARMED',`${sq.callsign} cannot strike with ${startingAmmo}% ordnance. Rearm before committing.`)
+    if(sq.role==='strike'&&startingAmmo>=35){const target=assets.filter(a=>a.health>0&&a.intel!=='unknown'&&routeNear(effectiveRoute,a.position,2.4)).sort((a,b)=>strikePriority(a,sq.targetPriority)-strikePriority(b,sq.targetPriority)||distance(effectiveRoute.at(-1)!,a.position)-distance(effectiveRoute.at(-1)!,b.position))[0];if(target){const escort=squadrons.some(s=>s.role==='fighter'&&s.mission==='ESCORT'&&s.aircraft>1);const dmg=Math.round((22+rand(roll++)*20)*(escort?1.2:.82)*(sq.risk==='press'?1.25:.85)*(.45+.55*formationStrength(sq)));target.health=Math.max(0,target.health-dmg);if(target.kind==='base')enemyBaseDamage=Math.min(state.enemyBaseHealth,dmg);target.hidden=false;target.confidence=Math.max(target.confidence,75);target.intel=levelFor(target.confidence);add('friendly','WEAPONS IMPACT',`${sq.callsign} follows ${sq.targetPriority.replace('-',' ')} priority and reports ${dmg}% damage on a ${target.intel==='confirmed'?'confirmed':'possible'} ${target.kind}.`,target.position);if(target.health===0)add('friendly','TARGET DESTROYED',`Enemy ${target.kind} is out of action.`,target.position)}else add('warning','NO VALID TARGET',`${sq.callsign} releases no weapons; no known target matching the route and priority enters the attack footprint.`)}else if(sq.role==='strike')add('warning','PACKAGE NOT ARMED',`${sq.callsign} cannot strike with ${startingAmmo}% ordnance. Rearm before committing.`)
   }
 
   const raider=enemyFlights.find(f=>f.role==='strike')!
@@ -167,12 +212,45 @@ export function resolveRound(state:MatchState):RoundResult{
     if(baseDamage>0){add('danger','HOME BASE STRUCK',`Observed impacts damage the runway complex by ${baseDamage}%${raidCue?' after the cued defense disrupts the attack':''}.`,playerBase,14.2);const collateral=playerAssets.filter(a=>a.kind==='radar'||a.kind==='sam'||a.kind==='aaa').sort((a,b)=>distance(a.position,playerBase)-distance(b.position,playerBase))[0];if(collateral&&rand(roll++)<.45){const damage=Math.round(10+rand(roll++)*16);collateral.health=Math.max(0,collateral.health-damage);add('danger','DEFENSE SITE DAMAGED',`${collateral.kind.toUpperCase()} takes ${damage}% collateral damage and will need logistics to restore.`,collateral.position,15)}}else add('friendly','RAID DEFEATED',`The layered defensive network breaks up the attack before it can damage the base.`,playerBase,14.2)
   }
   if(enemyBaseDamage>0)intelGained.push(`Enemy airbase damaged · ${Math.max(0,state.enemyBaseHealth-enemyBaseDamage)}% integrity`)
+  const exposure=updateBaseExposure(state.baseExposure??6,squadrons,executionRoutes,playerBase)
+  if(exposure.delta>=3)add('warning','ORIGIN TRACE RISK',`${exposure.strong} departure vector${exposure.strong===1?'':'s'} can be backtraced toward the home sector. Enemy base confidence rises to ${exposure.next}%.`,playerBase,17.15)
+  else if(exposure.delta<0)add('friendly','ORIGIN TRACE DENIED',`Offset ingress routes break the enemy backtrace. Home-base exposure falls to ${exposure.next}%.`,playerBase,17.15)
   events.sort((a,b)=>a.time-b.time)
   const lessons=deriveLessons(events,enemyFlights)
-  return {events,squadrons,assets,enemyLosses,friendlyLosses,intelGained,baseDamage,enemyBaseDamage,logistics:Math.min(15,state.logistics+5),command:Math.min(3,state.command+1),executionRoutes,enemyFlights,defenseCues,defensiveAwareness:Math.round((strongestCue?.strength??0)*100),lessons,playerAssets}
+  const result:RoundResult={events,squadrons,assets,enemyLosses,friendlyLosses,intelGained,baseDamage,enemyBaseDamage,logistics:Math.min(15,state.logistics+5),command:Math.min(3,state.command+1),executionRoutes,enemyFlights,defenseCues,defensiveAwareness:Math.round((strongestCue?.strength??0)*100),lessons,playerAssets,reinforcementCalls:[],roundScore:0,baseExposure:exposure.next,baseExposureDelta:exposure.delta}
+  result.roundScore=battleScoreAt(result,Infinity)
+  return result
 }
 
-export function applyRound(state:MatchState,result:RoundResult):MatchState{const enemyBaseHealth=Math.max(0,state.enemyBaseHealth-result.enemyBaseDamage);const playerBaseHealth=Math.max(0,state.playerBaseHealth-result.baseDamage);return {...state,phase:enemyBaseHealth<=0?'victory':playerBaseHealth<=0?'defeat':'debrief',squadrons:result.squadrons,enemyAssets:result.assets,playerAssets:result.playerAssets,enemyBaseHealth,playerBaseHealth,logistics:result.logistics,command:result.command,lastResult:result,seed:state.seed+97}}
+export function applyRound(state:MatchState,result:RoundResult):MatchState{const enemyBaseHealth=Math.max(0,state.enemyBaseHealth-result.enemyBaseDamage);const playerBaseHealth=Math.max(0,state.playerBaseHealth-result.baseDamage);return {...state,phase:enemyBaseHealth<=0?'victory':playerBaseHealth<=0?'defeat':'debrief',squadrons:result.squadrons,enemyAssets:result.assets,playerAssets:result.playerAssets,enemyBaseHealth,playerBaseHealth,baseExposure:result.baseExposure,campaignScore:(state.campaignScore??0)+result.roundScore,logistics:result.logistics,command:result.command,lastResult:result,seed:state.seed+97}}
+
+export function callReinforcement(result:RoundResult,type:ReinforcementType,time:number,playerBase:Point):RoundResult{
+  if(result.reinforcementCalls.some(call=>call.type===type))return result
+  const next=structuredClone(result);const option=REINFORCEMENT_OPTIONS[type]
+  let call:ReinforcementCall
+  if(type==='alert-cap'){
+    const raider=next.enemyFlights.find(f=>f.role==='strike')!
+    const intercept=routePoint(raider.route,clamp(time/18+.1))
+    const previousDamage=next.baseDamage;const reduction=Math.min(previousDamage,Math.max(5,Math.round(previousDamage*.42)))
+    next.baseDamage=Math.max(0,previousDamage-reduction)
+    if(raider.aircraft>0){raider.aircraft--;next.enemyLosses++}
+    const strikeEvent=next.events.find(event=>event.title==='HOME BASE STRUCK')
+    if(strikeEvent){strikeEvent.detail=next.baseDamage>0?`Alert interceptors disrupt the raid; observed runway damage is limited to ${next.baseDamage}%.`:`Alert interceptors break up the raid before effective weapons release.`;if(next.baseDamage===0){strikeEvent.title='RAID DEFEATED';strikeEvent.tone='friendly'}}
+    call={id:`reserve-${next.reinforcementCalls.length}`,type,time:Math.min(16.8,time+.45),scoreCost:option.scoreCost,title:'RESERVE CAP ARRIVES',detail:`An alert pair vectors onto RAIDER, destroys one aircraft, and prevents ${reduction}% projected base damage.`,route:[playerBase,intercept,playerBase]}
+  }else{
+    const observedLosses=next.events.filter(event=>event.time<=time&&(event.title==='AIRCRAFT LOST'||event.title==='PURSUIT LOSS'))
+    const target=next.squadrons.filter(s=>s.aircraft<s.maxAircraft&&observedLosses.some(event=>event.detail.includes(s.callsign))).sort((a,b)=>a.aircraft/a.maxAircraft-b.aircraft/b.maxAircraft)[0]
+    if(!target)return result
+    target.aircraft=Math.min(target.maxAircraft,target.aircraft+1);target.readiness=Math.max(target.readiness,55)
+    call={id:`reserve-${next.reinforcementCalls.length}`,type,time:Math.min(17.1,time+.45),scoreCost:option.scoreCost,title:'REPLACEMENT FLIGHT INBOUND',detail:`One reserve aircraft ferries into ${target.callsign}. The formation will begin next round at ${target.aircraft}/${target.maxAircraft}.`,route:[[-9.5,13.3],playerBase],targetSquadronId:target.id}
+  }
+  next.command=Math.max(0,next.command-option.commandCost)
+  next.reinforcementCalls.push(call)
+  next.lessons=[{title:'Reserve authority changed the battle',detail:call.detail,tone:'friendly' as const},...next.lessons.filter(lesson=>lesson.title!=='Reserve authority changed the battle')].slice(0,4)
+  next.events.push({id:`support-${type}-${next.reinforcementCalls.length}`,time:call.time,tone:'friendly',title:call.title,detail:call.detail,position:call.route[1]})
+  next.events.sort((a,b)=>a.time-b.time)
+  return next
+}
 export function serviceSquadronCost(sq:Squadron){return sq.damaged>0?2:sq.aircraft<sq.maxAircraft?4:0}
 export function repairSquadron(state:MatchState,id:string):MatchState{const target=state.squadrons.find(s=>s.id===id);if(!target)return state;const cost=serviceSquadronCost(target);const replacing=target.damaged===0&&target.aircraft<target.maxAircraft;if(cost===0||state.logistics<cost||replacing&&state.replacements<1)return state;return {...state,logistics:state.logistics-cost,replacements:state.replacements-(replacing?1:0),squadrons:state.squadrons.map(s=>s.id!==id?s:s.damaged>0?{...s,damaged:s.damaged-1,readiness:Math.min(100,s.readiness+14)}:{...s,aircraft:Math.min(s.maxAircraft,s.aircraft+1),readiness:Math.min(100,s.readiness+6)})}}
 export function rearmSquadron(state:MatchState,id:string):MatchState{if(state.logistics<1)return state;return {...state,logistics:state.logistics-1,squadrons:state.squadrons.map(s=>s.id===id?{...s,ammo:Math.min(100,s.ammo+50)}:s)}}
