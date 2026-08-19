@@ -1,31 +1,32 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { AlertTriangle, CheckCircle2, ChevronRight, FastForward, PlaneTakeoff, Radio, RotateCcw, ShieldCheck, Volume2, Wrench, Zap } from 'lucide-react'
+import { AlertTriangle, CheckCircle2, ChevronRight, FastForward, RotateCcw, ShieldCheck, Volume2, Wrench, Zap } from 'lucide-react'
 import { Battlefield } from './components/Battlefield'
-import { HealthBars, OrdersPanel, PhaseRail, SquadronRail, TopBar } from './components/Hud'
+import { HealthBars, OrdersPanel, SquadronRail, TopBar } from './components/Hud'
 import { createMatch, PRESETS } from './game/data'
-import { applyRound, attritionCreditAt, battleScoreAt, callReinforcement, effectiveSensorRange, EXECUTION_SECONDS, RADAR_RANGE, rearmSquadron, REINFORCEMENT_OPTIONS, repairDefense, repairRunway, repairSquadron, resolveRound, restoreReadiness, serviceSquadronCost, supportCreditsAt } from './game/engine'
+import { applyRound, capRouteForFuel, effectiveSensorRange, MAX_FLIGHT_DISTANCE, missionDistance, RADAR_COMMUNICATION_RANGE, RADAR_RANGE, rearmSquadron, repairDefense, repairRunway, repairSquadron, resolveRound, restoreReadiness, serviceSquadronCost } from './game/engine'
 import { snapToHex } from './game/hex'
-import type { Asset, CombatEvent, DebugScenario, MatchState, Point, ReinforcementType, Squadron } from './game/types'
+import type { Asset, CombatEvent, DebugScenario, MatchState, Point, Squadron } from './game/types'
 
-const SAVE_KEY='dead-reckoning-mvp-v11'
-const LEGACY_SAVE_KEYS=['dead-reckoning-mvp-v10','dead-reckoning-mvp-v9']
+const SAVE_KEY='dead-reckoning-mvp-v18'
+const LEGACY_SAVE_KEYS=['dead-reckoning-mvp-v17','dead-reckoning-mvp-v16','dead-reckoning-mvp-v15','dead-reckoning-mvp-v14','dead-reckoning-mvp-v13','dead-reckoning-mvp-v12','dead-reckoning-mvp-v11','dead-reckoning-mvp-v10','dead-reckoning-mvp-v9']
 function normalizeMatch(input:MatchState):MatchState{
   const fresh=createMatch()
   const compatible=input.squadrons?.filter(s=>s.role==='fighter'||s.role==='recon')??[]
   if(compatible.length!==fresh.squadrons.length)return {...fresh,debugScenario:input.debugScenario??'campaign'}
-  const squadrons=compatible.map(s=>({...s,mission:s.role==='fighter'?'CAP' as const:'RECON' as const,targetPriority:'opportunity' as const,selectedTargetId:undefined,strength:s.strength??Math.max(0,Math.min(100,(s.aircraft/Math.max(1,s.maxAircraft))*100)),morale:s.morale??Math.round(48+s.readiness*.42),status:s.status??'enroute' as const}))
-  return {...fresh,...input,phase:input.phase==='execute'?'plan':input.phase,squadrons,debugScenario:input.debugScenario??'campaign',lastResult:input.phase==='execute'?undefined:input.lastResult}
+  const squadrons=compatible.map(s=>{const aggression=['conservative','neutral','aggressive'].includes(s.aggression)?s.aggression:'neutral';return {...s,aggression:aggression as Squadron['aggression'],mission:s.role==='fighter'?'CAP' as const:'RECON' as const,targetPriority:'opportunity' as const,selectedTargetId:undefined,strength:s.strength??Math.max(0,Math.min(100,(s.aircraft/Math.max(1,s.maxAircraft))*100)),morale:s.morale??Math.round(48+s.readiness*.42),status:s.status??'enroute' as const}})
+  return {...fresh,...input,mappedAreas:input.mappedAreas??[],phase:input.phase==='execute'?'plan':input.phase,squadrons,debugScenario:input.debugScenario??'campaign',lastResult:input.phase==='execute'?undefined:input.lastResult}
 }
-function loadMatch():MatchState{try{const saved=localStorage.getItem(SAVE_KEY)??LEGACY_SAVE_KEYS.map(k=>localStorage.getItem(k)).find(Boolean);if(!saved)return createMatch();return normalizeMatch(JSON.parse(saved) as MatchState)}catch{return createMatch()}}
+function loadMatch():MatchState{try{const saved=localStorage.getItem(SAVE_KEY);if(!saved)return createMatch();return normalizeMatch(JSON.parse(saved) as MatchState)}catch{return createMatch()}}
 function makeScenario(scenario:DebugScenario):MatchState{
   const match=createMatch()
   match.debugScenario=scenario
   if(scenario==='campaign')return match
   match.phase='plan'
   match.squadrons=match.squadrons.map(s=>{
-    if(scenario==='fighter-duel')return s.id==='viper'?{...s,route:[[-7.8,11.2],[-3.5,3.5],[.5,-.5]],aggression:'aggressive',risk:'press'}:{...s,aircraft:0,strength:0}
-    if(scenario==='recon-recovery')return s.id==='raven'?{...s,route:[[-7.8,11.2],[-3.5,4.5],[1.4,-.9],[4,-5.3],[1.4,-.9],[-7.8,11.2]],risk:'preserve'}:{...s,aircraft:s.id==='viper'?4:0,strength:s.id==='viper'?100:0}
-    if(scenario==='recon-loss')return s.id==='raven'?{...s,route:[[-7.8,11.2],[-3.5,4.5],[1.4,-.9],[4,-5.3]],risk:'press',aggression:'aggressive'}:{...s,aircraft:s.id==='viper'?4:0,strength:s.id==='viper'?100:0}
+    if(scenario==='fighter-duel'||scenario==='neutral-los')return s.id==='viper'?{...s,route:[[-7.8,11.2],[-3.5,3.5],[.5,-.5]],aggression:scenario==='neutral-los'?'neutral':'aggressive'}:{...s,aircraft:0,strength:0}
+    if(scenario==='radar-intercept')return s.id==='viper'?{...s,route:[[-7.8,11.2],[-6.7,5.8],[-7.8,11.2]],aggression:'aggressive'}:{...s,aircraft:0,strength:0}
+    if(scenario==='recon-recovery')return s.id==='raven'?{...s,route:[[-7.8,11.2],[-3.5,4.5],[1.4,-.9],[4,-5.3],[1.4,-.9],[-7.8,11.2]],aggression:'neutral'}:{...s,aircraft:0,strength:0}
+    if(scenario==='recon-loss')return s.id==='raven'?{...s,aircraft:1,strength:1,morale:24,route:[[-7.8,11.2],[-3.5,4.5],[1.4,-.9],[4,-5.3]],aggression:'aggressive'}:{...s,aircraft:0,strength:0}
     return s
   })
   return match
@@ -46,15 +47,18 @@ export default function App(){
   const playerBase=match.playerAssets.find(a=>a.kind==='base')?.position??[-7.8,11.2]
 
   const patchSelected=useCallback((patch:Partial<Squadron>)=>setMatch(m=>({...m,squadrons:m.squadrons.map(s=>s.id===m.selectedId?{...s,...patch}:s)})),[])
-  const setRoute=useCallback((route:Point[])=>patchSelected({route}),[patchSelected])
+  const setRoute=useCallback((route:Point[])=>setMatch(m=>{
+    const base=m.playerAssets.find(a=>a.kind==='base')?.position??[-7.8,11.2]
+    const squadron=m.squadrons.find(s=>s.id===m.selectedId)??m.squadrons[0]
+    const capped=capRouteForFuel(route,base,MAX_FLIGHT_DISTANCE[squadron.role])
+    return {...m,squadrons:m.squadrons.map(s=>s.id===squadron.id?{...s,route:capped}:s)}
+  }),[])
   const placeAsset=useCallback((id:string,position:Point)=>setMatch(m=>{const oldBase=m.playerAssets.find(a=>a.kind==='base')?.position??[-7.8,11.2];const placed=snapToHex([Math.max(-8.7,Math.min(8.7,position[0])),Math.max(2.4,Math.min(12.4,position[1]))]);const playerAssets=m.playerAssets.map(a=>a.id===id?{...a,position:placed}:a);const squadrons=id==='p-base'?m.squadrons.map(s=>({...s,route:s.route.map((p,i)=>i===0||i===s.route.length-1&&Math.hypot(p[0]-oldBase[0],p[1]-oldBase[1])<.3?placed:p)})):m.squadrons;return {...m,playerAssets,squadrons}}),[])
   const commit=()=>{const result=resolveRound(match);resultRef.current=result;completingRef.current=false;setProgress(0);setActiveEvent(undefined);setMatch(m=>({...m,phase:'execute'}))}
-  const reinforce=(type:ReinforcementType)=>{const result=resultRef.current;if(!result)return;const seconds=progress*EXECUTION_SECONDS;const option=REINFORCEMENT_OPTIONS[type];if(match.command<option.commandCost||match.replacements<option.reserveCost||supportCreditsAt(result,seconds)<option.scoreCost)return;const next=callReinforcement(result,type,seconds,playerBase);if(next===result)return;resultRef.current=next;setMatch(m=>({...m,command:m.command-option.commandCost,replacements:m.replacements-option.reserveCost}))}
-
   useEffect(()=>{
     if(match.phase!=='execute'||!resultRef.current)return
-    const result=resultRef.current;let frame=0;let last=performance.now();let current=progress;const duration=EXECUTION_SECONDS*1000
-    const tick=(now:number)=>{const dt=(now-last)*speed;last=now;current=Math.min(1,current+dt/duration);setProgress(current);const seconds=current*EXECUTION_SECONDS;const liveResult=resultRef.current??result;const event=[...liveResult.events].reverse().find(e=>e.time<=seconds);setActiveEvent(event);if(current>=1){if(!completingRef.current){completingRef.current=true;setTimeout(()=>setMatch(m=>m.phase==='execute'?applyRound(m,resultRef.current??result):m),1250)}return}frame=requestAnimationFrame(tick)}
+    const result=resultRef.current;let frame=0;let last=performance.now();let current=progress;const duration=result.duration*1000
+    const tick=(now:number)=>{const dt=(now-last)*speed;last=now;current=Math.min(1,current+dt/duration);setProgress(current);const seconds=current*result.duration;const event=[...result.events].reverse().find(e=>e.time<=seconds);setActiveEvent(event);if(current>=1){if(!completingRef.current){completingRef.current=true;setTimeout(()=>setMatch(m=>m.phase==='execute'?applyRound(m,result):m),1250)}return}frame=requestAnimationFrame(tick)}
     frame=requestAnimationFrame(tick);return()=>cancelAnimationFrame(frame)
   },[match.phase,speed]) // progress intentionally resumes from the value captured when speed/phase changes
 
@@ -64,13 +68,14 @@ export default function App(){
   return <main className="app-shell">
     <div className={`game-frame phase-${match.phase}`}>
       <TopBar round={match.round} intel={intel} logistics={match.logistics} replacements={match.replacements} score={match.campaignScore??0} phase={match.phase} debugScenario={match.debugScenario??'campaign'} onDebugScenario={debugScenario=>setMatch(m=>({...m,debugScenario}))} onReboot={restart}/>
-      <div className="map-wrap"><Battlefield squadrons={match.squadrons} assets={match.enemyAssets} playerAssets={match.playerAssets} selectedId={match.selectedId} placementId={placementId} phase={match.phase} progress={progress} activeEvent={activeEvent} executionResult={match.phase==='execute'?resultRef.current:match.phase==='debrief'?match.lastResult:undefined} onRoute={setRoute} onPlace={placeAsset}/><PhaseRail phase={match.phase}/><HealthBars player={match.playerBaseHealth} enemy={match.enemyBaseHealth} enemyKnown={enemyBaseKnown} exposure={match.baseExposure??6}/>
+      <div className="map-wrap"><Battlefield squadrons={match.squadrons} assets={match.enemyAssets} playerAssets={match.playerAssets} mappedAreas={match.mappedAreas} selectedId={match.selectedId} placementId={placementId} phase={match.phase} progress={progress} activeEvent={activeEvent} executionResult={match.phase==='execute'?resultRef.current:match.phase==='debrief'?match.lastResult:undefined} onRoute={setRoute} onPlace={placeAsset}/><HealthBars player={match.playerBaseHealth} enemy={match.enemyBaseHealth} enemyKnown={enemyBaseKnown} exposure={match.baseExposure??6}/>
         {match.phase==='deploy'?<div className="map-tip deploy-tip"><span>TAP HEX</span> PLACE SELECTED ASSET · FRIENDLY TERRITORY ONLY</div>:null}
-        {match.phase==='plan'?<><div className="sensor-legend"><b>LOS {effectiveSensorRange(selected).toFixed(1)}</b><span>RADAR {RADAR_RANGE.toFixed(1)}</span></div><div className="map-tip"><span>TAP / DRAG</span> FREEHAND ROUTE · RINGS SHOW OBSERVATION</div></>:null}
-        {match.phase==='execute'?<ExecutionOverlay progress={progress} activeEvent={activeEvent} speed={speed} onSpeed={()=>setSpeed(s=>s===1?2:1)} match={match} result={resultRef.current} onReinforce={reinforce} onAbort={()=>resultRef.current&&setMatch(m=>applyRound(m,resultRef.current!))}/>:null}
+        {match.phase==='plan'?<><div className="sensor-legend"><b><i className="los"/>LOS {effectiveSensorRange(selected).toFixed(1)}</b><span><i className="radar"/>RADAR {RADAR_RANGE.toFixed(1)}</span><span><i className="comms"/>COMMS {RADAR_COMMUNICATION_RANGE.toFixed(0)}</span></div><div className="map-tip"><span>TAP / DRAG</span> ROUTE LIMITED BY FUEL · RETURN RESERVED</div></>:null}
+        {match.phase!=='deploy'?<div className="fog-legend"><span className="live">LIVE</span><span className="mapped">MAPPED</span><span className="unknown">UNKNOWN</span></div>:null}
+        {match.phase==='execute'?<ExecutionOverlay progress={progress} activeEvent={activeEvent} speed={speed} onSpeed={()=>setSpeed(s=>s===1?2:1)} match={match} result={resultRef.current} onSkip={()=>resultRef.current&&setMatch(m=>applyRound(m,resultRef.current!))}/>:null}
       </div>
       {match.phase==='deploy'?<DeploymentPanel assets={match.playerAssets} selectedId={placementId} onSelect={setPlacementId} onLock={()=>setMatch(m=>({...m,phase:'plan'}))}/>:null}
-      {match.phase==='plan'?<><SquadronRail squadrons={match.squadrons} selectedId={match.selectedId} onSelect={id=>setMatch(m=>({...m,selectedId:id}))}/><OrdersPanel squadron={selected} onChange={patchSelected} onPreset={name=>setRoute([playerBase,...PRESETS[name].slice(1)])} onClear={()=>setRoute([])} onCommit={commit}/></>:null}
+      {match.phase==='plan'?<><SquadronRail squadrons={match.squadrons} selectedId={match.selectedId} onSelect={id=>setMatch(m=>({...m,selectedId:id}))}/><OrdersPanel squadron={selected} routeDistance={missionDistance(selected.route,playerBase)} maxDistance={MAX_FLIGHT_DISTANCE[selected.role]} onChange={patchSelected} onPreset={name=>setRoute([playerBase,...PRESETS[name].slice(1)])} onClear={()=>setRoute([])} onCommit={commit}/></>:null}
       {match.phase==='debrief'&&match.lastResult?<Debrief match={match} onRepair={id=>setMatch(m=>repairSquadron(m,id))} onRearm={id=>setMatch(m=>rearmSquadron(m,id))} onReady={id=>setMatch(m=>restoreReadiness(m,id))} onDefense={id=>setMatch(m=>repairDefense(m,id))} onRunway={()=>setMatch(m=>repairRunway(m))} onNext={nextRound}/>:null}
       {(match.phase==='victory'||match.phase==='defeat')?<EndState victory={match.phase==='victory'} round={match.round} onRestart={restart}/>:null}
     </div>
@@ -81,20 +86,16 @@ function DeploymentPanel({assets,selectedId,onSelect,onLock}:{assets:Asset[];sel
   return <section className="deployment-panel"><div className="deployment-head"><div><small>PRE-MATCH DEPLOYMENT</small><h2>BUILD YOUR DECEPTION</h2></div><ShieldCheck/></div><p>Place the real base, decoy, sensors, and defenses. Overlap radar and weapon rings, but avoid revealing the real base through an obvious defensive cluster.</p><div className="asset-picker">{assets.map(a=><button key={a.id} className={a.id===selectedId?'active':''} onClick={()=>onSelect(a.id)}><b>{a.kind.toUpperCase()}</b><small>{a.kind==='base'?'PRIMARY':a.kind==='decoy'?'FALSE FIELD':a.kind==='radar'?'DETECT 6.4':a.kind==='sam'?'ENGAGE 3.2':'ENGAGE 1.9'}</small></button>)}</div><button className="commit" onClick={onLock}>LOCK DEPLOYMENT <span>››</span></button></section>
 }
 
-function ExecutionOverlay({progress,activeEvent,speed,onSpeed,match,result,onReinforce,onAbort}:{progress:number;activeEvent?:CombatEvent;speed:number;onSpeed:()=>void;match:MatchState;result?:ReturnType<typeof resolveRound>;onReinforce:(type:ReinforcementType)=>void;onAbort:()=>void}){
-  const [storeOpen,setStoreOpen]=useState(false)
+function ExecutionOverlay({progress,activeEvent,speed,onSpeed,match,result,onSkip}:{progress:number;activeEvent?:CombatEvent;speed:number;onSpeed:()=>void;match:MatchState;result?:ReturnType<typeof resolveRound>;onSkip:()=>void}){
+  const seconds=progress*(result?.duration??22)
   const windows=result?.enemyFlights.flatMap(f=>f.detectionWindows.filter(w=>progress>=w.start&&progress<=w.end))??[]
+  const linkedTracks=result?.radarTrackReceipts?.filter(receipt=>seconds>=receipt.start&&seconds<=receipt.end)??[]
   const visual=windows.some(w=>w.source==='visual')
   const cue=result?.defenseCues?.find(c=>progress>=c.start&&progress<=c.end)
-  const network=windows.some(w=>w.source==='network')
-  const recovering=progress>=.82
-  const seconds=progress*EXECUTION_SECONDS;const score=result?battleScoreAt(result,seconds):0;const attrition=result?attritionCreditAt(result,seconds):0;const support=result?supportCreditsAt(result,seconds):0
-  const lossObserved=result?.events.some(event=>event.time<=seconds&&(event.title==='AIRCRAFT LOST'||event.title==='PURSUIT LOSS'))??false
-  const alreadyCalled=(type:ReinforcementType)=>result?.reinforcementCalls.some(call=>call.type===type)??false
-  const canCall=(type:ReinforcementType)=>{const option=REINFORCEMENT_OPTIONS[type];if(!result||alreadyCalled(type)||support<option.scoreCost||match.command<option.commandCost||match.replacements<option.reserveCost)return false;return type==='alert-cap'?windows.length>0&&progress<.82:lossObserved}
-  return <div className="execute-hud"><div className="timer"><i style={{width:`${progress*100}%`}}/></div><div className={`contact-status ${windows.length?'hot':''} ${visual?'visual':''} ${network?'network':''}`}>{recovering?'RECOVERY IN PROGRESS':windows.length?(visual?`${windows.length} VISUAL CONTACT`:network?'DEFENSE TRACK SHARED':`${windows.length} RADAR TRACK`):'NO HOSTILE TRACKS'}</div>{cue?<div className="cue-status"><ShieldCheck/> DEFENSE CUED · +{cue.rangeBonus.toFixed(1)} RANGE</div>:null}<div className={`event-card ${activeEvent?.tone??''}`}><span>{activeEvent?.tone==='danger'?<AlertTriangle/>:<Volume2/>}</span><div><b>{activeEvent?.title??'AWAITING CONTACT'}</b><p>{activeEvent?.detail??'Packages are crossing the forward line.'}</p></div></div>
-    <div className={`reserve-desk ${storeOpen?'open':''}`}><button className="reserve-toggle" onClick={()=>setStoreOpen(open=>!open)}><Radio/><span>RESERVE DESK</span><b>{support} AUTH</b></button>{storeOpen?<div className="reserve-drawer"><header><span>ROUND SCORE {score}</span><span>{attrition?`+${attrition} ATTRITION`:null}</span><b>{match.command} CP · {match.replacements} RES</b></header>{(['alert-cap','replacement-flight'] as ReinforcementType[]).map(type=>{const option=REINFORCEMENT_OPTIONS[type];return <button key={type} disabled={!canCall(type)} onClick={()=>onReinforce(type)}><i>{type==='alert-cap'?<PlaneTakeoff/>:<Wrench/>}</i><span><b>{option.label}</b><small>{option.summary}</small></span><em>{option.scoreCost} AUTH · {option.commandCost} CP · {option.reserveCost} RES</em></button>})}<p>TRACKS, INTEL, KILLS, AND OBSERVED ATTRITION AUTHORIZE SUPPORT.</p></div>:null}</div>
-    <div className="exec-controls"><button onClick={onAbort}>ABORT &amp; RECOVER</button><button className="speed" onClick={onSpeed}><FastForward/>{speed}×</button></div><div className="strength-mini">{match.squadrons.map(s=><span key={s.id}>{s.callsign.split(' ')[0]} <b>{s.aircraft}/{s.maxAircraft}</b></span>)}</div></div>
+  const network=linkedTracks.length>0
+  const recovering=(result?.behaviorIntervals??[]).some(interval=>interval.mode==='recovering'&&seconds>=interval.start&&seconds<=interval.end)
+  return <div className="execute-hud"><div className="timer"><i style={{width:`${progress*100}%`}}/></div><div className={`contact-status ${windows.length?'hot':''} ${visual?'visual':''} ${network?'network':''}`}>{recovering?'RECOVERY IN PROGRESS':windows.length?(visual?`${windows.length} VISUAL CONTACT`:network?`${linkedTracks.length} RADAR LINK${linkedTracks.length===1?'':'S'} ACTIVE`:`${windows.length} RADAR TRACK`):'NO HOSTILE TRACKS'}</div>{cue?<div className="cue-status"><ShieldCheck/> DEFENSE CUED · +{cue.rangeBonus.toFixed(1)} RANGE</div>:null}<div className={`event-card ${activeEvent?.tone??''}`}><span>{activeEvent?.tone==='danger'?<AlertTriangle/>:<Volume2/>}</span><div><b>{activeEvent?.title??'AWAITING CONTACT'}</b><p>{activeEvent?.detail??'Packages are crossing the forward line.'}</p></div></div>
+    <div className="exec-controls"><button onClick={onSkip}>SKIP TO DEBRIEF</button><button className="speed" onClick={onSpeed}><FastForward/>{speed}×</button></div><div className="strength-mini">{match.squadrons.map(s=><span key={s.id}>{s.callsign.split(' ')[0]} <b>{s.aircraft}/{s.maxAircraft}</b></span>)}</div></div>
 }
 
 function Debrief({match,onRepair,onRearm,onReady,onDefense,onRunway,onNext}:{match:MatchState;onRepair:(id:string)=>void;onRearm:(id:string)=>void;onReady:(id:string)=>void;onDefense:(id:string)=>void;onRunway:()=>void;onNext:()=>void}){

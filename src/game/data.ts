@@ -16,10 +16,10 @@ export const initialPlayerAssets: Asset[] = [
 
 const route = (...points: [number, number][]) => points
 export const initialSquadrons: Squadron[] = [
-  { id:'viper', callsign:'VIPER 1', role:'fighter', mission:'CAP', aggression:'aggressive', risk:'normal', targetPriority:'opportunity', aircraft:4, maxAircraft:4, damaged:0, readiness:92, ammo:100, strength:100, morale:86, route:route(PLAYER_BASE,[-6,5.5],[-3.2,1],[-6,5.5],PLAYER_BASE) },
-  { id:'falcon', callsign:'FALCON 2', role:'fighter', mission:'CAP', aggression:'balanced', risk:'normal', targetPriority:'opportunity', aircraft:4, maxAircraft:4, damaged:0, readiness:89, ammo:100, strength:100, morale:78, route:route(PLAYER_BASE,[-3.5,6],[0,1.2],[3,-3.5],PLAYER_BASE) },
-  { id:'raven', callsign:'RAVEN 3', role:'recon', mission:'RECON', aggression:'cautious', risk:'preserve', targetPriority:'opportunity', aircraft:4, maxAircraft:4, damaged:0, readiness:96, ammo:100, strength:100, morale:84, route:route(PLAYER_BASE,[-3,5],[1,0],[5,-7],[1,0],PLAYER_BASE) },
-  { id:'ghost', callsign:'GHOST 4', role:'recon', mission:'RECON', aggression:'cautious', risk:'preserve', targetPriority:'opportunity', aircraft:4, maxAircraft:4, damaged:0, readiness:94, ammo:100, strength:100, morale:90, route:route(PLAYER_BASE,[-5.2,5.2],[-1.5,-.3],[3.6,-5.8],[.4,.8],PLAYER_BASE) },
+  { id:'viper', callsign:'VIPER 1', role:'fighter', mission:'CAP', aggression:'aggressive', targetPriority:'opportunity', aircraft:4, maxAircraft:4, damaged:0, readiness:92, ammo:100, strength:100, morale:86, route:route(PLAYER_BASE,[-6,5.5],[-3.2,1],[-6,5.5],PLAYER_BASE) },
+  { id:'falcon', callsign:'FALCON 2', role:'fighter', mission:'CAP', aggression:'neutral', targetPriority:'opportunity', aircraft:4, maxAircraft:4, damaged:0, readiness:89, ammo:100, strength:100, morale:78, route:route(PLAYER_BASE,[-3.5,6],[0,1.2],[3,-3.5],PLAYER_BASE) },
+  { id:'raven', callsign:'RAVEN 3', role:'recon', mission:'RECON', aggression:'conservative', targetPriority:'opportunity', aircraft:4, maxAircraft:4, damaged:0, readiness:96, ammo:100, strength:100, morale:84, route:route(PLAYER_BASE,[-3,5],[1,0],[7.1,-6.3],[1,0],PLAYER_BASE) },
+  { id:'ghost', callsign:'GHOST 4', role:'recon', mission:'RECON', aggression:'conservative', targetPriority:'opportunity', aircraft:4, maxAircraft:4, damaged:0, readiness:94, ammo:100, strength:100, morale:90, route:route(PLAYER_BASE,[-5.2,5.2],[-5,-1],[-4.9,-5.1],[-5,-1],PLAYER_BASE) },
 ]
 
 export const initialAssets: Asset[] = [
@@ -33,7 +33,7 @@ export const initialAssets: Asset[] = [
 export const createMatch = (): MatchState => ({
   round:1, phase:'plan', logistics:10, command:2, replacements:3, selectedId:'raven',
   squadrons:structuredClone(initialSquadrons), enemyAssets:structuredClone(initialAssets), playerAssets:structuredClone(initialPlayerAssets),
-  playerBaseHealth:100, enemyBaseHealth:100, baseExposure:6, campaignScore:0, seed:7301,
+  playerBaseHealth:100, enemyBaseHealth:100, baseExposure:6, campaignScore:0, seed:7301, mappedAreas:[],
 })
 
 export const PRESETS: Record<string, [number,number][]> = {
