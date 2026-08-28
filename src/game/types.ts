@@ -3,13 +3,25 @@ export type Role = 'fighter' | 'recon'
 export type Mission = 'CAP' | 'RECON'
 export type Aggression = 'conservative' | 'neutral' | 'aggressive'
 export type TargetPriority = 'opportunity'
+export type RouteTemplateId = 'custom' | 'defensive-cap' | 'forward-patrol' | 'search-area' | 'deep-probe'
 export type IntelLevel = 'unknown' | 'suspected' | 'probable' | 'confirmed'
 export type Point = [number, number]
 export type ReinforcementType = 'alert-cap' | 'replacement-flight'
+export type WorldEdge = 'north' | 'east' | 'south' | 'west'
+
+export interface WorldBounds { minX:number; maxX:number; minZ:number; maxZ:number }
+export interface BoundarySegment { edge:WorldEdge; coordinate:number; from:number; to:number }
+export interface CampaignWorld {
+  seed:number
+  bounds:WorldBounds
+  presentationBounds:WorldBounds
+  startRegionId:string
+  friendlyTerritory:{center:Point;radius:number}
+}
 
 export interface Squadron {
   id: string; callsign: string; role: Role; mission: Mission; aggression: Aggression
-  targetPriority: TargetPriority; aircraft: number; maxAircraft: number; damaged: number; readiness: number; ammo: number; route: Point[]
+  targetPriority: TargetPriority; aircraft: number; maxAircraft: number; damaged: number; readiness: number; ammo: number; route: Point[]; routeIngress: Point[]; routeTemplate: RouteTemplateId
   strength?: number; morale?: number; selectedTargetId?: string; status?: ExecutionStatus
 }
 export interface DetectionWindow {
@@ -69,6 +81,11 @@ export interface IntelReport {
 export interface DoctrineLesson {
   title: string; detail: string; tone: 'friendly' | 'warning' | 'danger'
 }
+export interface FormationAttrition {
+  id: string; callsign: string; role: Role
+  startAircraft: number; endAircraft: number; aircraftLost: number
+  endStrength: number; finalStatus: 'returned' | 'damaged' | 'destroyed' | 'not-deployed'; destroyed: boolean; confirmed: boolean
+}
 export interface ReinforcementCall {
   id: string; type: ReinforcementType; time: number; scoreCost: number; title: string; detail: string
   route: Point[]; targetSquadronId?: string
@@ -76,18 +93,21 @@ export interface ReinforcementCall {
 export interface RoundResult {
   duration: number; tickSeconds: number; unitTracks: UnitTrack[]; contactIntervals: ContactInterval[]; behaviorIntervals: BehaviorInterval[]
   events: CombatEvent[]; squadrons: Squadron[]; assets: Asset[]; enemyLosses: number; friendlyLosses: number
+  friendlyAttrition: FormationAttrition[]; enemyAttrition: FormationAttrition[]; friendlyFormationsDestroyed: number; enemyFormationsDestroyed: number
   intelGained: string[]; baseDamage: number; enemyBaseDamage: number; logistics: number; command: number
   executionRoutes: Record<string, Point[]>; enemyFlights: EnemyFlight[]; defenseCues: DefenseCue[]
   defensiveAwareness: number; lessons: DoctrineLesson[]; playerAssets: Asset[]
   reinforcementCalls: ReinforcementCall[]; roundScore: number; baseExposure: number; baseExposureDelta: number
   combatSequences: CombatSequence[]; weaponEffects: WeaponEffect[]; contactObservations: ContactObservation[]; radarTrackReceipts: RadarTrackReceipt[]; interceptPlans: InterceptPlan[]; intelReports: IntelReport[]
   mappedAreas: Point[]
+  discoveredBoundaries: BoundarySegment[]
 }
 export interface MatchState {
   round: number; phase: Phase; logistics: number; command: number; replacements: number; selectedId: string
   squadrons: Squadron[]; enemyAssets: Asset[]; playerAssets: Asset[]; playerBaseHealth: number; enemyBaseHealth: number
-  baseExposure: number; campaignScore: number; lastResult?: RoundResult; seed: number
+  baseExposure: number; campaignScore: number; lastResult?: RoundResult; seed: number; world: CampaignWorld
   mappedAreas: Point[]
+  discoveredBoundaries: BoundarySegment[]
   debugScenario?: DebugScenario
 }
-export type DebugScenario = 'campaign' | 'fighter-duel' | 'neutral-los' | 'radar-intercept' | 'recon-recovery' | 'recon-loss'
+export type DebugScenario = 'campaign' | 'fighter-duel' | 'fighter-recon' | 'neutral-los' | 'radar-intercept' | 'recon-recovery' | 'recon-loss'
