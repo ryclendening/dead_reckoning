@@ -30,7 +30,12 @@ export const ANGLED_BATTLEFIELD_CAMERA: CameraPresentation = {
 }
 
 export function cameraPresentationForPhase(phase: Phase): CameraPresentation {
-  return phase === 'deploy' || phase === 'plan' ? COMMAND_MAP_CAMERA : ANGLED_BATTLEFIELD_CAMERA
+  // Keep the command surfaces in the same angled 3D space as execution.  The
+  // planning geometry is defined in world coordinates; changing projection
+  // between phases made ground circles read as ellipses and made route intent
+  // harder to compare with the aircraft's live path.
+  void phase
+  return ANGLED_BATTLEFIELD_CAMERA
 }
 
 export function commandMapFitZoom(

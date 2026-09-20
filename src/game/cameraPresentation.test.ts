@@ -7,9 +7,9 @@ import {
 } from './cameraPresentation'
 
 describe('battlefield camera presentation', () => {
-  it('uses a true top-down command map only for Deploy and Plan', () => {
-    expect(cameraPresentationForPhase('deploy')).toBe(COMMAND_MAP_CAMERA)
-    expect(cameraPresentationForPhase('plan')).toBe(COMMAND_MAP_CAMERA)
+  it('keeps one angled 3D presentation across every gameplay phase', () => {
+    expect(cameraPresentationForPhase('deploy')).toBe(ANGLED_BATTLEFIELD_CAMERA)
+    expect(cameraPresentationForPhase('plan')).toBe(ANGLED_BATTLEFIELD_CAMERA)
     expect(cameraPresentationForPhase('execute')).toBe(ANGLED_BATTLEFIELD_CAMERA)
     expect(cameraPresentationForPhase('debrief')).toBe(ANGLED_BATTLEFIELD_CAMERA)
     expect(cameraPresentationForPhase('adapt')).toBe(ANGLED_BATTLEFIELD_CAMERA)
