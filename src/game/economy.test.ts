@@ -178,4 +178,15 @@ describe('logistics economy', () => {
     const hiddenOverlap = { ...state, enemyAssets: state.enemyAssets.map((asset, index) => index ? asset : { ...asset, position: placement }) }
     expect(validateFobPlacement(hiddenOverlap, placement)).toEqual({ valid: true })
   })
+
+  it('expands construction territory from operational FOBs and removes it when disabled', () => {
+    const initial = createMatch()
+    const center = initial.world.friendlyTerritory.center
+    const fob = { id: 'p-fob-test', kind: 'fob' as const, position: [center[0] + 5.5, center[1]] as Point, intel: 'confirmed' as const, confidence: 100, health: 100, maxHealth: 100, hidden: false, struck: false, operational: true, capacity: 1, basedFormationIds: [] }
+    const expanded = { ...initial, phase: 'adapt' as const, playerAssets: [...initial.playerAssets, fob] }
+    const beyondHome = [center[0] + 7.8, center[1]] as Point
+    expect(validateFobPlacement(expanded, beyondHome)).toEqual({ valid: true })
+    const disabled = { ...expanded, playerAssets: expanded.playerAssets.map(asset => asset.id === fob.id ? { ...asset, operational: false } : asset) }
+    expect(validateFobPlacement(disabled, beyondHome)).toMatchObject({ valid: false, reason: 'SITE MUST BE IN RECOVERED TERRITORY' })
+  })
 })

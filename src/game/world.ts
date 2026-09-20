@@ -1,4 +1,5 @@
-import type { BoundarySegment, CampaignWorld, Point, WorldBounds, WorldEdge } from './types'
+import type { BoundarySegment, CampaignWorld, FriendlyTerritory, Point, WorldBounds, WorldEdge } from './types'
+import { territoryBounds, territoryContains } from './territory'
 
 export const CAMPAIGN_WORLD_BOUNDS:WorldBounds={minX:-14,maxX:14,minZ:-18,maxZ:18}
 export const PRESENTATION_APRON=6
@@ -47,11 +48,11 @@ export function createStartingKnowledge(world:CampaignWorld):{mappedAreas:Point[
 }
 
 /** Smallest player-known extent; deliberately does not consult hidden world edges. */
-export function deriveKnownEnvelope(world:CampaignWorld,mappedAreas:Point[],boundaries:BoundarySegment[]=[]):WorldBounds{
-  const friendlyTerritory=world.friendlyTerritory
+export function deriveKnownEnvelope(world:CampaignWorld,mappedAreas:Point[],boundaries:BoundarySegment[]=[],friendlyTerritory:FriendlyTerritory=world.friendlyTerritory):WorldBounds{
+  const territory=territoryBounds(friendlyTerritory)
   const boundaryPoints:Point[]=boundaries.flatMap(segment=>segment.edge==='north'||segment.edge==='south'?[[segment.from,segment.coordinate],[segment.to,segment.coordinate]]:[[segment.coordinate,segment.from],[segment.coordinate,segment.to]])
-  const points=[...mappedAreas,friendlyTerritory.center,...boundaryPoints];const radius=Math.max(MAPPED_AREA_RADIUS,friendlyTerritory.radius)
-  return {minX:Math.min(...points.map(point=>point[0]))-radius,maxX:Math.max(...points.map(point=>point[0]))+radius,minZ:Math.min(...points.map(point=>point[1]))-radius,maxZ:Math.max(...points.map(point=>point[1]))+radius}
+  const points=[...mappedAreas,...boundaryPoints]
+  return {minX:Math.min(territory.minX,...points.map(point=>point[0]-MAPPED_AREA_RADIUS)),maxX:Math.max(territory.maxX,...points.map(point=>point[0]+MAPPED_AREA_RADIUS)),minZ:Math.min(territory.minZ,...points.map(point=>point[1]-MAPPED_AREA_RADIUS)),maxZ:Math.max(territory.maxZ,...points.map(point=>point[1]+MAPPED_AREA_RADIUS))}
 }
 
 export const derivePlanningEnvelope=(known:WorldBounds,margin=4):WorldBounds=>({minX:known.minX-margin,maxX:known.maxX+margin,minZ:known.minZ-margin,maxZ:known.maxZ+margin})
@@ -81,4 +82,4 @@ export function mergeBoundarySegments(existing:BoundarySegment[],incoming:Bounda
 }
 
 export interface MapKnowledge{mappedAreas:Point[];friendlyTerritory:CampaignWorld['friendlyTerritory'];mappedRadius?:number}
-export const isPointMapped=(point:Point,knowledge:MapKnowledge)=>distance(point,knowledge.friendlyTerritory.center)<=knowledge.friendlyTerritory.radius+1e-7||knowledge.mappedAreas.some(mapped=>distance(point,mapped)<=(knowledge.mappedRadius??MAPPED_AREA_RADIUS)+1e-7)
+export const isPointMapped=(point:Point,knowledge:MapKnowledge)=>territoryContains(point,knowledge.friendlyTerritory)||knowledge.mappedAreas.some(mapped=>distance(point,mapped)<=(knowledge.mappedRadius??MAPPED_AREA_RADIUS)+1e-7)

@@ -12,8 +12,9 @@ import { fighterEngagementPresentationAt } from '../game/engagementPresentation'
 import { deriveFlightGlyph } from '../game/flightGlyph'
 import { airfieldLabel, formationBaseGroups } from '../game/formationBasing'
 import { fighterResponsibilityFor } from '../game/missionResponsibility'
-import { cameraPresentationForPhase, commandMapFitZoom } from '../game/cameraPresentation'
-import type { Asset, BoundarySegment, CampaignWorld, CombatEvent, CombatSequence, ConstructibleAssetKind, DefenseCue, EnemyFlight, Phase, Point, ReinforcementCall, RoundResult, Squadron, UnitFrame, WeaponEffect, WorldBounds } from '../game/types'
+import { cameraPresentationForPhase, commandMapFitZoomForBounds } from '../game/cameraPresentation'
+import { territoryBounds, territoryRegions } from '../game/territory'
+import type { Asset, BoundarySegment, CombatEvent, CombatSequence, ConstructibleAssetKind, DefenseCue, EnemyFlight, FriendlyTerritory, Phase, Point, ReinforcementCall, RoundResult, Squadron, UnitFrame, WeaponEffect, WorldBounds } from '../game/types'
 import type { FogMaskInput, MapObservation } from '../game/fog'
 
 const friendly='#55d6df', amber='#d99a25', hostile='#de4f3f'
@@ -25,19 +26,20 @@ const to3=(p:Point,y=.13):[number,number,number]=>[p[0],y,p[1]]
 const groundPlane=new THREE.Plane(new THREE.Vector3(0,1,0),0)
 const flightCurve=(route:Point[],altitude:number)=>{const points=route.map(p=>new THREE.Vector3(p[0],altitude,p[1]));const path=new THREE.CurvePath<THREE.Vector3>();for(let index=1;index<points.length;index++)path.add(new THREE.LineCurve3(points[index-1],points[index]));return path}
 const flightPoint=(curve:THREE.CurvePath<THREE.Vector3>,progress:number)=>{const normalized=Math.min(.999,Math.max(0,progress));const point=curve.getPointAt(normalized);const altitude=Math.min(1,normalized/.055,(1-normalized)/.085);point.y=.15+.45*Math.max(0,altitude);return point}
-type FriendlyTerritory=CampaignWorld['friendlyTerritory']
 const boundsCenter=(bounds:WorldBounds):Point=>[(bounds.minX+bounds.maxX)/2,(bounds.minZ+bounds.maxZ)/2]
 const boundsWidth=(bounds:WorldBounds)=>bounds.maxX-bounds.minX
 const boundsDepth=(bounds:WorldBounds)=>bounds.maxZ-bounds.minZ
 const expandBounds=(bounds:WorldBounds,margin:number):WorldBounds=>({minX:bounds.minX-margin,maxX:bounds.maxX+margin,minZ:bounds.minZ-margin,maxZ:bounds.maxZ+margin})
-const territoryBounds=(territory:FriendlyTerritory):WorldBounds=>({minX:territory.center[0]-territory.radius,maxX:territory.center[0]+territory.radius,minZ:territory.center[1]-territory.radius,maxZ:territory.center[1]+territory.radius})
 
 function CameraRig({phase,friendlyTerritory,planningBounds,presentationBounds,focusPoint,followKey}:{phase:Phase;friendlyTerritory:FriendlyTerritory;planningBounds:WorldBounds;presentationBounds:WorldBounds;focusPoint?:Point;followKey?:string}){
   const {camera,size}=useThree(),controls=useRef<MapControlsImpl>(null)
   const {width:viewportWidth,height:viewportHeight}=size
   const presentation=cameraPresentationForPhase(phase)
+  const commandBounds=useMemo(()=>territoryBounds(friendlyTerritory),[friendlyTerritory])
+  const commandTarget=useMemo(()=>boundsCenter(commandBounds),[commandBounds])
+  const target= presentation.kind==='command-map' ? commandTarget : friendlyTerritory.center
   const minimumZoom=useMemo(()=>Math.max(viewportWidth/Math.max(1,boundsWidth(presentationBounds)-2),viewportHeight/Math.max(1,boundsDepth(presentationBounds)-2)),[presentationBounds,viewportHeight,viewportWidth])
-  useEffect(()=>{const c=camera as THREE.OrthographicCamera,target=friendlyTerritory.center,{offset,up}=presentation;c.up.set(...up);c.position.set(target[0]+offset[0],offset[1],target[1]+offset[2]);c.lookAt(target[0],0,target[1]);c.zoom=presentation.kind==='command-map'?commandMapFitZoom({width:viewportWidth,height:viewportHeight},friendlyTerritory.radius,minimumZoom):Math.min(64,Math.max(minimumZoom,viewportHeight/presentation.worldHeight));c.updateProjectionMatrix();controls.current?.target.set(target[0],0,target[1]);controls.current?.update()},[camera,friendlyTerritory.center[0],friendlyTerritory.center[1],friendlyTerritory.radius,minimumZoom,presentation,viewportHeight,viewportWidth])
+  useEffect(()=>{const c=camera as THREE.OrthographicCamera,{offset,up}=presentation;c.up.set(...up);c.position.set(target[0]+offset[0],offset[1],target[1]+offset[2]);c.lookAt(target[0],0,target[1]);c.zoom=presentation.kind==='command-map'?commandMapFitZoomForBounds({width:viewportWidth,height:viewportHeight},commandBounds,minimumZoom):Math.min(64,Math.max(minimumZoom,viewportHeight/presentation.worldHeight));c.updateProjectionMatrix();controls.current?.target.set(target[0],0,target[1]);controls.current?.update()},[camera,commandBounds,commandTarget,friendlyTerritory.center[0],friendlyTerritory.center[1],minimumZoom,presentation,target,viewportHeight,viewportWidth])
   useEffect(()=>{if(!followKey||presentation.kind==='command-map')return;const c=camera as THREE.OrthographicCamera;c.zoom=Math.min(64,Math.max(minimumZoom,viewportHeight/presentation.followWorldHeight));c.updateProjectionMatrix()},[camera,followKey,minimumZoom,presentation,viewportHeight])
   useFrame((_,delta)=>{const c=camera as THREE.OrthographicCamera,control=controls.current;if(!control)return;if(focusPoint){const desired=new THREE.Vector3(focusPoint[0],0,focusPoint[1]),shift=desired.sub(control.target).multiplyScalar(Math.min(1,delta*5));control.target.add(shift);c.position.add(shift)}const halfWidth=size.width/(2*c.zoom),halfDepth=size.height/(2*c.zoom),padding=.75,safeMinX=presentationBounds.minX+halfWidth+padding,safeMaxX=presentationBounds.maxX-halfWidth-padding,safeMinZ=presentationBounds.minZ+halfDepth+padding,safeMaxZ=presentationBounds.maxZ-halfDepth-padding,minX=Math.max(planningBounds.minX,Math.min(safeMinX,safeMaxX)),maxX=Math.min(planningBounds.maxX,Math.max(safeMinX,safeMaxX)),minZ=Math.max(planningBounds.minZ,Math.min(safeMinZ,safeMaxZ)),maxZ=Math.min(planningBounds.maxZ,Math.max(safeMinZ,safeMaxZ)),nextX=minX<=maxX?THREE.MathUtils.clamp(control.target.x,minX,maxX):(presentationBounds.minX+presentationBounds.maxX)/2,nextZ=minZ<=maxZ?THREE.MathUtils.clamp(control.target.z,minZ,maxZ):(presentationBounds.minZ+presentationBounds.maxZ)/2,shift=new THREE.Vector3(nextX-control.target.x,0,nextZ-control.target.z);if(shift.lengthSq()>0){control.target.add(shift);c.position.add(shift)}control.update()})
   return <MapControls ref={controls} makeDefault enableRotate={false} enableDamping dampingFactor={.12} screenSpacePanning minZoom={minimumZoom} maxZoom={64} mouseButtons={{LEFT:THREE.MOUSE.PAN,MIDDLE:THREE.MOUSE.DOLLY,RIGHT:THREE.MOUSE.PAN}} touches={{ONE:THREE.TOUCH.PAN,TWO:THREE.TOUCH.DOLLY_PAN}}/>
@@ -186,6 +188,25 @@ function DefenseNetworkCue({cue,radar}:{cue:DefenseCue;radar:Point}){
 function Ring({radius,color,opacity=.32,dashSize=.18,gapSize=.12,lineWidth=1,dashed=true}:{radius:number,color:string,opacity?:number,dashSize?:number,gapSize?:number,lineWidth?:number,dashed?:boolean}){
   const pts=useMemo(()=>Array.from({length:49},(_,i)=>{const a=i/48*Math.PI*2;return [Math.cos(a)*radius,.07,Math.sin(a)*radius] as [number,number,number]}),[radius])
   return dashed?<Line points={pts} color={color} transparent opacity={opacity} dashed dashSize={dashSize} gapSize={gapSize} lineWidth={lineWidth} depthTest={false}/>:<Line points={pts} color={color} transparent opacity={opacity} lineWidth={lineWidth} depthTest={false}/>
+}
+
+function TerritoryOverlay({territory,phase}:{territory:FriendlyTerritory;phase:Phase}){
+  const regions=useMemo(()=>territoryRegions(territory),[territory])
+  const outlines=useMemo(()=>regions.flatMap((region,regionIndex)=>{
+    const sampleCount=96
+    const points=Array.from({length:sampleCount},(_,sample)=>{const angle=sample/sampleCount*Math.PI*2;return [region.center[0]+Math.cos(angle)*region.radius,region.center[1]+Math.sin(angle)*region.radius] as Point})
+    const visible=points.map(point=>regions.every((other,otherIndex)=>otherIndex===regionIndex||Math.hypot(point[0]-other.center[0],point[1]-other.center[1])>other.radius+.035))
+    const lines:Point[][]=[];let current:Point[]=[]
+    for(let sample=0;sample<=sampleCount;sample++){const index=sample%sampleCount;if(visible[index])current.push(points[index]);else if(current.length>1){lines.push(current);current=[]}}
+    if(current.length>1)lines.push(current)
+    return lines.map(points=>({points,kind:region.kind}))
+  }),[regions])
+  const bounds=useMemo(()=>territoryBounds(territory),[territory]),labelPosition=boundsCenter(bounds)
+  return <group renderOrder={6}>
+    {regions.map(region=><mesh key={`${region.id}-territory`} position={to3(region.center,.102)} rotation={[-Math.PI/2,0,0]}><circleGeometry args={[region.radius,64]}/><meshBasicMaterial color={region.kind==='fob'?'#7bdc9b':'#55d6df'} transparent opacity={region.kind==='fob'?.09:.11} depthTest={false} depthWrite={false}/></mesh>)}
+    {outlines.map((line,index)=><Line key={`territory-outline-${index}`} points={line.points.map(point=>to3(point,.115))} color={line.kind==='fob'?'#9ee6a8':'#7ceaf0'} transparent opacity={.9} dashed={line.kind==='fob'} dashSize={.24} gapSize={.12} lineWidth={1.8} depthTest={false}/>) }
+    {(phase==='deploy'||regions.length>1)?<Text position={to3([labelPosition[0],labelPosition[1]-Math.max(bounds.maxZ-bounds.minZ,bounds.maxX-bounds.minX)/2-.35],.14)} rotation={[-Math.PI/2,0,0]} fontSize={.17} color="#d7fff2" anchorX="center" outlineWidth={.012} outlineColor="#102015">FRIENDLY TERRITORY</Text>:null}
+  </group>
 }
 
 function CoverageDome({radius,color='#4aa9e8',illuminated=false}:{radius:number;color?:string;illuminated?:boolean}){
@@ -591,7 +612,7 @@ function BattlefieldScene({squadrons,assets,playerAssets,mappedAreas,discoveredB
     <CameraRig phase={phase} friendlyTerritory={resolvedTerritory} planningBounds={resolvedPlanningBounds} presentationBounds={resolvedPresentationBounds} focusPoint={cameraFocus} followKey={followId}/>
     <color attach="background" args={['#11140f']}/><fog attach="fog" args={['#11140f',34,60]}/>
     <ambientLight intensity={1.1}/><directionalLight position={[-5,10,5]} intensity={2.1} castShadow shadow-mapSize={[1024,1024]}/>
-    <Terrain phase={phase} presentationBounds={resolvedPresentationBounds} planningBounds={resolvedPlanningBounds}/><FogOfWar mappedAreas={mappedAreas} observations={liveMapObservations} presentationBounds={resolvedPresentationBounds} friendlyTerritory={resolvedTerritory}/><DiscoveredBoundaryLines segments={discoveredBoundaries}/>{phase==='deploy'&&placement?<PlacementHex position={placement.position}/>:null}{construction&&constructionPoint?<ConstructionPlacementGhost kind={construction.kind} position={constructionPoint} valid={construction.isValid(constructionPoint)}/>:null}
+    <Terrain phase={phase} presentationBounds={resolvedPresentationBounds} planningBounds={resolvedPlanningBounds}/><FogOfWar mappedAreas={mappedAreas} observations={liveMapObservations} presentationBounds={resolvedPresentationBounds} friendlyTerritory={resolvedTerritory}/><TerritoryOverlay territory={resolvedTerritory} phase={phase}/><DiscoveredBoundaryLines segments={discoveredBoundaries}/>{phase==='deploy'&&placement?<PlacementHex position={placement.position}/>:null}{construction&&constructionPoint?<ConstructionPlacementGhost kind={construction.kind} position={constructionPoint} valid={construction.isValid(constructionPoint)}/>:null}
     <SensorRangeOverlay phase={phase} radar={friendlyRadar} position={planningLosPosition} losRange={selectedRange} showLos={phase==='plan'||phase==='execute'&&selectedAirborne}/>
     {displayedPlayerAssets.map(a=>a.kind==='base'||a.kind==='fob'||a.kind==='decoy'?<Runway key={a.id} asset={a} selected={phase==='plan'&&a.id===planningBaseId||phase==='execute'&&a.id===executionBaseId||phase==='adapt'&&a.id===economySelectionId} onSelect={phase==='plan'&&(a.kind==='base'||a.kind==='fob')?()=>onPlanningBaseSelect?.(a.id):phase==='execute'&&(a.kind==='base'||a.kind==='fob')?()=>onExecutionBaseSelect?.(a.id):phase==='adapt'&&!construction&&a.kind!=='decoy'?()=>onEconomySelect?.(a.id):undefined}/>:<Defense key={a.id} asset={a} enemy={false} selected={phase==='deploy'&&a.id===placementId||phase==='adapt'&&a.id===economySelectionId} showRange={phase!=='execute'} onSelect={phase==='adapt'&&!construction?()=>onEconomySelect?.(a.id):undefined}/>) }
     {playerAssets.map(a=>{const label=a.kind==='base'||a.kind==='fob'?`${airfieldLabel(a)} · ${baseCounts.get(a.id)??0}`:a.name??a.kind.toUpperCase();return <Text key={`${a.id}-friendly-label`} position={[a.position[0],.25,a.position[1]-.62]} rotation={[-Math.PI/2,0,0]} fontSize={.21} color={a.id===placementId&&phase==='deploy'?'#f4d16f':a.id===planningBaseId&&phase==='plan'?'#b9ffff':friendly}>{label}</Text>})}

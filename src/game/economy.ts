@@ -1,6 +1,7 @@
 import type { Asset, AssetUpgradeId, ConstructibleAssetKind, EconomyActionId, EconomyActionQuote, EconomyCommand, EconomyEffect, EconomyState, EconomyTarget, LogisticsIncome, LogisticsStatementEntry, MatchState, RoundResult, Squadron } from './types'
 import { MAPPED_RADIUS } from './fog'
 import { formationField, normalizeFormationBasing } from './forwardBasing'
+import { friendlyTerritoryForAssets, territoryContains } from './territory'
 
 export const LOGISTICS_COSTS = { formationRepair: 2, aircraftReplacement: 4, defenseRepair: 2, fobRepair: 4, upgrade: 12, fobConstruction: 8, decoyConstruction: 4, aaaConstruction: 6, samConstruction: 8 } as const
 export const LOGISTICS_EFFECTS = { formationRepair: 25, defenseRepair: 25, baseIncome: 6, intelRecovery: 2, confirmedEnemyAircraft: 1, supplyDepotIncome: 2 } as const
@@ -54,8 +55,8 @@ export const AIRFIELD_UPGRADE_CATALOG: readonly AirfieldUpgradeDefinition[] = [
 export interface FobPlacementValidation { valid: boolean; reason?: string }
 export function validateAssetPlacement(state: MatchState, _kind: ConstructibleAssetKind, placement: [number, number] | undefined): FobPlacementValidation {
   if (!placement || !Number.isFinite(placement[0]) || !Number.isFinite(placement[1])) return { valid: false, reason: 'SELECT A MAP LOCATION' }
-  const territory = state.world.friendlyTerritory
-  const persistentlyKnown = pointDistance(placement, territory.center) <= territory.radius || state.mappedAreas.some(area => pointDistance(placement, area) <= MAPPED_RADIUS)
+  const territory = friendlyTerritoryForAssets(state.world.friendlyTerritory,state.playerAssets)
+  const persistentlyKnown = territoryContains(placement,territory) || state.mappedAreas.some(area => pointDistance(placement, area) <= MAPPED_RADIUS)
   if (!persistentlyKnown) return { valid: false, reason: 'SITE MUST BE IN RECOVERED TERRITORY' }
   if (state.playerAssets.some(asset => pointDistance(placement, asset.position) < FOB_PLACEMENT_SPACING)) return { valid: false, reason: 'SITE TOO CLOSE TO AN EXISTING ASSET' }
   return { valid: true }

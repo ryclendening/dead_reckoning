@@ -8,12 +8,14 @@ export type WorldEdge = 'north' | 'east' | 'south' | 'west'
 
 export interface WorldBounds { minX:number; maxX:number; minZ:number; maxZ:number }
 export interface BoundarySegment { edge:WorldEdge; coordinate:number; from:number; to:number }
+export interface TerritoryRegion { id:string; kind:'home'|'fob'; center:Point; radius:number }
+export interface FriendlyTerritory { center:Point; radius:number; regions?:TerritoryRegion[] }
 export interface CampaignWorld {
   seed:number
   bounds:WorldBounds
   presentationBounds:WorldBounds
   startRegionId:string
-  friendlyTerritory:{center:Point;radius:number}
+  friendlyTerritory:FriendlyTerritory
 }
 
 export interface Squadron {

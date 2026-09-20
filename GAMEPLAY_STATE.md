@@ -71,6 +71,7 @@ Aircraft visual range is multiplied by `0.68 + 0.32 × strength fraction`; destr
 - If the intended field becomes unusable during execution, the formation diverts to the nearest reachable operational field with capacity, with asset ID as the stable distance tie-breaker.
 - With no reachable alternate, a formation enters a visible holding circle and is destroyed only when its normal mission-distance allowance is exhausted.
 - A successful landing changes the formation's operating field. A formation based at an unusable FOB is trapped and cannot launch until the FOB is repaired.
+- Friendly territory is the union of the starting 4.5-unit home region and a 3-unit influence circle around each operational, undamaged friendly FOB. Disabled or destroyed FOBs provide no territory influence until repaired.
 - Dogfighting pauses movement and route-distance accumulation. Interception and pursuit distance count against the same mission allowance.
 
 ## Mission Responsibility and Reactions
@@ -181,7 +182,7 @@ Current Adapt actions:
 - Buy exactly one main-airfield upgrade for `12` Logistics: **Maintenance Wing** reduces formation repair and replacement costs by one, or **Supply Depot** adds the recurring income above.
 - Build a decoy for `4`, AAA for `6`, SAM for `8`, or one-slot FOB for `8` Logistics.
 
-Construction must be inside friendly territory or persistent recovered mapping and at least 1.5 units from every friendly asset. Validation intentionally ignores hidden enemy positions and unrecovered world bounds. New SAM and AAA sites immediately participate in air defense. Decoys persist visually, but enemy strike and dynamic decoy-targeting gameplay are inactive.
+Construction must be inside the current friendly territory union or persistent recovered mapping and at least 1.5 units from every friendly asset. Operational FOBs extend that territory by a 3-unit influence circle; disabled or destroyed FOBs do not. Validation intentionally ignores hidden enemy positions and unrecovered world bounds. New SAM and AAA sites immediately participate in air defense. Decoys persist visually, but enemy strike and dynamic decoy-targeting gameplay are inactive.
 
 At round resolution, every non-trapped friendly formation loses readiness and ammunition (fighter: 12 readiness and 28 ammo; recon: 7 readiness and 8 ammo, with readiness floored at 25). This currently includes formations that did not launch or were destroyed. The values are displayed state but have no current authoritative effect and cannot be serviced through Adapt.
 
@@ -234,6 +235,7 @@ This log keeps only current net changes. Superseded intermediate states belong i
 ### 2026-09-20
 
 - Changed Deploy and Plan to a true top-down command-map camera so placement geometry, route direction, and range circles use an undistorted equal-scale presentation. Execute keeps its angled follow camera.
+- Added one shared friendly-territory union model: the starting home region plus 3-unit influence circles for operational FOBs. Placement validation, fog coverage, known-world bounds, camera framing, and battlefield overlays now reflect FOB expansion and remove disabled/destroyed FOB influence.
 - Verified the document against the live engine, route, basing, economy, setup, fog, UI, and deterministic tests. Removed superseded historical entries and corrected campaign force selection, live fighter damage, pursuit resolution, ground-defense resolution, inactive systems, and the current persistence defect.
 - Added the shared real-time aircraft reaction lifecycle: direct fighter combat interrupts recon pursuit; survivors are reassessed from current state without restoring hidden target intent; independent engagements can overlap without duplicate formation ownership; and accepted recon RTB commands remain authoritative during pursuit.
 - Removed the execution skip. Rounds now reach Debrief only through normal fixed-tick completion; 1× and 2× remain available.

@@ -1,4 +1,5 @@
 import type { Phase } from './types'
+import type { WorldBounds } from './types'
 
 export type CameraPresentationKind = 'command-map' | 'angled-battlefield'
 
@@ -41,4 +42,16 @@ export function commandMapFitZoom(
   const diameterWithPadding = Math.max(1, territoryRadius * 2 + COMMAND_MAP_PADDING)
   const fitZoom = Math.min(viewport.width / diameterWithPadding, viewport.height / diameterWithPadding)
   return Math.min(maximumZoom, Math.max(minimumZoom, fitZoom))
+}
+
+export function commandMapFitZoomForBounds(
+  viewport: { width: number; height: number },
+  bounds: WorldBounds,
+  minimumZoom: number,
+  maximumZoom = 64,
+): number {
+  const width=Math.max(1,bounds.maxX-bounds.minX+COMMAND_MAP_PADDING)
+  const height=Math.max(1,bounds.maxZ-bounds.minZ+COMMAND_MAP_PADDING)
+  const fitZoom=Math.min(viewport.width/width,viewport.height/height)
+  return Math.min(maximumZoom,Math.max(minimumZoom,fitZoom))
 }
