@@ -13,7 +13,7 @@ describe('radar ownership',()=>{
       ...initial,
       playerAssets:initial.playerAssets.map(asset=>asset.kind==='radar'?{...asset,health:0}:asset),
       squadrons:initial.squadrons.map(squadron=>squadron.id==='raven'
-        ?{...squadron,aggression:'conservative' as const,route,routeIngress:route}
+        ?{...squadron,mission:'search-area' as const,route,routeIngress:route}
         :{...squadron,aircraft:0,strength:0}),
     }
     const result=resolveRound(match)

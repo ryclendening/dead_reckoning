@@ -12,3 +12,6 @@ Before planning or changing gameplay, combat, balance, doctrine, aircraft roles,
 - If the document disagrees with the code, verify the behavior in code, correct the document, and call out the discrepancy in the handoff.
 - Do not rely on the README alone for current mechanics; it contains historical and aspirational design material.
 
+## Browser Testing Permission
+
+Never perform browser-control testing, including automated browser interaction, screenshots, visual QA, or browser-based UI checks, without obtaining the user's explicit permission first. Do not treat a general request to test or verify changes as permission to use browser control; ask specifically before starting it.

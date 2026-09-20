@@ -1,21 +1,19 @@
-import type { Point, Role, RouteTemplateId } from './types'
+import type { MissionId, Point, Role } from './types'
 import { missionDistance } from './engine'
 
 export interface RouteBounds { minX:number; maxX:number; minZ:number; maxZ:number }
-export interface RouteTemplateDefinition { id:RouteTemplateId; label:string; shortLabel:string; description:string; roles:Role[]; requiresTarget:boolean }
+export interface RouteTemplateDefinition { id:MissionId; label:string; shortLabel:string; description:string; roles:Role[]; requiresTarget:boolean }
 export type RouteAdjustment = 'none' | 'pattern-shrunk' | 'ingress-shortened'
 export interface RouteGenerationResult { route:Point[]; ingress:Point[]; adjustment:RouteAdjustment }
 
 export const ROUTE_TEMPLATES:RouteTemplateDefinition[]=[
-  {id:'custom',label:'Custom',shortLabel:'CUSTOM',description:'Draw a route freely on the map.',roles:['fighter','recon'],requiresTarget:false},
-  {id:'defensive-cap',label:'Defensive CAP',shortLabel:'DEFENSIVE CAP',description:'Append a compact patrol station at the end of the drawn ingress.',roles:['fighter'],requiresTarget:true},
-  {id:'forward-patrol',label:'Forward Patrol',shortLabel:'FORWARD PATROL',description:'Append a wider forward patrol at the end of the drawn ingress.',roles:['fighter'],requiresTarget:true},
-  {id:'search-area',label:'Search Area',shortLabel:'SEARCH AREA',description:'Append an exploration sweep at the end of the drawn ingress.',roles:['recon'],requiresTarget:true},
-  {id:'deep-probe',label:'Deep Probe',shortLabel:'DEEP PROBE',description:'Use the drawn ingress as a direct probe with no extra sweep.',roles:['recon'],requiresTarget:true},
+  {id:'defensive-cap',label:'Defensive CAP',shortLabel:'DEFENSIVE CAP',description:'Patrol a 4.5-unit defended area and intercept known contacts inside it.',roles:['fighter'],requiresTarget:true},
+  {id:'forward-patrol',label:'Forward Patrol',shortLabel:'FORWARD PATROL',description:'Screen the full route and intercept known contacts within 2.5 units.',roles:['fighter'],requiresTarget:true},
+  {id:'search-area',label:'Search Area',shortLabel:'SEARCH AREA',description:'Fixed search pattern appended at the chosen location.',roles:['recon'],requiresTarget:true},
 ]
 
 export const templatesForRole=(role:Role)=>ROUTE_TEMPLATES.filter(template=>template.roles.includes(role))
-export const templateFor=(id:RouteTemplateId)=>ROUTE_TEMPLATES.find(template=>template.id===id)??ROUTE_TEMPLATES[0]
+export const templateFor=(id:MissionId)=>ROUTE_TEMPLATES.find(template=>template.id===id)??ROUTE_TEMPLATES[0]
 
 const distance=(a:Point,b:Point)=>Math.hypot(a[0]-b[0],a[1]-b[1])
 const clamp=(value:number,min:number,max:number)=>Math.max(min,Math.min(max,value))
@@ -35,8 +33,8 @@ function offset(center:Point,forward:Point,side:Point,forwardAmount:number,sideA
 }
 
 function patrolLoop(center:Point,forward:Point,side:Point,sideRadius:number,forwardRadius:number):Point[]{
-  return Array.from({length:9},(_,index)=>{
-    const angle=-Math.PI/2+index*Math.PI*2/8
+  return Array.from({length:33},(_,index)=>{
+    const angle=-Math.PI/2+index*Math.PI*2/32
     return offset(center,forward,side,Math.sin(angle)*forwardRadius,Math.cos(angle)*sideRadius)
   })
 }
@@ -52,12 +50,11 @@ function searchSweep(center:Point,forward:Point,side:Point,sideRadius:number,for
   return passes
 }
 
-function build(template:RouteTemplateId,ingress:Point[],patternScale:number):Point[]{
+function build(template:MissionId,ingress:Point[],patternScale:number):Point[]{
   const base=ingress[0]
   const target=ingress.at(-1)!
-  if(template==='custom'||template==='deep-probe')return ingress
   const {forward,side}=basis(base,target)
-  if(template==='defensive-cap')return [...ingress,...patrolLoop(target,forward,side,.95*patternScale,.5*patternScale)]
+  if(template==='defensive-cap')return [...ingress,...patrolLoop(target,forward,side,4.5*patternScale,4.5*patternScale)]
   if(template==='forward-patrol'){
     const patrolCenter=add(target,scale(forward,.55*patternScale))
     return [...ingress,...patrolLoop(patrolCenter,forward,side,1.55*patternScale,.42*patternScale)]
@@ -81,11 +78,10 @@ function prefixAtRatio(route:Point[],ratio:number):Point[]{
   return prefix
 }
 
-export function generateRouteTemplate({template,ingress,maxDistance,bounds}:{template:RouteTemplateId;ingress:Point[];maxDistance:number;bounds:RouteBounds}):RouteGenerationResult{
+export function generateRouteTemplate({template,ingress,maxDistance,bounds}:{template:MissionId;ingress:Point[];maxDistance:number;bounds:RouteBounds}):RouteGenerationResult{
   const safeIngress=ingress.map(point=>clampPoint(point,bounds))
   const base=safeIngress[0]??[0,0] as Point
   if(safeIngress.length<2)return {route:safeIngress,ingress:safeIngress,adjustment:'none'}
-  if(template==='custom')return {route:safeIngress,ingress:safeIngress,adjustment:'none'}
   const initial=build(template,safeIngress,1)
   if(valid(initial,base,maxDistance,bounds))return {route:initial,ingress:safeIngress,adjustment:'none'}
 
@@ -98,7 +94,6 @@ export function generateRouteTemplate({template,ingress,maxDistance,bounds}:{tem
   if(low>.25+.0001){
     return {route:build(template,safeIngress,low),ingress:safeIngress,adjustment:'pattern-shrunk'}
   }
-
   low=0;high=1
   for(let index=0;index<24;index++){
     const midpoint=(low+high)/2

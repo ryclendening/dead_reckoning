@@ -5,9 +5,9 @@ import { formationStatus } from './formationStatus'
 import type { Squadron } from './types'
 
 const squadron = (overrides: Partial<Squadron> = {}): Squadron => ({
-  id: 'test', callsign: 'TEST 1', role: 'fighter', mission: 'CAP', aggression: 'neutral',
-  targetPriority: 'opportunity', aircraft: 4, maxAircraft: 4, damaged: 0, readiness: 88, ammo: 76,
-  route: [[0, 0], [1, 1]], routeIngress: [[0, 0], [1, 1]], routeTemplate: 'custom',
+  id: 'test', callsign: 'TEST 1', role: 'fighter', mission: 'defensive-cap',
+  aircraft: 4, maxAircraft: 4, damaged: 0, readiness: 88, ammo: 76,
+  route: [[0, 0], [1, 1]], routeIngress: [[0, 0], [1, 1]],
   ...overrides,
 })
 
