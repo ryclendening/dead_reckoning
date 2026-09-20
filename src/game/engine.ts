@@ -5,6 +5,7 @@ import { boundarySegmentsObservedAt, intersectMovementWithWorld, mergeBoundarySe
 import { deriveLogisticsIncome, settleLogisticsIncome } from './economy'
 import { applyRecoveryOutcomesToBasing, formationField, isOperationalAirfield, nearestReachableAlternate, normalizeFormationBasing, setAirfieldOperational } from './forwardBasing'
 import { nearestResponsibleContact } from './missionResponsibility'
+import { decideReaction } from './reactionLifecycle'
 
 export const SENSOR_RANGE: Record<Squadron['role'], number>={fighter:4.2,recon:4.9}
 export const RADAR_RANGE=6.4
@@ -68,7 +69,17 @@ function routePoint(route:Point[],progress:number):Point{
 function timedRoutePoint(route:Point[],role:Squadron['role'],timeProgress:number){const length=Math.max(.001,routeDistance(route));return routePoint(route,Math.min(1,timeProgress*MAX_FLIGHT_DISTANCE[role]/length))}
 function closestRouteProgress(route:Point[],point:Point){let best={distance:Infinity,progress:0,point:route[0]??[0,0] as Point};for(let i=0;i<=80;i++){const progress=i/80;const sample=routePoint(route,progress);const d=distance(sample,point);if(d<best.distance)best={distance:d,progress,point:sample}}return best}
 function playerBase(state:MatchState):Point{return state.playerAssets.find(a=>a.kind==='base')?.position??[-7.8,11.2]}
-function enemyFlights(state:MatchState):EnemyFlight[]{const fighterRecon=state.debugScenario==='fighter-recon',fobScenario=state.debugScenario?.startsWith('fob-')??false,reconFixture=state.debugScenario?.startsWith('recon-')??false,isolatedTwoVsOne=state.debugScenario==='fighter-2v1',enemyBase=enemyBaseFor(state.world),friendlyBase=playerBase(state);const toward=(factor:number):Point=>[enemyBase[0]+(friendlyBase[0]-enemyBase[0])*factor,enemyBase[1]+(friendlyBase[1]-enemyBase[1])*factor];const fighterTurn=toward(.56),reconTurn=toward(.7);const geometryRoute=state.debugScenario==='fighter-tail'?[[friendlyBase[0]+.9,friendlyBase[1]] as Point,[friendlyBase[0]+8,friendlyBase[1]] as Point]:state.debugScenario==='fighter-head-on'?[[friendlyBase[0]+.9,friendlyBase[1]] as Point,[friendlyBase[0]-8,friendlyBase[1]] as Point]:state.debugScenario==='fighter-reversed'?[[friendlyBase[0]-.9,friendlyBase[1]] as Point,[friendlyBase[0]+8,friendlyBase[1]] as Point]:undefined;const fighterInactive=fighterRecon||fobScenario||reconFixture;return [
+function enemyFlights(state:MatchState):EnemyFlight[]{const fighterRecon=state.debugScenario==='fighter-recon',fobScenario=state.debugScenario?.startsWith('fob-')??false,reconFixture=state.debugScenario?.startsWith('recon-')??false,isolatedTwoVsOne=state.debugScenario==='fighter-2v1',enemyBase=enemyBaseFor(state.world),friendlyBase=playerBase(state);const toward=(factor:number):Point=>[enemyBase[0]+(friendlyBase[0]-enemyBase[0])*factor,enemyBase[1]+(friendlyBase[1]-enemyBase[1])*factor];const fighterTurn=toward(.56),reconTurn=toward(.7);const vector:Point=[enemyBase[0]-friendlyBase[0],enemyBase[1]-friendlyBase[1]],length=Math.max(.001,Math.hypot(vector[0],vector[1])),forward:Point=[vector[0]/length,vector[1]/length],side:Point=[-forward[1],forward[0]];const offset=(ahead:number,lateral=0):Point=>[friendlyBase[0]+forward[0]*ahead+side[0]*lateral,friendlyBase[1]+forward[1]*ahead+side[1]*lateral]
+  if(state.debugScenario==='reaction-interrupt')return [
+    {id:'red-fighter',callsign:'BOGEY 1',role:'fighter',aircraft:4,initialAircraft:4,strength:100,morale:74,status:'enroute',target:'decoy',route:[offset(5),friendlyBase],detectionWindows:[]},
+    {id:'red-recon',callsign:'SPECTER',role:'recon',aircraft:2,initialAircraft:2,strength:100,morale:70,status:'enroute',target:'base',route:[offset(1),offset(16)],detectionWindows:[]},
+  ]
+  if(state.debugScenario==='parallel-engagements')return [-4,4].map((lateral,index)=>({id:index===0?'red-fighter':'red-fighter-2',callsign:`BOGEY ${index+1}`,role:'fighter' as const,aircraft:4,initialAircraft:4,strength:100,morale:74,status:'enroute' as const,target:'decoy',route:[offset(.9,lateral),friendlyBase],detectionWindows:[]}))
+  if(state.debugScenario==='recon-pursuit')return [
+    {id:'red-fighter',callsign:'BOGEY 1',role:'fighter',aircraft:4,initialAircraft:4,strength:100,morale:74,status:'enroute',target:'decoy',route:[offset(.9),offset(15)],detectionWindows:[]},
+    {id:'red-recon',callsign:'SPECTER',role:'recon',aircraft:0,initialAircraft:0,strength:0,morale:70,status:'destroyed',target:'base',route:[enemyBase,enemyBase],detectionWindows:[]},
+  ]
+  const geometryRoute=state.debugScenario==='fighter-tail'?[[friendlyBase[0]+.9,friendlyBase[1]] as Point,[friendlyBase[0]+8,friendlyBase[1]] as Point]:state.debugScenario==='fighter-head-on'?[[friendlyBase[0]+.9,friendlyBase[1]] as Point,[friendlyBase[0]-8,friendlyBase[1]] as Point]:state.debugScenario==='fighter-reversed'?[[friendlyBase[0]-.9,friendlyBase[1]] as Point,[friendlyBase[0]+8,friendlyBase[1]] as Point]:undefined;const fighterInactive=fighterRecon||fobScenario||reconFixture;return [
   {id:'red-fighter',callsign:'BOGEY 1',role:'fighter',aircraft:fighterInactive?0:4,initialAircraft:fighterInactive?0:4,strength:fighterInactive?0:100,morale:74,status:fighterInactive?'destroyed':'enroute',target:'decoy',route:geometryRoute??[enemyBase,toward(.27),fighterTurn,toward(.4),fighterTurn,toward(.27),enemyBase],detectionWindows:[]},
   {id:'red-recon',callsign:'SPECTER',role:'recon',aircraft:isolatedTwoVsOne||fobScenario?0:2,initialAircraft:isolatedTwoVsOne||fobScenario?0:2,strength:isolatedTwoVsOne||fobScenario?0:100,morale:70,status:isolatedTwoVsOne||fobScenario?'destroyed':'enroute',target:'base',route:fighterRecon?[enemyBase,toward(.25),toward(.72),friendlyBase,toward(.72),toward(.25),enemyBase]:[enemyBase,toward(.3),reconTurn,toward(.38),reconTurn,toward(.3),enemyBase],detectionWindows:[]},
 ]}
@@ -148,7 +159,7 @@ export function battleScoreAt(result:RoundResult,seconds:number){return result.e
 export function attritionCreditAt(result:RoundResult,seconds:number){return result.events.reduce((score,event)=>event.time<=seconds&&(event.title==='AIRCRAFT LOST'||event.title==='ENEMY AIRCRAFT LOST')?score+2:score,0)}
 export function supportCreditsAt(result:RoundResult,seconds:number){return Math.max(0,battleScoreAt(result,seconds)+attritionCreditAt(result,seconds)-result.reinforcementCalls.reduce((sum,call)=>sum+call.scoreCost,0))}
 
-type SimUnit={id:string;callsign:string;role:Role;friendly:boolean;position:Point;facing:Point;route:Point[];waypoint:number;mode:FlightMode;targetId?:string;strength:number;morale:number;aircraft:number;maxAircraft:number;traveled:number;frames:UnitFrame[];observed:Set<string>;boundaryObservations:import('./types').BoundarySegment[];source:Squadron|EnemyFlight;launchFieldId?:string;plannedFieldId?:string;recoveryFieldId?:string;diverted?:boolean;trapped?:boolean;strandedCenter?:Point;strandedAngle?:number}
+type SimUnit={id:string;callsign:string;role:Role;friendly:boolean;position:Point;facing:Point;route:Point[];waypoint:number;mode:FlightMode;targetId?:string;strength:number;morale:number;aircraft:number;maxAircraft:number;traveled:number;frames:UnitFrame[];observed:Set<string>;boundaryObservations:import('./types').BoundarySegment[];source:Squadron|EnemyFlight;launchFieldId?:string;plannedFieldId?:string;recoveryFieldId?:string;recoveryCommanded?:boolean;diverted?:boolean;trapped?:boolean;strandedCenter?:Point;strandedAngle?:number}
 type AirContact={target:SimUnit;source:'radar'|'visual'}
 type TransitionUnit=(unit:SimUnit,mode:FlightMode,time:number,reason:string,targetId?:string,source?:'radar'|'visual')=>void
 type AddCombatEvent=(tone:CombatEvent['tone'],title:string,detail:string,position?:Point,time?:number)=>void
@@ -156,12 +167,12 @@ type EngagementKind='dogfight'|'pursuit'
 interface EngagementRule {kind:EngagementKind;startRange:number}
 interface OpeningAttack {attackerId:string;defenderId:string;hit:boolean;probability:CombatProbabilityRecord;impactTime:number;resolved:boolean}
 interface ActiveEngagement {
-  kind:EngagementKind;attacker:SimUnit;target:SimUnit;location:Point;start:number;nextExchange:number;exchanges:CombatExchange[];effects:WeaponEffect[]
+  id:string;kind:EngagementKind;attacker:SimUnit;target:SimUnit;location:Point;start:number;nextExchange:number;exchanges:CombatExchange[];effects:WeaponEffect[]
   participants:SimUnit[];initialParticipants:Record<string,{strength:number;aircraft:number}>;joinedAt:Record<string,number>;exitedAt:Record<string,number>
   positionalAssessments:FighterPositionalAssessment[];openingAttack?:OpeningAttack;mergedAt?:number
   nextSide:'friendly'|'hostile';sideAttackCursor:Record<'friendly'|'hostile',number>
 }
-interface EngagementUpdate {active?:ActiveEngagement;roll:number;sequence?:CombatSequence;effects:WeaponEffect[]}
+interface EngagementUpdate {active?:ActiveEngagement;roll:number;sequence?:CombatSequence;effects:WeaponEffect[];released:SimUnit[]}
 export const TICK_SECONDS=.05
 const point=(a:Point,b:Point,d:number):Point=>{const l=distance(a,b);return l<=d?[...b] as Point:[a[0]+(b[0]-a[0])*d/l,a[1]+(b[1]-a[1])*d/l]}
 const terminal=(u:SimUnit)=>u.mode==='recovered'||u.mode==='trapped'||u.mode==='destroyed'
@@ -187,17 +198,18 @@ function fighterAssessment(participant:SimUnit,opponent:SimUnit,time:number):Fig
   return {evaluatedAt:time,participantId:participant.id,opponentId:opponent.id,classification:evaluation.classification,participantPosition:[...participant.position] as Point,participantHeading,opponentPosition:[...opponent.position] as Point,opponentHeading,evaluation}
 }
 
-function startAirEngagement(attacker:SimUnit,target:SimUnit,time:number,transition:TransitionUnit,add:AddCombatEvent){
+function createActiveEngagement(id:string,kind:EngagementKind,attacker:SimUnit,target:SimUnit,time:number,transition:TransitionUnit,add:AddCombatEvent){
   const rule=engagementRuleFor(attacker,target)
-  if(!rule||attacker.mode!=='intercepting'||terminal(target)||distance(attacker.position,target.position)>rule.startRange)return undefined
+  if(!rule||rule.kind!==kind||terminal(attacker)||terminal(target)||distance(attacker.position,target.position)>rule.startRange)return undefined
   const location:Point=[(attacker.position[0]+target.position[0])/2,(attacker.position[1]+target.position[1])/2]
-  const positionalAssessments=rule.kind==='dogfight'?[fighterAssessment(attacker,target,time),fighterAssessment(target,attacker,time)]:[]
-  if(rule.kind==='dogfight'){
+  const positionalAssessments=kind==='dogfight'?[fighterAssessment(attacker,target,time),fighterAssessment(target,attacker,time)]:[]
+  if(kind==='dogfight'){
     transition(attacker,'dogfighting',time,'opening-fire',target.id,'visual');transition(target,'dogfighting',time,'opening-fire',attacker.id,'visual');add('danger','FIGHTERS COMMIT',`${attacker.callsign} and ${target.callsign} enter opening-fire range.`,location,time)
   }else{
-    transition(attacker,'attacking-recon',time,'recon-intercept',target.id,'visual');add('friendly','RECON UNDER PURSUIT',`${attacker.callsign} pursues ${target.callsign}; weapons fire only while the recon flight remains in close range.`,location,time)
+    if(attacker.friendly&&attacker.mode!=='intercepting')return undefined
+    transition(attacker,'attacking-recon',time,'recon-intercept',target.id,'visual');add(attacker.friendly?'friendly':'danger','RECON UNDER PURSUIT',`${attacker.callsign} pursues ${target.callsign}; weapons fire only while the recon flight remains in close range.`,location,time)
   }
-  return {kind:rule.kind,attacker,target,location,start:time,nextExchange:time,exchanges:[],effects:[],participants:[attacker,target],initialParticipants:{[attacker.id]:{strength:attacker.strength,aircraft:attacker.aircraft},[target.id]:{strength:target.strength,aircraft:target.aircraft}},joinedAt:{[attacker.id]:time,[target.id]:time},exitedAt:{},positionalAssessments,nextSide:fighterSide(attacker),sideAttackCursor:{friendly:0,hostile:0}} satisfies ActiveEngagement
+  return {id,kind,attacker,target,location,start:time,nextExchange:time,exchanges:[],effects:[],participants:[attacker,target],initialParticipants:{[attacker.id]:{strength:attacker.strength,aircraft:attacker.aircraft},[target.id]:{strength:target.strength,aircraft:target.aircraft}},joinedAt:{[attacker.id]:time,[target.id]:time},exitedAt:{},positionalAssessments,nextSide:fighterSide(attacker),sideAttackCursor:{friendly:0,hostile:0}} satisfies ActiveEngagement
 }
 
 function joinDogfightEngagement(engagement:ActiveEngagement,joiner:SimUnit,target:SimUnit,time:number,transition:TransitionUnit,add:AddCombatEvent){
@@ -209,8 +221,8 @@ function joinDogfightEngagement(engagement:ActiveEngagement,joiner:SimUnit,targe
   return true
 }
 
-function updateDogfightEngagement(engagement:ActiveEngagement,time:number,roll:number,index:number,transition:TransitionUnit,add:AddCombatEvent):EngagementUpdate{
-  if(time<engagement.nextExchange)return {active:engagement,roll,effects:[]}
+function updateDogfightEngagement(engagement:ActiveEngagement,time:number,roll:number,_index:number,transition:TransitionUnit,add:AddCombatEvent):EngagementUpdate{
+  if(time<engagement.nextExchange)return {active:engagement,roll,effects:[],released:[]}
   const living=(side:'friendly'|'hostile')=>engagement.participants.filter(participant=>fighterSide(participant)===side&&!terminal(participant)&&participant.strength>0)
   const destroyParticipant=(participant:SimUnit,reason:string,at=time)=>{participant.strength=0;participant.morale=0;participant.aircraft=0;engagement.exitedAt[participant.id]=at;transition(participant,'destroyed',at,reason)}
   const completeIfResolved=():EngagementUpdate|undefined=>{
@@ -225,7 +237,7 @@ function updateDogfightEngagement(engagement:ActiveEngagement,time:number,roll:n
     const phases=engagement.mergedAt===undefined?[{kind:'opening-fire' as const,start:engagement.start,end:openingEnd},{kind:'resolved' as const,start:time,end:time}]:[{kind:'opening-fire' as const,start:engagement.start,end:openingEnd},{kind:'merged' as const,start:engagement.mergedAt,end:time},{kind:'resolved' as const,start:time,end:time}]
     const participantRecords=engagement.participants.map(participant=>({id:participant.id,side:fighterSide(participant),joinedAt:engagement.joinedAt[participant.id],exitedAt:engagement.exitedAt[participant.id]??time,initialStrength:engagement.initialParticipants[participant.id].strength,finalStrength:participant.strength,initialAircraft:engagement.initialParticipants[participant.id].aircraft,finalAircraft:participant.aircraft,finalDisposition:finalDisposition[participant.id]}))
     const engagementRecord=createFighterEngagementRecord({start:engagement.start,end:time,phases,positionalAssessments:engagement.positionalAssessments,participants:participantRecords})
-    return {roll,effects:engagement.effects,sequence:{id:`dogfight-${index}`,kind:'dogfight',participantIds:[...engagementRecord.sides.friendly,...engagementRecord.sides.hostile],location:engagement.location,start:engagement.start,end:time,exchanges:engagement.exchanges,finalDisposition,engagement:engagementRecord}}
+    return {roll,effects:engagement.effects,released:survivors,sequence:{id:engagement.id,kind:'dogfight',participantIds:[...engagementRecord.sides.friendly,...engagementRecord.sides.hostile],location:engagement.location,start:engagement.start,end:time,exchanges:engagement.exchanges,finalDisposition,engagement:engagementRecord}}
   }
   if(!engagement.openingAttack){
     const [firstAssessment,secondAssessment]=engagement.positionalAssessments
@@ -239,24 +251,24 @@ function updateDogfightEngagement(engagement:ActiveEngagement,time:number,roll:n
     const resolved=resolveFighterHitProbability({baseHitProbability:FIGHTER_OPENING_MISSILE_HIT_PROBABILITY,modifiers:[{source:'position',key:`${attackerAssessment.classification}-position`,delta:positionDelta}]},rand(roll))
     const impactTime=time+.62
     engagement.openingAttack={attackerId:openingAttacker.id,defenderId:openingDefender.id,hit:resolved.hit,probability:resolved.probability,impactTime,resolved:false}
-    engagement.effects.push(weapon(`weapon-opening-${index}`, 'air-to-air-missile',openingAttacker.id,openingDefender.id,time,[...openingAttacker.position] as Point,[...openingDefender.position] as Point,resolved.hit,FIGHTER_OPENING_MISSILE_DAMAGE))
+    engagement.effects.push(weapon(`weapon-opening-${engagement.id}`, 'air-to-air-missile',openingAttacker.id,openingDefender.id,time,[...openingAttacker.position] as Point,[...openingDefender.position] as Point,resolved.hit,FIGHTER_OPENING_MISSILE_DAMAGE))
     engagement.nextExchange=impactTime
     add(openingAttacker.friendly?'friendly':'danger','OPENING MISSILE',`${openingAttacker.callsign} takes ${attackerAssessment.classification.toUpperCase()} initiative and fires before the merge.`,engagement.location,time)
-    return {active:engagement,roll,effects:[]}
+    return {active:engagement,roll,effects:[],released:[]}
   }
   if(!engagement.openingAttack.resolved){
     const openingAttacker=engagement.participants.find(participant=>participant.id===engagement.openingAttack!.attackerId)!
     const openingDefender=engagement.participants.find(participant=>participant.id===engagement.openingAttack!.defenderId)!
     const amount=engagement.openingAttack.hit?FIGHTER_OPENING_MISSILE_DAMAGE:0
     const applied=engagement.openingAttack.hit?damage(openingDefender,amount,false):{strength:openingDefender.strength,morale:openingDefender.morale}
-    engagement.exchanges.push({id:`opening-${index}`,time:engagement.openingAttack.impactTime,attackerId:openingAttacker.id,defenderId:openingDefender.id,weapon:'air-to-air-missile',damage:amount,moraleDamage:amount*.6,hit:engagement.openingAttack.hit,position:engagement.location,targetStrength:applied.strength,targetMorale:applied.morale,probability:engagement.openingAttack.probability,resolution:'probability',phase:'opening-fire'})
+    engagement.exchanges.push({id:`${engagement.id}-opening`,time:engagement.openingAttack.impactTime,attackerId:openingAttacker.id,defenderId:openingDefender.id,weapon:'air-to-air-missile',damage:amount,moraleDamage:amount*.6,hit:engagement.openingAttack.hit,position:engagement.location,targetStrength:applied.strength,targetMorale:applied.morale,probability:engagement.openingAttack.probability,resolution:'probability',phase:'opening-fire'})
     engagement.openingAttack.resolved=true
     if(openingDefender.strength<=0){destroyParticipant(openingDefender,'opening-fire-loss',engagement.openingAttack.impactTime);add(openingAttacker.friendly?'friendly':'danger','OPENING-FIRE KILL',`${openingAttacker.callsign} destroys ${openingDefender.callsign} before the merge.`,engagement.location,engagement.openingAttack.impactTime);const completed=completeIfResolved();if(completed)return completed}
-    engagement.mergedAt=engagement.openingAttack.impactTime;engagement.nextExchange=engagement.openingAttack.impactTime+.35;add('danger','DOGFIGHT MERGED',`${living('friendly').length} friendly and ${living('hostile').length} hostile formations enter sustained combat.`,engagement.location,engagement.openingAttack.impactTime);return {active:engagement,roll,effects:[]}
+    engagement.mergedAt=engagement.openingAttack.impactTime;engagement.nextExchange=engagement.openingAttack.impactTime+.35;add('danger','DOGFIGHT MERGED',`${living('friendly').length} friendly and ${living('hostile').length} hostile formations enter sustained combat.`,engagement.location,engagement.openingAttack.impactTime);return {active:engagement,roll,effects:[],released:[]}
   }
   const actingSide=living(engagement.nextSide).length?engagement.nextSide:engagement.nextSide==='friendly'?'hostile':'friendly'
   const attackers=living(actingSide);const defenders=living(actingSide==='friendly'?'hostile':'friendly')
-  if(!attackers.length||!defenders.length){const completed=completeIfResolved();if(completed)return completed;return {active:engagement,roll,effects:[]}}
+  if(!attackers.length||!defenders.length){const completed=completeIfResolved();if(completed)return completed;return {active:engagement,roll,effects:[],released:[]}}
   const attacker=attackers[engagement.sideAttackCursor[actingSide]%attackers.length];engagement.sideAttackCursor[actingSide]+=1
   const defender=[...defenders].sort((left,right)=>left.strength-right.strength||engagement.joinedAt[left.id]-engagement.joinedAt[right.id]||left.id.localeCompare(right.id))[0]
   engagement.nextSide=actingSide==='friendly'?'hostile':'friendly'
@@ -264,28 +276,28 @@ function updateDogfightEngagement(engagement:ActiveEngagement,time:number,roll:n
   // Inverting the existing seeded value preserves the prior `rand(seed) > .31`
   // behavior while exposing the conventional `roll < probability` record.
   const numerical=evaluateFighterNumericalAdvantage(calculateFighterSidePower(attackers),calculateFighterSidePower(defenders));const resolved=resolveFighterHitProbability({baseHitProbability:FIGHTER_SUSTAINED_GUN_HIT_PROBABILITY,modifiers:[{source:'numbers',key:numerical.classification,delta:numerical.hitProbabilityDelta}]},1-rand(roll));const amount=resolved.hit?22:0
-  const applied=resolved.hit?damage(defender,amount,false):{strength:defender.strength,morale:defender.morale};engagement.exchanges.push({id:`fight-${engagement.exchanges.length}`,time,attackerId:attacker.id,defenderId:defender.id,weapon:'gun',damage:amount,moraleDamage:amount*.6,hit:resolved.hit,position:engagement.location,targetStrength:applied.strength,targetMorale:applied.morale,probability:resolved.probability,numericalAssessment:numerical,resolution:'probability',phase:'merged'});engagement.nextExchange=time+.35
+  const applied=resolved.hit?damage(defender,amount,false):{strength:defender.strength,morale:defender.morale};engagement.exchanges.push({id:`${engagement.id}-fight-${engagement.exchanges.length}`,time,attackerId:attacker.id,defenderId:defender.id,weapon:'gun',damage:amount,moraleDamage:amount*.6,hit:resolved.hit,position:engagement.location,targetStrength:applied.strength,targetMorale:applied.morale,probability:resolved.probability,numericalAssessment:numerical,resolution:'probability',phase:'merged'});engagement.nextExchange=time+.35
   if(defender.strength<=0){destroyParticipant(defender,'dogfight-loss',time);add(attacker.friendly?'friendly':'danger','FIGHTER FORMATION LOST',`${attacker.callsign} destroys ${defender.callsign}; the shared engagement continues if both sides remain.`,engagement.location,time)}
   const completed=completeIfResolved();if(completed)return completed
-  return {active:engagement,roll,effects:[]}
+  return {active:engagement,roll,effects:[],released:[]}
 }
 
-function updatePursuitEngagement(engagement:ActiveEngagement,time:number,roll:number,round:number,index:number,transition:TransitionUnit,add:AddCombatEvent):EngagementUpdate{
+function updatePursuitEngagement(engagement:ActiveEngagement,time:number,roll:number,_round:number,_index:number,transition:TransitionUnit,add:AddCombatEvent):EngagementUpdate{
   const range=distance(engagement.attacker.position,engagement.target.position);const canStrike=!terminal(engagement.target)&&engagement.attacker.mode==='attacking-recon'&&range<=FIGHTER_MERGE_RANGE
-  if(canStrike&&time>=engagement.nextExchange){const kind:WeaponKind=engagement.exchanges.length%2===0?'air-to-air-missile':'gun';const hit=rand(roll++)<.68;const amount=hit?(kind==='gun'?Math.round(12+rand(roll++)*7):Math.round(26+rand(roll++)*12)):0;const applied=hit?damage(engagement.target,amount):{strength:engagement.target.strength,morale:engagement.target.morale};engagement.exchanges.push({id:`pursuit-${round}-${index}-${engagement.exchanges.length}`,time,attackerId:engagement.attacker.id,defenderId:engagement.target.id,weapon:kind,damage:amount,moraleDamage:hit?8:0,hit,position:[...engagement.target.position] as Point,targetStrength:applied.strength,targetMorale:applied.morale});engagement.effects.push(weapon(`weapon-pursuit-${round}-${index}-${engagement.exchanges.length}`,kind,engagement.attacker.id,engagement.target.id,time-.16,[...engagement.attacker.position] as Point,[...engagement.target.position] as Point,hit,amount));engagement.nextExchange=time+.5
+  if(canStrike&&time>=engagement.nextExchange){const kind:WeaponKind=engagement.exchanges.length%2===0?'air-to-air-missile':'gun';const hit=rand(roll++)<.68;const amount=hit?(kind==='gun'?Math.round(12+rand(roll++)*7):Math.round(26+rand(roll++)*12)):0;const applied=hit?damage(engagement.target,amount):{strength:engagement.target.strength,morale:engagement.target.morale};const exchangeIndex=engagement.exchanges.length;engagement.exchanges.push({id:`${engagement.id}-exchange-${exchangeIndex}`,time,attackerId:engagement.attacker.id,defenderId:engagement.target.id,weapon:kind,damage:amount,moraleDamage:hit?8:0,hit,position:[...engagement.target.position] as Point,targetStrength:applied.strength,targetMorale:applied.morale});engagement.effects.push(weapon(`weapon-${engagement.id}-${exchangeIndex}`,kind,engagement.attacker.id,engagement.target.id,time-.16,[...engagement.attacker.position] as Point,[...engagement.target.position] as Point,hit,amount));engagement.nextExchange=time+.5
     if(engagement.target.aircraft<=0){transition(engagement.target,'destroyed',time,'fighter-pursuit');add('friendly','RECON DESTROYED',`${engagement.attacker.callsign} destroys ${engagement.target.callsign} in pursuit.`,engagement.target.position,time)}
   }
   const escaped=!terminal(engagement.target)&&range>effectiveSensorRange(engagement.attacker.source as Squadron);const complete=terminal(engagement.target)||engagement.exchanges.length>=4||escaped||engagement.attacker.mode!=='attacking-recon'
-  if(!complete)return {active:engagement,roll,effects:[]}
+  if(!complete)return {active:engagement,roll,effects:[],released:[]}
   if(engagement.attacker.mode==='attacking-recon'){
     // Pursuit is only a temporary diversion. Resume the assigned CAP/patrol
     // route after either outcome; the normal movement fuel-reserve check will
     // transition the fighter to recovery if the diversion used its remaining
     // range.
-    transition(engagement.attacker,'following-route',time,terminal(engagement.target)?'recon-destroyed':'recon-escaped')
+    transition(engagement.attacker,'following-route',time,engagement.target.mode==='destroyed'?'recon-destroyed':'recon-escaped')
   }
-  if(!terminal(engagement.target))add('warning','RECON ESCAPES PURSUIT',`${engagement.target.callsign} opens the distance and continues its mission.`,engagement.target.position,time)
-  return {roll,effects:engagement.effects,sequence:{id:`pursuit-${index}`,kind:'pursuit',participantIds:[engagement.attacker.id,engagement.target.id],location:engagement.location,start:engagement.start,end:time,exchanges:engagement.exchanges,finalDisposition:{[engagement.attacker.id]:engagement.attacker.mode==='destroyed'?'destroyed':'rtb',[engagement.target.id]:engagement.target.mode==='destroyed'?'destroyed':'enroute'}}}
+  if(engagement.target.mode!=='destroyed')add('warning','RECON ESCAPES PURSUIT',`${engagement.target.callsign} opens the distance and ${engagement.target.mode==='recovered'?'completes recovery':'continues its current route'}.`,engagement.target.position,time)
+  return {roll,effects:engagement.effects,released:[engagement.attacker,engagement.target].filter(unit=>!terminal(unit)),sequence:{id:engagement.id,kind:'pursuit',participantIds:[engagement.attacker.id,engagement.target.id],location:engagement.location,start:engagement.start,end:time,exchanges:engagement.exchanges,finalDisposition:{[engagement.attacker.id]:engagement.attacker.mode==='destroyed'?'destroyed':'enroute',[engagement.target.id]:engagement.target.mode==='destroyed'?'destroyed':engagement.target.mode==='recovering'?'rtb':'enroute'}}}
 }
 
 function updateAirEngagement(engagement:ActiveEngagement,time:number,roll:number,round:number,index:number,transition:TransitionUnit,add:AddCombatEvent){
@@ -300,7 +312,7 @@ function* simulateRoundTicks(state:MatchState):Generator<RoundResult,RoundResult
     const squadron=s as Squadron;const launch=formationField(playerAssets,squadron.id)??playerAssets.find(asset=>asset.kind==='base')!;const intended=playerAssets.find(asset=>asset.id===(squadron.plannedRecoveryFieldId??launch.id))??launch;const route:Point[]=[[...launch.position],...squadron.route.slice(1)];if(distance(route.at(-1)!,intended.position)>.03)route.push([...intended.position]);const trapped=launch.kind==='fob'&&launch.operational===false
     return {id:s.id,callsign:s.callsign,role:s.role,friendly:true,position:[...launch.position],facing:[...route[1]??launch.position],route,waypoint:1,mode:s.aircraft<=0?'destroyed':trapped?'trapped':'following-route',strength:strengthOf(s),morale:s.morale??70,aircraft:s.aircraft,maxAircraft:squadron.maxAircraft,traveled:0,frames:[],observed:new Set,boundaryObservations:[],source:s,launchFieldId:launch.id,plannedFieldId:squadron.plannedRecoveryFieldId??launch.id,recoveryFieldId:intended.id,...(trapped?{trapped:true}: {})}
   }
-  const units=[...squadrons.map(s=>make(s,true)),...flights.map(s=>make(s,false))]; const byId=new Map(units.map(u=>[u.id,u])); const openContacts=new Map<string,ContactInterval>(); const openReceipts=new Map<string,RadarTrackReceipt>(); const openBehavior=new Map<string,BehaviorInterval>(); const fired=new Set<string>(); let roll=state.seed+state.round*31; let activeEngagement:ActiveEngagement|undefined
+  const units=[...squadrons.map(s=>make(s,true)),...flights.map(s=>make(s,false))]; const byId=new Map(units.map(u=>[u.id,u])); const openContacts=new Map<string,ContactInterval>(); const openReceipts=new Map<string,RadarTrackReceipt>(); const openBehavior=new Map<string,BehaviorInterval>(); const fired=new Set<string>(); let roll=state.seed+state.round*31; let activeEngagements:ActiveEngagement[]=[];let engagementSerial=0
   const fieldClaims=new Map(playerAssets.filter(asset=>asset.kind==='fob').map(asset=>[asset.id,new Set<string>()]));for(const unit of units.filter(unit=>unit.friendly&&unit.aircraft>0)){const fieldId=unit.trapped?unit.launchFieldId:unit.recoveryFieldId;if(fieldId)fieldClaims.get(fieldId)?.add(unit.id)}
   const releaseClaim=(unit:SimUnit)=>{for(const ids of fieldClaims.values())ids.delete(unit.id)}
   const claim=(unit:SimUnit,fieldId:string)=>{releaseClaim(unit);fieldClaims.get(fieldId)?.add(unit.id)}
@@ -310,11 +322,11 @@ function* simulateRoundTicks(state:MatchState):Generator<RoundResult,RoundResult
   add('info','SORTIES AIRBORNE',`${units.filter(u=>u.friendly&&!u.trapped).reduce((n,u)=>n+u.aircraft,0)} aircraft committed.`,undefined,.8)
   for(const u of units)transition(u,u.mode,0,'round-start')
   record(0)
-  const liveResult=(duration:number):RoundResult=>({round:state.round,duration:Math.max(TICK_SECONDS,duration),tickSeconds:TICK_SECONDS,unitTracks:units.map(u=>({unitId:u.id,frames:u.frames})),contactIntervals:intervals,behaviorIntervals:behavior.map(item=>openBehavior.get(item.unitId)===item?{...item,end:duration}:item),events,squadrons,assets,enemyLosses:0,friendlyLosses:0,friendlyAttrition:[],enemyAttrition:[],friendlyFormationsDestroyed:0,enemyFormationsDestroyed:0,intelGained:[],baseDamage:0,enemyBaseDamage:0,logisticsIncome:{base:0,intel:0,enemyAircraft:0,total:0},command:state.command,executionRoutes:Object.fromEntries(units.map(u=>[u.id,u.frames.map(f=>f.position)])),enemyFlights:flights.map(f=>({...f,detectionWindows:intervals.filter(i=>i.targetId===f.id).map(i=>({start:i.start/Math.max(TICK_SECONDS,duration),end:i.end/Math.max(TICK_SECONDS,duration),source:i.source,observer:i.observerId}))})),defenseCues:[],defensiveAwareness:0,lessons:[],playerAssets,reinforcementCalls:[],roundScore:0,baseExposure:state.baseExposure,baseExposureDelta:0,combatSequences:sequences,weaponEffects:[...effects,...(activeEngagement?.effects??[])],contactObservations:observations,radarTrackReceipts:receipts,interceptPlans:plans,intelReports:[],mappedAreas:[],discoveredBoundaries:[],recoveryOutcomes:[],simulationCommands:commands,threatAlerts})
+  const liveResult=(duration:number):RoundResult=>({round:state.round,duration:Math.max(TICK_SECONDS,duration),tickSeconds:TICK_SECONDS,unitTracks:units.map(u=>({unitId:u.id,frames:u.frames})),contactIntervals:intervals,behaviorIntervals:behavior.map(item=>openBehavior.get(item.unitId)===item?{...item,end:duration}:item),events,squadrons,assets,enemyLosses:0,friendlyLosses:0,friendlyAttrition:[],enemyAttrition:[],friendlyFormationsDestroyed:0,enemyFormationsDestroyed:0,intelGained:[],baseDamage:0,enemyBaseDamage:0,logisticsIncome:{base:0,intel:0,enemyAircraft:0,total:0},command:state.command,executionRoutes:Object.fromEntries(units.map(u=>[u.id,u.frames.map(f=>f.position)])),enemyFlights:flights.map(f=>({...f,detectionWindows:intervals.filter(i=>i.targetId===f.id).map(i=>({start:i.start/Math.max(TICK_SECONDS,duration),end:i.end/Math.max(TICK_SECONDS,duration),source:i.source,observer:i.observerId}))})),defenseCues:[],defensiveAwareness:0,lessons:[],playerAssets,reinforcementCalls:[],roundScore:0,baseExposure:state.baseExposure,baseExposureDelta:0,combatSequences:sequences,weaponEffects:[...effects,...activeEngagements.flatMap(engagement=>engagement.effects)],contactObservations:observations,radarTrackReceipts:receipts,interceptPlans:plans,intelReports:[],mappedAreas:[],discoveredBoundaries:[],recoveryOutcomes:[],simulationCommands:commands,threatAlerts})
   let debugFieldDisabled=false
   let pendingCommands:SimulationCommand[]=yield liveResult(0)
   for(let time=TICK_SECONDS;time<=60+EXECUTION_SECONDS+1e-6;time+=TICK_SECONDS){
-    for(const command of pendingCommands){if(command.type!=='rtb'||command.issuedAtTick!==Math.round(time/TICK_SECONDS)||commands.some(existing=>existing.id===command.id))continue;const unit=byId.get(command.unitId);if(!unit?.friendly||unit.role!=='recon'||terminal(unit)||unit.mode==='recovering')continue;commands.push(command);transition(unit,'recovering',time,'player-rtb');add('friendly','RTB ORDERED',`${unit.callsign} turns for recovery on player command.`,unit.position,time)}
+    for(const command of pendingCommands){if(command.type!=='rtb'||command.issuedAtTick!==Math.round(time/TICK_SECONDS)||commands.some(existing=>existing.id===command.id))continue;const unit=byId.get(command.unitId);if(!unit?.friendly||unit.role!=='recon'||terminal(unit)||unit.recoveryCommanded)continue;commands.push(command);unit.recoveryCommanded=true;transition(unit,'recovering',time,'player-rtb');add('friendly','RTB ORDERED',`${unit.callsign} turns for recovery on player command.`,unit.position,time)}
     const debugDisableTime=state.debugScenario==='fob-stranded'?14:4
     if(!debugFieldDisabled&&time>=debugDisableTime&&(state.debugScenario==='fob-divert'||state.debugScenario==='fob-stranded')){const fob=playerAssets.find(asset=>asset.id==='p-fob-1');if(fob){playerAssets=setAirfieldOperational(playerAssets,fob.id,false);debugFieldDisabled=true;add('danger','FORWARD BASE UNUSABLE',`${fob.name??'Forward base'} can no longer accept aircraft.`,fob.position,time)}}
     // 1-2: fixed speed motion and fuel reserve.
@@ -339,23 +351,53 @@ function* simulateRoundTicks(state:MatchState):Generator<RoundResult,RoundResult
     const current=new Map<string,AirContact[]>(); const radar=playerAssets.find(a=>a.kind==='radar'&&a.health>0)
     for(const friendly of units.filter(u=>u.friendly&&!terminal(u))){const seen:AirContact[]=[];for(const enemy of units.filter(u=>!u.friendly&&!terminal(u))){const visual=distance(friendly.position,enemy.position)<=effectiveSensorRange(friendly.source as Squadron);contact(friendly.id,enemy.id,'visual',enemy.position,visual,time);if(visual)seen.push({target:enemy,source:'visual'}); // `radar` is selected only from playerAssets; enemy radar never enters this link.
       const linked=!!radar&&distance(radar.position,enemy.position)<=RADAR_RANGE&&distance(friendly.position,radar.position)<=RADAR_COMMUNICATION_RANGE;contact(friendly.id,enemy.id,'radar',enemy.position,linked,time);const key=`${friendly.id}:${enemy.id}`;const receipt=openReceipts.get(key);if(linked){if(receipt)receipt.end=time;else{const next={id:`receipt-${receipts.length}`,radarId:radar!.id,receiverId:friendly.id,targetId:enemy.id,start:time,end:time};receipts.push(next);openReceipts.set(key,next)}seen.push({target:enemy,source:'radar'})}else if(receipt)openReceipts.delete(key)}current.set(friendly.id,seen)}
-    // 4-5 mission responsibility, recon threat response, pursuit, merge.
-    for(const u of units.filter(u=>u.friendly&&!terminal(u)&&u.mode!=='dogfighting'&&u.mode!=='attacking-recon'&&u.mode!=='recovering'&&u.mode!=='stranded')){const seen=current.get(u.id)??[];const recovery=playerAssets.find(asset=>asset.id===u.recoveryFieldId)?.position??base;const choice=selectAirTarget(u,seen,recovery)
+    // 4-5: shared reaction priority, pursuit, and direct combat. A formation
+    // may belong to only one engagement; independent pairs can fight at once.
+    const engagedUnitIds=()=>new Set(activeEngagements.flatMap(engagement=>engagement.participants.map(participant=>participant.id)))
+    const evaluateReaction=(u:SimUnit)=>{if(terminal(u)||engagedUnitIds().has(u.id)||u.mode==='stranded')return;const seen:AirContact[]=u.friendly?(current.get(u.id)??[]):[];const recovery=playerAssets.find(asset=>asset.id===u.recoveryFieldId)?.position??base;const choice=u.friendly?selectAirTarget(u,seen,recovery):undefined
       const hostileVisual=seen.find(x=>x.source==='visual'&&x.target.role==='fighter')
       if(u.role==='recon'&&hostileVisual){const key=`fighter:${u.id}:${hostileVisual.target.id}`;if(!alertedThreats.has(key)){alertedThreats.add(key);threatAlerts.push({id:`threat-${threatAlerts.length}`,unitId:u.id,time,kind:'fighter-contact',sourceId:hostileVisual.target.id});add('warning','RECON THREAT',`${u.callsign} has direct fighter contact and continues searching until ordered home.`,u.position,time)}}
-      if(choice){if(u.mode!=='intercepting'||u.targetId!==choice.target.id){transition(u,'intercepting',time,choice.source==='visual'?'visual-contact-in-responsibility':'radar-contact-in-responsibility',choice.target.id,choice.source);plans.push({squadronId:u.id,targetId:choice.target.id,start:time,end:time,source:choice.source,outcome:'merge'});add('friendly','FIGHTER INTERCEPT',`${u.callsign} diverts on a ${choice.source.toUpperCase()} contact inside its ${((u.source as Squadron).mission==='defensive-cap'?'CAP area':'patrol corridor')}.`,u.position,time)}}else if(u.mode==='intercepting'){transition(u,'following-route',time,'track-lost');add('warning','FIGHTER TRACK LOST',`${u.callsign} loses the current contact and resumes its mission.`,u.position,time)}
+      const decision=decideReaction({destroyed:u.mode==='destroyed',inDirectCombat:false,recoveryCommanded:!!u.recoveryCommanded,recoveryRequired:u.mode==='recovering',actionableTargetId:choice?.target.id,missionAvailable:u.waypoint<u.route.length})
+      if(decision.state==='recovering'){if(u.mode!=='recovering')transition(u,'recovering',time,decision.reason);return}
+      if(decision.state==='intercept'&&choice){if(u.mode!=='intercepting'||u.targetId!==choice.target.id){transition(u,'intercepting',time,choice.source==='visual'?'visual-contact-in-responsibility':'radar-contact-in-responsibility',choice.target.id,choice.source);plans.push({squadronId:u.id,targetId:choice.target.id,start:time,end:time,source:choice.source,outcome:'merge'});add('friendly','FIGHTER INTERCEPT',`${u.callsign} diverts on a ${choice.source.toUpperCase()} contact inside its ${((u.source as Squadron).mission==='defensive-cap'?'CAP area':'patrol corridor')}.`,u.position,time)}return}
+      if(decision.state==='mission'&&u.mode!=='following-route'){const lost=u.mode==='intercepting';transition(u,'following-route',time,decision.reason);if(lost)add('warning','FIGHTER TRACK LOST',`${u.callsign} loses the current contact and resumes its mission.`,u.position,time)}
     }
-    if(activeEngagement?.kind==='dogfight')for(const joiner of units.filter(u=>u.role==='fighter'&&u.mode==='intercepting'&&!activeEngagement!.participants.some(participant=>participant.id===u.id))){const target=joiner.targetId?byId.get(joiner.targetId):undefined;if(target)joinDogfightEngagement(activeEngagement,joiner,target,time,transition,add)}
-    if(!activeEngagement)for(const attacker of units.filter(u=>u.friendly&&u.role==='fighter'&&u.mode==='intercepting')){const target=attacker.targetId?byId.get(attacker.targetId):undefined;if(!target)continue;const started=startAirEngagement(attacker,target,time,transition,add);if(started){activeEngagement=started;break}}
+    for(const u of units.filter(u=>!terminal(u)))evaluateReaction(u)
+
+    // A fighter already vectoring to a participant may join that dogfight.
+    for(const engagement of activeEngagements.filter(item=>item.kind==='dogfight'))for(const joiner of units.filter(u=>u.role==='fighter'&&u.mode==='intercepting'&&!engagedUnitIds().has(u.id))){const target=joiner.targetId?byId.get(joiner.targetId):undefined;if(target)joinDogfightEngagement(engagement,joiner,target,time,transition,add)}
+
+    // Direct fighter contact outranks pursuit. Close opposing fighters create a
+    // dogfight even when one was chasing recon; that pursuit is ended and is
+    // never silently resumed from historical state.
+    const fighterPairs: Array<[SimUnit,SimUnit]>=[];const livingFighters=units.filter(unit=>unit.role==='fighter'&&!terminal(unit))
+    for(let left=0;left<livingFighters.length;left++)for(let right=left+1;right<livingFighters.length;right++){const a=livingFighters[left],b=livingFighters[right];if(a.friendly!==b.friendly&&distance(a.position,b.position)<=FIGHTER_MERGE_RANGE)fighterPairs.push([a,b])}
+    for(const [a,b] of fighterPairs){if(activeEngagements.some(engagement=>engagement.kind==='dogfight'&&engagement.participants.some(participant=>participant.id===a.id||participant.id===b.id)))continue
+      for(const fighter of [a,b]){const pursuit=activeEngagements.find(engagement=>engagement.kind==='pursuit'&&engagement.attacker.id===fighter.id);if(!pursuit)continue;activeEngagements=activeEngagements.filter(item=>item!==pursuit);if(!terminal(pursuit.attacker))transition(pursuit.attacker,'following-route',time,'pursuit-interrupted-by-combat');sequences.push({id:pursuit.id,kind:'pursuit',participantIds:[pursuit.attacker.id,pursuit.target.id],location:pursuit.location,start:pursuit.start,end:time,exchanges:pursuit.exchanges,finalDisposition:{[pursuit.attacker.id]:terminal(pursuit.attacker)?'destroyed':'enroute',[pursuit.target.id]:terminal(pursuit.target)?'destroyed':pursuit.target.mode==='recovering'?'rtb':'enroute'}});effects.push(...pursuit.effects);add('warning','PURSUIT INTERRUPTED',`${fighter.callsign} breaks from ${pursuit.target.callsign} to answer direct fighter contact.`,fighter.position,time)}
+      if(engagedUnitIds().has(a.id)||engagedUnitIds().has(b.id))continue;const started=createActiveEngagement(`dogfight-${state.round}-${engagementSerial++}`,'dogfight',a,b,time,transition,add);if(started)activeEngagements.push(started)
+    }
+
+    // Voluntary friendly pursuit and unavoidable hostile visual pursuit use
+    // the same bounded engagement, but remain independently controllable.
+    for(const attacker of units.filter(u=>u.role==='fighter'&&!terminal(u))){if(engagedUnitIds().has(attacker.id))continue;let target:SimUnit|undefined
+      if(attacker.friendly&&attacker.mode==='intercepting')target=attacker.targetId?byId.get(attacker.targetId):undefined
+      else if(!attacker.friendly)target=units.filter(unit=>unit.friendly&&unit.role==='recon'&&!terminal(unit)&&!engagedUnitIds().has(unit.id)&&distance(attacker.position,unit.position)<=FIGHTER_MERGE_RANGE).sort((a,b)=>distance(attacker.position,a.position)-distance(attacker.position,b.position)||a.id.localeCompare(b.id))[0]
+      if(!target||target.role!=='recon'||engagedUnitIds().has(target.id))continue;const started=createActiveEngagement(`pursuit-${state.round}-${engagementSerial++}`,'pursuit',attacker,target,time,transition,add);if(started)activeEngagements.push(started)
+    }
     // 6-7: tick-level defenses, impacts (instant deterministic impact at range entry).
     for(const asset of [...assets,...playerAssets].filter((a):a is Asset&{kind:'sam'|'aaa'}=>a.kind==='sam'||a.kind==='aaa'))for(const target of units.filter(u=>!terminal(u)&&u.friendly===assets.includes(asset))){const range=asset.kind==='sam'?3.2:1.9;const key=`${asset.id}:${target.id}`;if(!fired.has(key)&&distance(asset.position,target.position)<=range){fired.add(key);if(target.friendly&&target.role==='recon'){threatAlerts.push({id:`threat-${threatAlerts.length}`,unitId:target.id,time,kind:asset.kind==='sam'?'sam-launch':'aaa-launch',sourceId:asset.id});add('warning','RECON THREAT',`${target.callsign} is targeted by ${asset.kind.toUpperCase()} and continues searching until ordered home.`,target.position,time)}roll+=1;const hit=rand(roll)>(asset.kind==='sam'?.36:.48);const damage=asset.kind==='sam'?38:13;effects.push({id:`weapon-${effects.length}`,kind:asset.kind,sourceId:asset.id,targetId:target.id,start:time,end:time+.28,from:asset.position,to:[...target.position] as Point,hit,damage});const ex:CombatExchange={id:`defense-${effects.length}`,time:time+.28,attackerId:asset.id,defenderId:target.id,weapon:asset.kind,damage,moraleDamage:damage*.45,hit,position:[...target.position] as Point,targetStrength:target.strength,targetMorale:target.morale};if(hit){target.strength=Math.max(0,target.strength-damage);target.morale=Math.max(0,target.morale-damage*.45);if(target.strength<=0){target.aircraft=0;transition(target,'destroyed',time+.28,'defense-hit');add(target.friendly?'danger':'friendly',target.friendly?'AIRCRAFT LOST':'ENEMY AIRCRAFT LOST',`${target.callsign} is destroyed by ${asset.kind.toUpperCase()}.`,target.position,time+.28)}}sequences.push({id:`defense-${sequences.length}`,kind:'defense',participantIds:[asset.id,target.id],location:[...target.position] as Point,start:time,end:time+.28,exchanges:[ex],finalDisposition:{[target.id]:target.mode==='destroyed'?'destroyed':'enroute'}})}}
     // Every damage source updates strength first; this single conversion keeps the aircraft-pip model authoritative.
     for(const unit of units)if(unit.mode!=='dogfighting')unit.aircraft=aircraftFor(unit.strength,unit.maxAircraft)
-    if(activeEngagement){const update=updateAirEngagement(activeEngagement,time,roll,state.round,sequences.length,transition,add);roll=update.roll;activeEngagement=update.active;if(update.sequence)sequences.push(update.sequence);effects.push(...update.effects)}
+    const nextEngagements:ActiveEngagement[]=[];const released:SimUnit[]=[]
+    for(const engagement of activeEngagements.sort((a,b)=>a.id.localeCompare(b.id))){const update=updateAirEngagement(engagement,time,roll,state.round,sequences.length,transition,add);roll=update.roll;if(update.active)nextEngagements.push(update.active);if(update.sequence)sequences.push(update.sequence);effects.push(...update.effects);released.push(...update.released)}
+    activeEngagements=nextEngagements
+    // Reassess released aircraft from current contacts and explicit commands;
+    // no pre-combat target or pursuit intent survives this point.
+    for(const unit of released.sort((a,b)=>a.id.localeCompare(b.id)))evaluateReaction(unit)
     for(const unit of units.filter(unit=>unit.friendly&&unit.mode==='destroyed'))releaseClaim(unit)
     for(const recon of units.filter(u=>u.friendly&&u.role==='recon'&&!terminal(u)))for(const asset of assets)if(distance(recon.position,asset.position)<=3.8)recon.observed.add(asset.id)
-    if(Math.round(time*10)%1===0 && Math.abs((time*10)-Math.round(time*10))<.001)record(time)
-    if(time>=22&&units.every(terminal)&&!activeEngagement)break
+    record(time)
+    if(time>=22&&units.every(terminal)&&activeEngagements.length===0)break
     if(time>=60&&!units.some(unit=>unit.friendly&&unit.mode==='stranded'))break
     pendingCommands=yield liveResult(time)
   }

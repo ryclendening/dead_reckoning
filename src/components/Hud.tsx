@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { AlertTriangle, CheckCircle2, ChevronDown, ChevronLeft, ChevronRight, ChevronUp, Crosshair, Eye, List, LocateFixed, Map, Radar, RotateCcw, Shield, Sword, Trophy, Wrench, Zap } from 'lucide-react'
 import { formationStatus } from '../game/formationStatus'
 import { airfieldLabel, formationBaseGroups } from '../game/formationBasing'
+import { projectFriendlyUnitAt } from '../game/executionProjection'
 import { templatesForRole } from '../game/routeTemplates'
 import {DEBUG_SCENARIOS,DEBUG_SCENARIO_LABELS} from '../game/scenarios'
 import type { Asset, CombatEvent, DebugScenario, MissionId, RoundResult, Squadron } from '../game/types'
@@ -67,10 +68,8 @@ export function CommandShelf({squadrons,bases,activeBaseId,rosterMode,squadron,r
 
 function modeLabel(mode:string|undefined){return mode==='dogfighting'?'ENGAGED':mode==='intercepting'?'INTERCEPTING':mode==='recovering'?'RETURNING':mode==='recovered'?'LANDED':mode==='stranded'?'NO RECOVERY':mode==='trapped'?'TRAPPED':mode==='destroyed'?'DESTROYED':mode==='attacking-recon'?'PURSUING':'ON ROUTE'}
 function frameFor(squadron:Squadron,result:RoundResult|undefined,progress:number){
-  const track=result?.unitTracks.find(item=>item.unitId===squadron.id)
-  if(!track?.frames.length)return {aircraft:squadron.aircraft,strength:squadron.strength??100,morale:squadron.morale??70,mode:squadron.status,traveledDistance:0}
   const seconds=progress*(result?.duration??22)
-  return track.frames.find(frame=>frame.time>=seconds)??track.frames.at(-1)!
+  return projectFriendlyUnitAt(result,squadron.id,seconds)?.frame??{aircraft:squadron.aircraft,strength:squadron.strength??100,morale:squadron.morale??70,mode:squadron.status,traveledDistance:0}
 }
 
 export function ExecutionChitRail({squadrons,bases,result,progress,activeBaseId,selectedId,followId,threatenedIds=new Set(),onSelect}:{squadrons:Squadron[];bases:Asset[];result?:RoundResult;progress:number;activeBaseId:string;selectedId:string;followId?:string;threatenedIds?:Set<string>;onSelect:(id:string)=>void}){

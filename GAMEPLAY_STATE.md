@@ -1,474 +1,238 @@
-# Dead Reckoning: Current Gameplay and Design State
+# Dead Reckoning: Current Gameplay State
 
-Last updated: 2026-09-20
+Last verified against the implementation and tests: 2026-09-20
 
-This document is the running source of truth for the game's currently implemented mechanics and presentation. It describes what is playable in the code now, not the full long-term design. Update it whenever gameplay, balance, force structure, information rules, phase flow, or combat presentation changes.
+This is the source of truth for behavior implemented in the current build. It records the net gameplay state, not the sequence of designs that led to it. Use git history for superseded mechanics and earlier implementation notes.
 
-## Current Design Goal
+## Core Loop
 
-The present build is a small autonomous air-operations sandbox focused on making three core ideas understandable:
+1. **Deploy** — A new campaign selects exactly three formations from the four available, including at least one fighter and one recon formation. The main airfield and radar are required; exactly two of the decoy, SAM, and AAA are also selected. Every selected asset is placed inside friendly territory before the package is confirmed. Unselected formations and assets are removed from that campaign.
+2. **Plan** — Select an airfield and explicitly confirm a valid mission route and recovery field for every surviving, launchable formation. Commit unlocks only when the entire package has been reviewed.
+3. **Execute / Observe** — The deterministic simulation advances at 20 Hz and can be viewed at 1× or 2×. The only live player command is an irreversible recon `ORDER RTB`, applied on the next simulation tick. There is no skip-to-debrief control.
+4. **Debrief** — Review friendly losses, confirmed enemy losses, and one page for each newly recovered fixed-asset report.
+5. **Adapt** — Spend Logistics on repairs, replacement aircraft, one main-airfield upgrade, or new assets, then begin the next round.
 
-1. Draw routes with meaningful range limits.
-2. Observe fighter engagements that have a clear cause, duration, and outcome.
-3. Use reconnaissance to turn hidden enemy ground assets into persistent intelligence.
-
-Complex strike packages, bombers, UAVs, and broader campaign systems are intentionally outside the current playable force structure. The immediate design priority is clarity and logical behavior before additional roles return.
-
-## Playable Loop
-
-The phase flow is:
-
-1. **Plan** — Select an airfield to start a sequential planning queue. Choose a mission and confirm a valid route for every surviving formation before Commit unlocks.
-2. **Commit** — Start the authoritative deterministic round simulation from the current orders and seed.
-3. **Execute / Observe** — Advance the simulation live at a fixed 20 Hz while watching aircraft and issuing time-stamped commands. The currently implemented command is reconnaissance RTB. Rounds may extend through recovery, up to 60 simulated seconds.
-4. **Debrief** — Review losses, recovered intelligence, and command findings.
-5. **Adapt** — Open the map-first Logistics store, spend on current force condition or airfield investment, then begin the next round.
-
-A fresh campaign begins in an Initial Planning allocation stage before Round 1 Planning. The floating setup surface requires three formations (including fighter and recon roles), the base and radar, and two optional support assets; placement then occurs on the map inside friendly territory before confirmation. Debug scenarios continue to bypass this setup.
+The nominal sortie window is 22 simulated seconds. Execution continues while recovery is unresolved, normally to a 60-second cap. A stranded friendly formation may extend the round to at most 82 seconds while it exhausts its remaining range.
 
 ## Forces
 
-### Friendly squadrons
+### Friendly formation pool
 
-There are four formations, each represented by a 100-point strength pool and four aircraft pips:
+The setup pool contains four formations, each with four aircraft and 100 maximum strength:
 
-- `VIPER 1` — fighter, four F-16s.
-- `FALCON 2` — fighter, four F-16s.
-- `RAVEN 3` — reconnaissance, four aircraft.
-- `GHOST 4` — reconnaissance, four aircraft.
+- `VIPER 1` — fighter.
+- `FALCON 2` — fighter.
+- `RAVEN 3` — reconnaissance.
+- `GHOST 4` — reconnaissance.
 
-Only two aircraft roles are playable:
+A normal campaign keeps the three formations chosen during Deploy. Debug scenarios can bypass setup and use a different active subset.
 
-- **Fighter / CAP** — detects and engages legitimate hostile-aircraft contacts inside its mission responsibility area when fuel permits.
-- **Recon / RECON** — observes hidden ground assets and must recover at an operational friendly airfield to preserve collected intelligence.
+Only two roles are playable:
+
+- **Fighter** — flies Defensive CAP or Forward Patrol and may intercept current contacts inside its committed responsibility area.
+- **Recon** — flies the fixed Search Area mission, maps terrain, observes enemy fixed assets, and must recover to preserve provisional collection.
 
 ### Enemy flights
 
-Each round creates two hidden enemy flights:
+An ordinary round generates two deterministic enemy formations:
 
 - `BOGEY 1` — four-aircraft MiG-23 fighter formation.
-- `SPECTER` — two-aircraft reconnaissance formation.
+- `SPECTER` — two-aircraft recon formation.
 
-Enemy flights follow deterministic routes generated by the simulation. Radar contacts do not reveal aircraft type or health unless the flight's identity was learned earlier in the sortie. Remembered identity never grants a live position or aircraft model without current sensor contact.
+Enemy air formations are generated for the current round; their attrition is reported but does not persist as a campaign force inventory. Debug scenarios may disable or replace these flights.
 
-### Ground assets
+### Fixed assets
 
-Both sides can have a base, decoy, radar, SAM, and AAA. Enemy ground assets begin hidden with unknown intelligence. Friendly ground assets begin known.
+Asset kinds are main base, FOB, decoy, radar, SAM, and AAA. Enemy fixed assets start unknown and hidden. Friendly selected assets start known. Constructed friendly assets persist between rounds.
 
-Current engagement ranges:
+Current ranges, in map units:
 
-- Radar detection: `6.4` map units.
-- Radar communications / track-distribution: `11` map units.
-- SAM engagement: `3.2` map units.
-- AAA engagement: `1.9` map units.
-- Fighter visual/sensor range: `4.2` map units at full strength.
-- Recon visual/sensor range: `4.9` map units at full strength.
+- Ground-radar detection: `6.4`.
+- Radar track distribution: `11` from the friendly radar to the receiving formation.
+- SAM engagement: `3.2`.
+- AAA engagement: `1.9`.
+- Fighter visual detection at full strength: `4.2`.
+- Recon visual detection at full strength: `4.9`.
+- Recon fixed-asset observation: `3.8`.
 
-Formation damage reduces effective sensor range.
+Aircraft visual range is multiplied by `0.68 + 0.32 × strength fraction`; destroyed formations produce no contacts.
 
-## Route and Fuel Mechanics
+## Planning, Routes, Fuel, and Basing
 
-- Routes are drawn freely on the map or generated from role-aware missions. Route drawing and deployment placement use the same map surface that is rendered, so the point under the cursor is the point used for the order or snapped placement.
-- Plan opens directly on the mission-and-route surface. Fighters can select `Defensive CAP` or `Forward Patrol`; every recon formation has the fixed `Search Area` mission. Fighter missions generate deterministic patrol movement after the drawn ingress, while Search Area appends a deterministic multi-pass sweep at the chosen search location.
-- Switching fighter missions preserves the current player-drawn ingress and regenerates the associated route. Neither fighter nor recon has a custom mission; recon intent comes from where the player draws the ingress and from the live RTB decision.
-- The generated route communicates where the formation plans to fly. Fighter responsibility geometry is derived separately from the committed mission and route, so the movement line does not imply theater-wide interception authority.
-- Recovered reconnaissance creates an After Action intelligence report only when it upgrades an asset from unknown to known. Re-observing an already-known asset does not repeat it in the briefing.
-- Generated routes use only the formation's current launch field, player-drawn ingress, current knowledge-derived planning envelope, role range, and recovery-fuel validation. They never inspect hidden enemy truth or undiscovered world edges. Oversized patterns shrink first; if needed, the ingress is shortened so the generated route remains valid and preserves recovery fuel.
-- Aircraft move at a fixed map speed; a longer route does not make an aircraft move faster.
-- Fighter missions have a maximum total distance of `40` map units.
-- Recon missions have a maximum total distance of `48` map units.
-- Each formation launches from its authoritative current airfield. When a drawn route first crosses the `0.6`-unit landing area of an operational FOB other than its launch field, the route latches to that FOB, truncates later waypoints, and becomes a landing order. A route ending inside any friendly airfield also becomes an explicit recovery order; other routes reserve the direct distance required to return to the launch field.
-- Plan reports the intended recovery field and nearest reachable operational alternate. FOB capacity is reserved when orders are confirmed; a one-slot FOB accepts the first confirmed formation, while an existing occupant retains its slot until its departure is confirmed.
-- Drawing stops at the valid fuel boundary, and the orders panel displays used range versus maximum range.
-- Surviving formations receive a return leg to their intended recovery field during execution. If that field becomes unusable, the nearest reachable operational field with capacity is chosen deterministically by distance and then asset ID.
-- A formation with no reachable recovery field enters a visible holding pattern and is lost only when its unchanged mission-distance allowance is exhausted. A stranded flight may extend Observe by at most one nominal 22-second mission window beyond the normal 60-second cap.
-- Successful landing changes the formation's persistent operating field for the next round. Aircraft based at an unusable FOB remain trapped there and cannot launch until the field is repaired.
-- Time spent circling in a dogfight pauses route-distance progression, preventing post-combat teleporting or speed-up.
-- Engagement routes retain their flown path up to the merge point before returning home, so a dogfight does not shorten a route and pull an aircraft ahead of its scheduled encounter.
+- Route drawing creates a player ingress and then appends the selected role-aware pattern. Generated routes use the launch field, drawn ingress, knowledge-derived planning envelope, role range, and recovery requirement; they do not inspect hidden assets or unknown world edges.
+- Fighters choose **Defensive CAP** or **Forward Patrol**. Recon is locked to **Search Area**.
+- Defensive CAP appends a 4.5-unit-radius orbit around the final ingress point. Forward Patrol appends a compact patrol loop. Search Area appends a five-pass sweep.
+- If a full pattern does not fit known bounds and fuel, the pattern shrinks to 25% scale before the ingress is shortened. The orders surface reports any adjustment.
+- Fighter maximum mission distance is `40`; recon maximum mission distance is `48`. Each role moves at a fixed speed derived from that allowance over the nominal 22-second sortie window. Drawing a longer route does not increase speed.
+- A route that does not end at another friendly airfield reserves the direct return distance to its launch field. Execution appends the intended recovery field to the route when needed.
+- The first operational FOB whose 0.6-unit landing area is crossed becomes the intended recovery field and truncates later waypoints. A route ending within 0.6 units of any friendly airfield also becomes a landing order.
+- Plan shows the intended field and nearest reachable operational alternate. The main base has unlimited capacity; a baseline FOB has one formation slot. Confirmed recovery orders reserve that slot, and an occupant keeps its slot until its departure is confirmed.
+- Every launchable formation must have a valid route and confirmed recovery field before Commit. Destroyed and trapped formations are excluded from the planning queue.
+- If the intended field becomes unusable during execution, the formation diverts to the nearest reachable operational field with capacity, with asset ID as the stable distance tie-breaker.
+- With no reachable alternate, a formation enters a visible holding circle and is destroyed only when its normal mission-distance allowance is exhausted.
+- A successful landing changes the formation's operating field. A formation based at an unusable FOB is trapped and cannot launch until the FOB is repaired.
+- Dogfighting pauses movement and route-distance accumulation. Interception and pursuit distance count against the same mission allowance.
 
-## Missions and Aircraft Responsibility
+## Mission Responsibility and Reactions
 
-Mission selection is the authoritative expression of player intent. There is no separate aggression, posture, target-priority, or selected-target order.
+Mission selection is the only fighter tasking control. There is no separate aggression, posture, target-priority, or selected-target order.
 
 ### Fighters
 
-- **Defensive CAP** derives a circular responsibility area centered on the final player-drawn ingress point with an inclusive `4.5`-unit radius.
-- **Forward Patrol** derives an inclusive corridor extending `2.5` units to each side of the complete committed planned route, including segment ends and joints.
-- Responsibility begins at launch; a fighter does not need to reach its patrol station before it may react.
-- A fighter may voluntarily intercept only a current legitimate radar or visual contact whose current position is inside its responsibility area and whose diversion preserves recovery fuel. Radar therefore supplies contact information and an intercept vector to both fighter missions, but does not assign aircraft to tracks outside their committed areas.
-- If several contacts qualify, the nearest fuel-valid contact wins. Exact-distance ties use stable target ID; aircraft role is not a priority.
-- Once an intercept begins, the fighter retains that target while the contact remains current and recovery remains feasible, even if the target leaves the responsibility boundary. A lost or destroyed target is cleared and current in-area contacts are evaluated again; the fighter does not travel toward a stale last-known position.
-- A visual contact outside responsibility does not begin a voluntary intercept. Existing direct-combat authority is otherwise unchanged.
-- An intercept keeps the normal fixed flight speed and adds traveled distance to the fighter's route. Fighter-versus-recon contact still uses the existing one-sided pursuit behavior, while fighter-versus-fighter contact uses the sustained dogfight system.
+- **Defensive CAP** owns an inclusive 4.5-unit circle centered on the final player ingress point.
+- **Forward Patrol** owns an inclusive 2.5-unit corridor around the complete committed route, including segment ends and joints.
+- Responsibility is active from launch; reaching the patrol station is not required.
+- A voluntary intercept requires a current visual contact or a friendly-radar receipt, a current target position inside responsibility, and enough remaining range to reach the target and recover.
+- The nearest valid contact wins; exact-distance ties use target ID. Aircraft role is not prioritized.
+- Once selected, a target remains valid outside the responsibility boundary while the contact stays current and recovery remains feasible. Lost or destroyed contacts are cleared; fighters never fly toward stale last-known positions.
+- Opposing fighters that come within the 1.2-unit direct-combat range are forced into combat regardless of voluntary-intercept responsibility.
+- Fighter-versus-recon contact creates a one-sided pursuit rather than a dogfight orbit.
 
 ### Recon
 
-- Every recon formation uses the fixed **Search Area** mission and has no air-interception responsibility area.
-- Recon ignores radar-only contact information.
-- Direct visual contact with a hostile fighter raises a threat alert but does not change the route automatically.
-- Any SAM or AAA launch against the formation raises a threat alert, whether the weapon hits or misses; weapon damage still resolves normally.
-- Without player input, recon continues its search through those threats. During Execute, the player can select any active recon formation and issue an irreversible `ORDER RTB`; the command is applied on the next fixed simulation tick and sends that formation toward its recovery field.
-- Recon that recovers still commits collected terrain and intelligence; recon that is destroyed or fails to recover loses provisional collection.
+- Recon has no air-interception responsibility and ignores radar-only contacts.
+- Visual contact with a hostile fighter and any SAM or AAA launch create a threat alert but do not automatically change the recon route.
+- Without player input, recon continues its mission through a threat. `ORDER RTB` remains authoritative once accepted, including during an existing pursuit.
+- A recovered recon commits its executed mapping, boundary observations, and newly observed fixed assets. Destroyed, stranded, or otherwise unrecovered recon loses all provisional collection.
 
-Issue #30 remains responsible for the universal reaction lifecycle: simultaneous engagements, forced-combat interruption priority, fighter interruption of recon pursuit, and full post-combat reassessment are not part of this mission-responsibility change.
+### Shared reaction priority
 
-## Fighter Combat
+Airborne formations are reassessed from current state in this order:
 
-Fighter-versus-fighter contact creates one sustained `CombatSequence`:
+1. Destroyed.
+2. Direct fighter combat.
+3. Commanded or required recovery.
+4. Fuel-valid, mission-authorized intercept.
+5. Assigned mission.
 
-- Every dogfight now also records a versioned fighter-engagement envelope alongside the existing replay fields. It groups participant IDs by friendly/hostile side and stores each participant's join/exit time, initial/final strength and aircraft count, and final disposition.
-- The engagement envelope supports `approach`, `opening-fire`, `merged`, and `resolved` phases. Current combat records `opening-fire`, then `merged` when both formations survive, followed by `resolved`.
-- Immediately before merge, both fighters receive a recorded positional assessment from their authoritative approach vectors. The higher score takes opening initiative; exact ties use a seeded choice, so neutral head-on contact has no fixed friendly or hostile priority.
-- The opening attacker fires one air-to-air missile with a 58% base hit chance and a bounded positional modifier: Dominant +18 points, Favorable +10, Neutral +0, and Disadvantaged -12. A hit causes 32 formation-strength damage. A lethal opening hit resolves combat immediately; otherwise both formations enter the existing circular sustained dogfight after the missile impact.
-- Ordinary merged-fight attacks now use one centralized deterministic probability calculation: the current neutral sustained-gun chance remains 69%, while positional, numerical, and formation-condition modifiers have explicit additive slots and a 10–90% final clamp. Every such exchange records its base chance, modifiers, unclamped and final chance, and seeded roll for diagnostics. Numerical advantage recalculates from living participant strength before each merged attack: full-side power is the sum of each living formation's strength divided by 100, with force-ratio tiers of Overwhelming (1.75× or more, +10 points), Advantaged (1.25× or more, +5), Even (above 0.8×, +0), Disadvantaged (above 0.57×, -5), and Overmatched (otherwise, -10).
-- All participating formations move into side-separated positions around one visible circular dogfight. Multiple formations on the same side receive wider distinct offsets rather than overlapping, ease between their recorded route pose and orbit on join/exit, and update the replay label from the currently active participant count as formations join or are destroyed.
-- A fighter dogfight starts only when the initial opposing formations close to a `1.2` map-unit merge range. Additional eligible fighters join that same authoritative engagement only after their current sensor contact, mission responsibility, fuel reserve, interception, and merge-range checks succeed.
-- Participants are unique within the engagement. A hostile formation cannot be cloned into a second combat or receive duplicate damage from parallel engagement records.
-- Sustained attacks alternate by side. The attacking formation rotates deterministically within that side, while the weakest opposing formation is targeted first with join time and identity as stable tie-breakers.
-- Encounter timing uses bounded high-resolution closest-approach sampling and the same piecewise-linear route geometry as the renderer.
-- The engagement is compressed into roughly 4.2–7 seconds of screen time.
-- Opening fire uses one seeded air-to-air missile; surviving formations then exchange seeded gun bursts in sustained combat. Without changing the authoritative engagement record, the replay derives a smoothly faded presentation timeline from its recorded phases, exchanges, and participant timestamps: positional context and `FIRST STRIKE`, opening `HIT` or `MISS`, `MERGE`, live NxM dogfight state, fighter joins, formation losses, numerical advantage, and resolution. The replay also renders each recorded sustained burst or miss.
-- Each exchange records its attacker, defender, hit, damage, time, and resulting strength and morale.
-- Destroying one formation removes only that participant; combat continues while each side still has a surviving formation. A recorded formation-loss event now plays a visible airborne impact before the destroyed formation leaves the replay.
-- Merged combat has no periodic guaranteed-kill exchange. Focus fire remains on the weakest opposing formation, but every participant loss must result from accumulated damage through ordinary bounded seeded attacks.
-- When one side is eliminated, every survivor leaves combat independently and resumes its preserved route and normal mission-responsibility decisions. Each participant retains its own strength, fuel distance, route history, join time, and exit time.
+Direct fighter combat interrupts a fighter's recon pursuit. When combat or pursuit ends, survivors are evaluated again from current contacts, fuel, command state, and mission responsibility; no historical target order is restored. The engine can run independent engagements concurrently, but a formation can belong to only one engagement at a time.
 
-Damage tuning:
+## Air Combat
 
-- Air-to-air missile hit: approximately 26–37 strength damage.
-- Gun hit: approximately 12–18 strength damage.
-- Fighter-vs-fighter damage is tracked against formation strength during the engagement; aircraft pips remain visible until the lethal exchange, so individual aircraft do not appear to vanish arbitrarily mid-fight.
-- A destroyed formation loses all of its aircraft pips at the lethal exchange.
-- Any damaging hit reduces morale by 8.
-- Losing an aircraft reduces morale by an additional 18.
+### Fighter versus fighter
 
-Morale is still tracked for feedback and future mechanics, but it does not currently terminate fighter dogfights.
+- Combat begins when opposing fighters close to `1.2` map units. Eligible late arrivals join only after their normal sensor, responsibility, fuel, intercept, and merge checks succeed.
+- The engagement records friendly and hostile participants, join and exit times, initial and final strength and aircraft counts, disposition, phases, positional assessments, exchanges, probability inputs, and seeded rolls.
+- Immediately before merge, approach vectors produce Dominant, Favorable, Neutral, or Disadvantaged positional assessments. The higher score takes opening initiative; an exact tie uses a seeded choice.
+- The opening attacker fires one missile: 58% base hit chance, modified by position by +18, +10, 0, or -12 percentage points, then clamped to 10–90%. A hit deals 32 strength damage. A lethal hit ends the engagement before merge.
+- Merged attacks alternate by side every 0.35 simulated seconds. Attackers rotate within their side; the weakest opponent is targeted first, with join time and identity as tie-breakers.
+- A merged gun attack has a 69% base chance and deals 22 strength on a hit. Numerical modifiers are +10, +5, 0, -5, or -10 percentage points at force-ratio tiers of at least 1.75×, at least 1.25×, above 0.8×, above 0.57×, or otherwise. Final chance is clamped to 10–90%.
+- Formation-condition probability slots exist in the record schema but are not active. Morale changes are recorded but do not cause disengagement.
+- There is no guaranteed-kill exchange. Combat continues until one side has no surviving formation.
+- Fighter aircraft pips do not decrement during the dogfight; a destroyed participant loses all pips, and surviving formations reconcile pips to remaining strength after leaving combat.
+
+### Fighter versus recon
+
+- A pursuit begins within `1.2` map units. The fighter follows the recon while the recon continues its mission or commanded recovery.
+- While still in close range, the fighter attacks every 0.5 seconds for at most four exchanges, alternating missile and gun.
+- Each pursuit attack has a 68% hit chance. Because damage is rounded from seeded continuous values, missile hits deal 26–38 strength and gun hits deal 12–19.
+- The pursuit ends when the recon is destroyed, four exchanges resolve, the recon opens beyond the attacker's effective sensor range, or the fighter is interrupted. The fighter is then reassessed from current state.
 
 ## Ground-Based Air Defense
 
-- A SAM or AAA site engages when an aircraft route crosses its weapon radius.
-- SAMs fire one visible missile with a 64% seeded hit chance and 30–49 damage.
-- AAA fires a five-shot visible tracer burst; each shot has a 42% seeded hit chance and 7–12 damage.
-- Weapon effects travel from the firing site toward the aircraft before impact feedback appears.
-- Both friendly and enemy defenses use this sequence system.
-- A ground site that fires is revealed in the current result.
+- Each SAM or AAA site can engage each opposing formation once per round when it first enters range.
+- The live SAM shot has a 64% hit chance and deals 38 strength.
+- The live AAA shot has a 52% hit chance and deals 13 strength. Its renderer presents the single resolution as a tracer burst.
+- Friendly and enemy sites use the same ownership rule: friendly defenses target hostile aircraft and enemy defenses target friendly aircraft.
+- Launches and projectiles are visible during execution. A launch does not itself create persistent intelligence for an unknown enemy site.
+- Current limitation: the live engagement loop does not gate firing on the site's health, even though damaged/destroyed presentation and defense repair state exist.
 
-## Reconnaissance and Fog of War
+## Reconnaissance, Sensors, and Fog of War
 
-- Each campaign is generated inside a deterministic `28 × 36` world. The player's local start is selected from four central regions by seed; friendly assets, squadrons, enemy assets, and enemy routes are positioned relative to that generated start.
-- The true rectangular world boundary is simulation truth but is not shown at campaign start. Rendering extends into a six-unit generic terrain apron, so the edge is not leaked by an empty canvas, terrain cutoff, fog cutoff, camera clamp, or route-planning clamp.
-- Planning and camera limits are derived from recovered knowledge plus a small exploration margin. The angled tactical camera supports zoom and right-drag/two-finger pan while remaining inside the generic presentation apron.
-- A recon formation that physically reaches a true edge turns for home and provisionally records only the nearby boundary segment. The exact segment becomes visible on the tactical map and known-world overview only after that formation returns home.
-- The `KNOWN WORLD` overview is derived only from friendly territory, recovered mapped areas, known fixed assets, and recovered boundary segments. Undiscovered directions are labeled uncharted; the overview never receives hidden world bounds or live aircraft positions.
-- Terrain knowledge is stored separately from enemy-asset intelligence as sampled `mappedAreas` in match state.
-- A fresh campaign begins with friendly territory visible and most enemy territory covered by a subtle continuous tactical haze. The underlying terrain remains faintly perceptible, while actionable props remain withheld.
-- Fog presentation uses a world-anchored low-resolution visibility mask rather than visible hex cells. Unknown territory uses a low-contrast charcoal-green atmospheric veil, recovered mapped terrain is more readable but slightly muted, and currently observed or friendly territory is nearly clear.
-- Fog boundaries are smoothly feathered inward from the authoritative friendly, mapped, and live-observation limits, with a small deterministic irregularity and stationary low-frequency texture. The visual mask never expands the underlying visibility rules.
-- The generic terrain plane, river, and non-actionable landforms remain visible beneath the veil to preserve a continuous map. Enemy assets and other intelligence-bearing objects remain withheld outside the authoritative visibility rules.
-- During execution, every surviving friendly formation creates a live reveal circle at its actual rendered position. Recon has a larger live reveal radius than fighters.
-- Recon reveals a corridor progressively as it flies; the route is not revealed all at once at commit time.
-- When a recon formation returns home, samples from its executed route become a persistent mapped corridor in future rounds. Mapped terrain is visible but dimmer than live-observed terrain.
-- A recon formation that aborts but reaches home still commits what it observed. A formation destroyed or otherwise unable to recover commits neither newly explored terrain nor provisional world-edge observations.
-- Enemy bases, decoys, radar, SAM, and AAA start hidden.
-- Enemy aircraft have no live tactical representation when neither friendly ground radar nor a friendly aircraft currently detects them.
-- Ground-radar-only airborne detections are amber uncertainty diamonds. A previously unidentified track has no role or health information; a previously identified track may retain its callsign and role, but never its exact model or current strength.
-- Only friendly ground radar distributes current radar-only tracks directly to friendly formations within its `11`-unit communications radius. Hostile radar may detect and threaten a friendly aircraft, but it never creates a friendly radar receipt, shares enemy tracks with that aircraft, or supplies the player's radar-only contact marker. These per-formation friendly receipts are separate from detection and are the only radar-track input available to fighter mission responsibility; there is no aircraft relay or global network. Recon does not react to radar-only receipts.
-- Current friendly-aircraft line of sight reveals the hostile aircraft model, callsign, role, pips, action, and strength bar.
-- Losing line of sight returns a still-radar-detected flight to the uncertainty marker. Losing all detection removes its model, marker, nameplate, health, trail, weapon effects, and exact position from the live tactical view.
-- Visual identification persists as identity knowledge for the remainder of the sortie, separately from current position knowledge.
-- Recon observes fixed assets within `3.8` map units of its executed route.
-- Ground observations become persistent intelligence only if the recon formation survives and its route returns to base.
-- If the observer is destroyed, its provisional observations are lost.
-- Recovered reports set the asset to high-confidence intelligence and reveal it in later rounds.
+- The deterministic world is `28 × 36` map units. The player starts in one of four seeded central regions. A six-unit generic terrain apron hides the true boundary from the initial camera and terrain presentation.
+- Planning and camera limits derive from recovered knowledge plus an exploration margin, not from hidden world bounds.
+- Friendly territory is initially known. Most other terrain is obscured by a continuous, feathered haze, while generic terrain remains faintly visible.
+- During execution, living friendly formations reveal terrain around their rendered positions; recon's live terrain reveal is larger than a fighter's. Recon mapping is accumulated from its executed route, not revealed at Commit.
+- A recon that reaches a true world edge turns home and provisionally records the nearby exact segment. The segment becomes persistent only after recovery.
+- The Known World view contains only friendly territory, persistent mapped areas, known fixed assets, and recovered boundary segments. It receives neither hidden bounds nor live aircraft positions.
+- Ground-radar-only contacts appear as amber uncertainty markers. Visual contact reveals callsign, role, aircraft pips, action, and strength.
+- A visual identification remains identity knowledge for the rest of that sortie. It does not preserve a live position after all current detection is lost.
+- Only the friendly ground radar creates radar receipts, and only when the target is inside its 6.4-unit detection range and the receiving friendly formation is within the 11-unit communication range. There is no aircraft relay or global track network. Hostile radar never creates a friendly receipt.
+- Losing visual contact returns a still-radar-detected aircraft to an uncertainty marker. Losing every current detection removes its tactical representation and exact position.
+- Live hostile contact projection uses absolute simulated time: current radar/visual contact controls whether a hostile track may be shown, while any earlier visual contact preserves identity knowledge for the rest of the sortie without preserving an exact position through a detection gap.
+- Enemy fixed assets within 3.8 units of a recon's executed path are collected provisionally. The current UI promotes them to persistent confirmed intelligence only after recovery; re-observing an already-known asset does not create another report.
 
-## Combat Presentation
+## Presentation and Phase Surfaces
 
-- During Deploy and Plan, the map uses a compact visual grammar: selected-formation vision is a solid bright-cyan ring, radar detection is a translucent blue dome with a blue dashed boundary, radar communications is a green dotted ring, and all SAM/AAA weapon engagement ranges use the same amber short-dashed boundary. The persistent Plan key names each category and gives its plain-language effect without adding numerical clutter. Planning also shows every fighter responsibility area faintly and emphasizes the selected formation's area. CAP circles and patrol corridors are rendered independently from flight-route lines. During Observe, radar coverage domes and rings are hidden; live contacts and the formation radar-link indicator carry that information. Only the followed friendly formation's committed responsibility area and route are shown. SAM/AAA coverage appears only for the followed formation and only while it is inside the opposing weapon's real range. Active SAM zones show a pulsing illuminated dome and range boundary, while AAA shows its illuminated boundary. This ownership rule is symmetric: friendly sites react only to hostile aircraft and enemy sites only to friendly aircraft; enemy coverage still requires the asset to be known or currently observed.
-- Friendly fighters use an F-16 GLB model with cyan identification edging.
-- Enemy fighters use a MiG-23 GLB model and receive red edging only after visual identification.
-- Recon currently uses a role-specific top-down aircraft rendering rather than a dedicated GLB.
-- Each visible formation draws one smaller aircraft model per surviving aircraft pip in a compact four-ship pattern. The count is taken from the authoritative replay frame, so aircraft visibly leave the formation as attrition crosses pip thresholds.
-- Friendly aircraft keep the battlefield clear during Observe: persistent action/nameplate and strength-bar text is replaced by a small geometric activity glyph. A cyan chevron means closing to intercept, a red crossed ring means engaged, an amber arrowhead means chasing recon, and a green diamond means returning. Each uses a light symbol over a status-colored badge, while selection is a separate bright-cyan outer ring. The selected formation's authoritative replay activity, assigned mission, aircraft, strength, morale, and traveled range are available in an expandable status sheet above the bottom formation dock. Assigned mission remains distinct from current behavior. Sensor-authorized hostile contact presentation remains governed by its radar-versus-visual identification state.
-- A red `!` inside the activity glyph indicates a shared friendly ground-radar track. It remains a modifier, so it can accompany an intercept or pursuit glyph, and fades over 0.8 simulated seconds after that formation's receipt ends. Hostile radar coverage never creates this marker or an enemy-track chip on the friendly formation.
-- Damage creates hit reactions, strength decay, aircraft-pip loss, and smoke.
-- Dogfights use opposing circular positions, curved trails, gun-dot streams, and missile projectiles.
-- Recon pursuits keep the recon flight on its route while the attacking fighter trails it and fires; they do not use dogfight circles.
-- SAM missiles and AAA tracer streams are rendered during travel.
-- Observe presents one compact live-dispatch navigator attached to the right of the active airfield's left-edge chit rail instead of a separate full-width strip. Its header and border treatment align with the airfield rail, while the latest published event, previous/next and map-focus controls, thin severity timeline, and bounded history remain available without obscuring the center of the battlefield.
-- The live battlefield does not show persistent home-base, enemy-base, or base-exposure bars. Those values remain in the match model for future mechanics, and base exposure remains available in the debrief, but their currently inactive state is not presented as actionable live telemetry.
-- Execute presents one selected-formation capsule with callsign, role, strength, current action, aircraft pips, and follow selection. Its `ALL` control opens a scrollable roster grouped by departure airfield, so formation tracking does not become a wider bottom dock as the force grows. Execute opens with the compact left-edge sortie rail for the airfield most recently active in Planning. Selecting a friendly airfield on the battlefield switches that rail to the formations that launched from it and clears the previous follow target; selecting a chit tightens the camera and follows that formation's current position. A newly threatened recon chit shows an amber `!`, changes its callsign color, and retains a live strength bar until the player selects it; the selected active recon exposes `ORDER RTB` in the bottom shelf.
-- The formation dock includes an `AIRFIELD` control that exits follow mode and recenters the tactical camera on the friendly airfield.
-- Plan is map-first and base-centric. Selecting the main airfield or a constructed FOB immediately opens the first unplanned surviving formation based there and reveals a narrow left-edge chit queue for that airfield. Each chit shows role, callsign, aircraft count, and pending/active/planned state; tapping a planned chit marks it pending and reopens that formation for editing. Planning opens directly on mission selection and route drawing. `CONFIRM & NEXT` marks that formation planned, finishes the selected airfield first, then transitions to the next airfield with an unplanned formation. When every surviving formation has been explicitly confirmed with a valid route, the control becomes `COMMIT ROUND`. The planning checklist resets on every new round. `ALL` remains a secondary grouped roster for non-linear review. Map airfield labels include based-formation counts. Readiness and ammunition remain secondary sortie-condition indicators.
-- Observe uses the same compact formation shelf pattern for cycling, follow state, and returning the view to the airfield. The speed control sits above that shelf. Debrief is a shallow fixed-height click-through deck anchored along the bottom of the battlefield: Friendly losses, confirmed Enemy losses, one page per new Intel report, then Adapt. Each stage has a distinct accent and progress marker; Back/Next controls remain visible, with the final `NEXT ROUND` action occupying the normal Next position. Entering an Intel page focuses the battlefield on that discovered asset; zero-result pages show a short roll-up.
-- Execution can be viewed at 1× or 2× speed, but cannot be skipped. Debrief begins only after the authoritative simulation finishes so the player retains the full opportunity to issue live commands.
+- Plan shows the selected aircraft's LOS, fighter responsibility areas, friendly radar detection and communications, weapon ranges, generated routes, recovery intent, and per-airfield formation queues.
+- Execute hides general radar coverage. It shows the followed formation's route and responsibility, current sensor-authorized enemy air contacts, relevant active weapon coverage, weapon effects, a compact event navigator, an airfield sortie rail, and a selected-formation status shelf.
+- Friendly formation glyphs distinguish intercept, combat, recon pursuit, recovery, selection, and friendly-radar receipt. The radar receipt fades for 0.8 simulated seconds after it ends.
+- During Execute, aircraft markers, strength and aircraft state, selected-formation details, camera follow, live terrain reveal, and active coverage all sample the same authoritative `UnitTrack` at the current simulated time. Original mission routes do not reconstruct live aircraft positions.
+- Dogfight ornamentation remains centered on the recorded engagement, but it does not displace aircraft tactical anchors from their authoritative tracks.
+- Friendly fighters use the F-16 model; visually identified enemy fighters use the MiG-23 model. Recon uses a top-down role rendering. A formation renders one aircraft per current pip.
+- Debrief is a bottom click-through deck. Adapt keeps the battlefield visible and uses contextual targets plus a separate Build catalog.
 
 ## Economy and Between-Round State
 
-The match tracks Logistics, reserve aircraft inventory, command points, score, base health, and base exposure. Logistics is the player-facing resource for the current Adapt store; reserve aircraft are finite physical inventory, not a general-purpose currency.
+A new match starts with 10 Logistics and three reserve aircraft. A completed round credits Logistics exactly once:
 
-Each committed round credits Logistics exactly once when it enters Debrief:
+- `+6` base income.
+- `+2` per newly recovered fixed-asset report.
+- `+1` per confirmed enemy aircraft lost.
+- A Supply Depot adds `+2` to base income beginning with later completed rounds.
 
-- `+6` base round Logistics.
-- `+2` for each newly recovered enemy fixed-asset report.
-- `+1` for each confirmed enemy aircraft destroyed; this reward is intentionally uncapped.
-- A purchased `Supply Depot` airfield upgrade adds `+2` to base round Logistics beginning with the next completed round.
+Current Adapt actions:
 
-Debrief is read-only. Its final action opens the distinct **Adapt** phase, which keeps the battlefield visible and uses a compact contextual turnaround surface rather than a target-and-store browser. Adapt opens on the first damaged formation or defense requiring attention. `NEED ATTENTION` cycles those targets, while the main airfield, radar, SAM, and AAA remain directly selectable on the map with the same cyan selection marker. Routine formation and defense repairs execute directly from their contextual action; reserve-aircraft replacement and mutually exclusive airfield upgrades retain one explicit confirmation. Command execution still revalidates its original target, quoted costs, phase, and resource balances before mutating state. Fully healthy targets show `No action required`. The current statement is collapsed behind the round-income summary.
+- Repair formation strength by up to 25 for `2` Logistics, capped by the current aircraft count (`25` strength capacity per aircraft).
+- Replace one aircraft for `4` Logistics plus one reserve aircraft, restoring 25 strength. A formation rebuilt from zero is based at the main airfield.
+- Repair friendly radar, SAM, or AAA by up to 25 health for `2` Logistics.
+- Restore an unusable FOB to full health and operational status for `4` Logistics.
+- Buy exactly one main-airfield upgrade for `12` Logistics: **Maintenance Wing** reduces formation repair and replacement costs by one, or **Supply Depot** adds the recurring income above.
+- Build a decoy for `4`, AAA for `6`, SAM for `8`, or one-slot FOB for `8` Logistics.
 
-Currently functional Adapt actions are:
+Construction must be inside friendly territory or persistent recovered mapping and at least 1.5 units from every friendly asset. Validation intentionally ignores hidden enemy positions and unrecovered world bounds. New SAM and AAA sites immediately participate in air defense. Decoys persist visually, but enemy strike and dynamic decoy-targeting gameplay are inactive.
 
-- Repair formation condition for `2` Logistics, restoring up to 25 strength without exceeding the aircraft-supported maximum strength.
-- Replace one lost aircraft for `4` Logistics and one reserve aircraft, restoring 25 strength. The `Maintenance Wing` reduces its Logistics cost to `3`.
-- Repair a damaged friendly radar, SAM, or AAA for `2` Logistics, restoring up to 25 health.
-- Restore an unusable FOB to full operational status for `4` Logistics, releasing any intact formations trapped there.
-- Purchase exactly one main-airfield capability upgrade for `12` Logistics: `Maintenance Wing` reduces formation repair and replacement costs by one, while `Supply Depot` adds the recurring income described above. The upgrades are mutually exclusive and persist with the airfield.
-- Open the floating `BUILD` catalog and construct a Decoy for `4`, AAA site for `6`, SAM site for `8`, or baseline FOB for `8` Logistics. Selecting any entry enters map placement with a type-specific cyan valid-site/red invalid-site ghost; the placement preview is followed by one confirmation before spending.
-- Construction is allowed only inside persistent friendly or recovered mapped coverage and at least `1.5` map units from an existing friendly asset. This validation uses player knowledge only; hidden enemy positions and undiscovered world bounds do not affect it. A successful command creates the chosen persistent asset in the same atomic transaction that spends Logistics. New SAM and AAA sites immediately use their existing tactical engagement behavior. New decoys persist and render, but dynamic hostile target selection remains inactive. A new FOB receives operational state and explicit one-formation capacity.
+At round resolution, every non-trapped friendly formation loses readiness and ammunition (fighter: 12 readiness and 28 ammo; recon: 7 readiness and 8 ammo, with readiness floored at 25). This currently includes formations that did not launch or were destroyed. The values are displayed state but have no current authoritative effect and cannot be serviced through Adapt.
 
-Readiness restoration, rearming, runway repair, decoy repair, dynamic decoy targeting, and FOB upgrades are not exposed as Adapt purchases yet. Readiness and ammunition still appear as formation condition feedback, but they do not currently have enough authoritative consequence to justify Logistics spending. Constructed FOBs are persistent physical launch and recovery nodes with binary operational state, explicit formation capacity, route-to-land recognition, forward launch, automatic diversion, fuel-exhaustion loss, trapping, and repair. No current enemy strike system can disable a FOB during ordinary campaign play; deterministic scenarios exercise that transition for future combat integration.
+Campaign score is displayed and accumulates from selected combat/intelligence events, but it has no victory or spending effect. Command points, reinforcement helpers, base health, and base exposure remain in state without a current player-facing loop.
 
-Execute is authoritative rather than a precomputed replay. There is no control that drains or skips the live round; the deterministic tick controller must reach completion before the result is applied. Economic decisions still belong only in Adapt.
+## Persistence and Debug Scenarios
 
-## Persistence and Debugging
+- Local storage key: `dead-reckoning-mvp-v27`. Listed older save keys are cleared by Reboot rather than migrated.
+- A compatible save made during Execute restarts at Plan because an in-progress simulation is not serialized.
+- Known persistence defect: campaign setup keeps three formations, but save normalization currently requires the original four-formation roster. Reloading a normal campaign after setup therefore resets it to a fresh deployment draft. This is implemented behavior, not intended design.
+- Selecting a deterministic debug scenario immediately resets into that fixture. Reboot rebuilds the selected fixture or starts a fresh campaign draft.
 
-- State is stored locally under save version `dead-reckoning-mvp-v27`. Older saves are invalidated rather than migrated because recon missions and execution authority changed. Basing normalization assigns each surviving formation to exactly one friendly airfield, defaulting to the main base.
-- Incompatible older execution saves restart at planning rather than being migrated into a live execution.
-- The local simulation controller advances the existing seeded engine one `0.05`-second tick at a time and records accepted commands with their issue tick. The synchronous resolver drains that same controller, so fixtures and future command replays use one authoritative path. Network transport, server authority, latency handling, and multiplayer synchronization are not implemented yet.
-- Issue #24 validation adds deterministic debug-fixture identifiers only; the later v21 economy change intentionally invalidates older serialized round state rather than migrating it into the authoritative Adapt flow.
-- Choosing a deterministic scenario immediately resets into that fixture. The Reboot control clears known local save versions and rebuilds the selected scenario.
-- Deterministic scenarios currently available:
-  - Campaign
-  - Fighter vs Fighter
-  - Fighter 2 vs 1
-  - Fighter Tail Aspect
-  - Fighter Head-On
-  - Fighter Reversed
-  - Fighter vs Recon
-  - Neutral LOS
-  - Radar intercept
-  - Recon recovery
-  - Recon edge
-  - Recon loss
+Available fixtures:
 
-The tail-aspect, head-on, and reversed fighter fixtures place the opposing formation at a deterministic close-range vector and disable friendly air defenses, allowing the normal fixed-step resolver to verify dominant, neutral, and disadvantaged opening geometry without a defense shot preempting the merge. The recon-recovery scenario reliably returns new fixed-asset intelligence, the recon-edge scenario reaches and recovers an exact world-boundary segment, and the recon-loss scenario begins with a one-pip Raven formation so it reliably exercises the no-recovery/no-mapping outcome. Selecting or rebooting a scenario resets package-review and route-editor state, and every fixture keeps its editable ingress synchronized with its executed route.
+- Campaign.
+- Fighter vs Fighter.
+- Fighter 2 vs 1.
+- Fighter Tail Aspect.
+- Fighter Head-On.
+- Fighter Reversed.
+- Fighter vs Recon.
+- Neutral LOS.
+- Radar Intercept.
+- Pursuit Interruption.
+- Parallel Engagements.
+- Recon Pursuit Control.
+- Recon Recovery.
+- Recon Edge.
+- Recon Loss.
+- FOB Recovery.
+- FOB Diversion.
+- FOB Stranded.
+- FOB Trapped.
 
-## Implemented but Currently Inactive or Incomplete
+## Implemented State Without a Complete Gameplay Loop
 
-These systems appear in state, UI, or historical design material but are not complete gameplay loops in the current simplified build:
-
-- There are no player-controlled strike aircraft, bombers, or UAVs.
-- There is no playable strike mission or direct attack against enemy ground targets.
-- Fighter engagement records can represent approach phases, but current gameplay begins at opening-fire range. Formation-condition probability modifiers remain inactive; numerical advantage is active only during merged fighter exchanges.
-- Enemy and player base damage are currently resolved as zero, so the normal round engine does not advance a base-destruction victory condition.
-- Base exposure remains in state and debrief UI but is not changed by the current round resolver.
-- Defense cue data exists, but the current resolver does not create CAP-generated defense cues.
-- The full shared reaction lifecycle, simultaneous engagements, universal forced-combat interruption priority, fighter interruption of recon pursuit, and complete post-combat reassessment remain deferred to Issue #30.
-- Enemy recon has a route and can be engaged by defenses, but it does not yet recover intelligence or conduct a complete enemy reconnaissance decision loop.
-- A deterministic multiplayer start-placement utility enforces at least `3.5` units of world-edge clearance and `4.5` units between opponents, but multiplayer itself is not enabled.
-- The README contains descriptions of older strategic-depth and strike mechanics that exceed the current implementation. This document takes precedence for current gameplay state.
-
-## Near-Term Design Priorities
-
-1. Make fighter encounter timing and dogfight outcomes consistently legible.
-2. Confirm that route caps, fixed speed, dogfight pauses, and recovery routes feel coherent under player-created paths.
-3. Improve spatial readability of overlapping models, health bars, trails, and weapon effects.
-4. Validate the timing and readability of live recon threat alerts and player-issued recovery decisions.
-5. Remove, reconnect, or clearly mark inactive strategic UI before adding new aircraft roles.
+- There are no player-controlled strike aircraft, bombers, UAVs, strike missions, or attacks against fixed ground targets.
+- Base damage resolves to zero, so the ordinary engine cannot reach the defined victory or defeat phases.
+- Base exposure and defense-cue fields do not change in the current resolver.
+- Enemy recon flies and can be engaged but does not collect or recover intelligence.
+- Friendly fixed assets cannot be attacked in ordinary campaign play; FOB disablement is exercised only by deterministic fixtures.
+- Reinforcement, legacy service, rearm, readiness-restoration, runway-repair, and separate defense-repair helpers exist in code or tests but are not connected to the current UI flow. The Adapt actions listed above are authoritative.
+- Multiplayer start-placement utilities exist, but multiplayer is not enabled.
+- The README contains older and aspirational mechanics. This document takes precedence for current gameplay.
 
 ## Running Change Log
 
-Add a dated entry here whenever a change materially affects mechanics or presentation.
+This log keeps only current net changes. Superseded intermediate states belong in git history.
 
 ### 2026-09-20
 
-- Removed `SKIP TO DEBRIEF` from live execution now that recon RTB is a real-time player decision. The simulation controller no longer exposes an immediate drain method; rounds enter Debrief only after ordinary authoritative tick completion. The 1×/2× speed control remains available because it preserves the complete command window instead of bypassing it.
-
-### 2026-09-13
-
-- Reworked fighter-route graphics into distinct layers: smooth 32-segment patrol loops replace polygonal eight-segment shapes; only player-drawn ingress points receive waypoint markers; planned LOS uses a cyan footprint and solid outline; CAP and Forward Patrol engagement boundaries use dashed green perimeters. Forward Patrol still uses two outer corridor bounds and all engagement rules remain unchanged.
-- Converted round execution from a fully precomputed replay into an incremental deterministic 20 Hz simulation controller. Commit now begins live execution; timestamped commands enter the same seeded tick stream, and the synchronous resolver drains that identical path for tests and replayability. Recon is fixed to Search Area, continues searching after direct fighter contact or a SAM/AAA launch, and returns only when the player issues RTB (or ordinary fuel/recovery logic takes over). Threatened recon is flagged in the left sortie rail with an amber `!`, callsign emphasis, and live health; selecting it acknowledges the alert and exposes `ORDER RTB`. Persistence is now `dead-reckoning-mvp-v27`.
-- Corrected Plan LOS placement for Defensive CAP. Its cyan `PLANNED LOS` ring is now centered on the planned CAP station, matching the green engagement circle; during Observe, LOS remains attached to the moving aircraft.
-
-### 2026-09-12
-
-- Replaced the Plan LOS outline with a depth-independent cyan ring mesh and explicit range label so the aircraft detection boundary remains visible above terrain and mission overlays.
-- Fixed Forward Patrol corridor boundary joins for closed patrol loops. The two engagement-boundary lines now use cyclic endpoint normals, eliminating the malformed hexagonal cap at the loop head.
-- Simplified Forward Patrol presentation: its engagement corridor now renders as two green boundary lines tracing the route, without the previous filled-width overlay. The corridor geometry and intercept rules are unchanged.
-- Increased Plan LOS visibility: the selected aircraft's cyan detection ring now renders above planning overlays with depth-independent contrast and a `DETECTION / LOS` range label. The green CAP responsibility boundary remains a separate engagement-area visualization.
-- Streamlined Plan mission controls into icon-led fighter commands: shield for Defensive CAP and sword for Forward Patrol. Consolidated route progress into the expanded Plan tab header as `ROUTES X / N` and removed the duplicate lower progress meter; mission IDs and execution behavior are unchanged.
-- Defensive CAP now generates a large orbit aligned to its `4.5`-unit engagement area when fuel and bounds allow. The cyan aircraft ring remains the actual LOS/detection range; the green CAP circle is engagement authority, and contacts still require current visual LOS or a valid friendly-radar track before interception.
-- In Plan, a selected formation whose route resolves to a different recovery field suppresses its CAP/search-area responsibility overlay and shows a green transit route, pulsing green field cue, and `LATCHED · TRANSIT` marker. This is presentation-only until the existing confirmation step commits the recovery order.
-- Added recovery-state presentation: latched recovery routes render green with an `RTB · [FIELD]` marker, airborne formations show `LANDING AT [FIELD]`, and the aircraft marker disappears once its authoritative track reaches `recovered`; execution chits report the terminal state as `LANDED`.
-- Cleaned up the mission-responsibility presentation. Observe no longer renders radar coverage domes or rings; live tracks and the radar-link glyph carry that information instead. Forward Patrol responsibility now uses one world-width translucent stroke rather than overlapping segment and joint meshes, and responsibility/search overlays use a consistent raised, depth-independent layer to prevent seams, dark joints, and terrain z-fighting.
-- Completed Issue #15's core forward-basing pass. A route latches to the first operational FOB landing area it crosses and truncates into a confirmed landing order; route endpoints inside a friendly airfield remain valid recovery orders. Formations launch from their persistent operating field next round without changing the fighter or recon distance caps.
-- Made friendly airfield basing authoritative and capacity-aware. Existing occupants retain their slots until departure is confirmed, later over-capacity recovery orders are rejected, destroyed formations are removed from basing, and rebuilt formations return at the main base.
-- Generalized fixed-step recovery, doctrine aborts, fuel-reserve checks, and interception eligibility from one global home base to each formation's recovery field. Unusable destinations trigger deterministic nearest-field diversion; formations without a reachable alternate hold until fuel exhaustion and are lost.
-- Added binary FOB disable/trapping behavior and a direct `4` Logistics Adapt repair. Added deterministic successful route-through recovery, forward launch, diversion, stranding, trapped-aircraft, capacity, persistence, and repeatability coverage.
-- Implemented Issue #29's mission-based aircraft responsibility. Removed Conservative/Neutral/Aggressive orders and the separate Strategy step; fighter orders are now Defensive CAP or Forward Patrol, while recon uses Search Area, Deep Probe, or Custom Recon. CAP derives an inclusive 4.5-unit circle from the final ingress point and patrol derives an inclusive 2.5-unit corridor around the committed route. Current radar or visual contacts inside those areas can steer fuel-valid fighters, with nearest-distance and stable-ID selection, target retention outside the boundary, and no stale last-known pursuit. Recon now ignores radar-only tracks and recovers uniformly after direct hostile-fighter visual contact or any SAM/AAA launch. Planning and Observe render the appropriate responsibility overlays separately from flight routes, deterministic fixtures use explicit missions, and incompatible saves are invalidated under `dead-reckoning-mvp-v26`.
-- Reworked Observe's live event stream into a compact dispatch panel aligned with the airfield chit rail. The current event remains immediately focusable, while navigation, severity history, and expandable event history use the shared control-tower treatment.
-
-### 2026-09-10
-
-- Extended the airfield chit interaction into Observe. The replay defaults to the most recently planned airfield's launched formations in a left-edge rail; formation chits engage a tighter live camera follow, and selecting a different friendly airfield switches the rail.
-- Made all three role-aware aggression tradeoffs visible simultaneously in the Strategy step instead of revealing only the selected posture's explanation.
-- Reworked Adapt into a context-first force-turnaround surface. Removed the mixed horizontal formation/asset target rail, auto-focus the first damaged target, added a `NEED ATTENTION` cycle, collapsed the Logistics statement, and renamed procurement to `BUILD`.
-- Routine formation and defense repairs now apply directly from the selected target. Reserve-aircraft replacement, mutually exclusive airfield upgrades, and construction placement retain one confirmation because they consume scarce inventory, lock a branch, or alter the map.
-- Reworked Plan into an airfield-led sequential queue. Selecting an airfield opens its first unplanned surviving formation; `CONFIRM & NEXT` advances across the remaining package without requiring individual formation selection, and `COMMIT ROUND` remains locked until every surviving formation is explicitly confirmed with a valid route.
-- Added the airfield formation chit rail and split formation planning into explicit Strategy and Route states. Strategy selection enables the map route canvas; confirmation completes the current airfield before automatically transitioning the rail and editor to the next airfield with pending formations.
-- Fixed the per-round planning gate so reviewed formations reset when Adapt begins the next round. Added deterministic queue coverage for destroyed-formation exclusion, route validity, sequential advancement, and whole-package completion.
-
-### 2026-09-06
-
-- Replaced Plan's fixed-width all-formation inventory strip with a base-centric floating command capsule and contextual roster. Airfields are selectable on the tactical map, show based-formation counts, and reveal their local formations; a grouped `ALL` roster and cross-base Next progression preserve global package awareness as force size grows.
-- Added explicit formation Edit controls and route/review states to remove the previous double-tap dependency. The order sheet, global review gate, deterministic route behavior, and Commit rules are unchanged.
-- Reworked Observe's formation selector into the same scalable pattern: one selected-formation capsule plus an `ALL` roster grouped by originating airfield. Current follow, airfield recentering, status detail, and sensor-authorized presentation remain unchanged.
-- Added a deterministic basing projection that gives explicit FOB assignments precedence and places unassigned formations at the main airfield. This is presentation-only and does not activate forward launch, landing, or rebasing mechanics.
-- Added the requested fast roster gesture: tapping a formation selects it, while double-tapping its aircraft row opens the existing orders sheet for strategy and route changes. The explicit `EDIT` control remains available as a discoverable alternative.
-
-### 2026-09-04
-
-- Expanded the floating Adapt procurement catalog to construct Decoys (`4` Logistics), AAA sites (`6`), SAM sites (`8`), and FOBs (`8`) through one shared, data-driven registry. Every purchase uses common knowledge-based placement validation, a type-specific map ghost, confirmation, deterministic identity, and atomic spend-plus-creation.
-- Converted the airfield upgrade list and constructible-object list into typed registries so new entries inherit the existing quote, affordability, confirmation, transaction, and catalog rendering flow. Asset kinds remain an explicit TypeScript union and tactical behavior remains implemented by kind-specific simulation/rendering branches.
-- Bumped local persistence to `dead-reckoning-mvp-v24` because newly constructed defensive and decoy assets are authoritative campaign state.
-- Added the first FOB procurement slice from Issue #15. Adapt now has a floating `+ PROCURE` control and shallow floating catalog; FOB selection enters battlefield placement with live valid/invalid ghost feedback and a separate atomic confirmation.
-- Added an `8` Logistics baseline FOB cost, persistent-knowledge and friendly-asset-spacing validation, deterministic FOB naming/identity, and persisted operational/one-formation-capacity state. Placement validation intentionally ignores hidden enemy truth and undiscovered world bounds.
-- Rendered constructed FOBs as smaller selectable runway sites on the tactical and known-world maps. Route-to-land, forward launch/recovery, diversion, stranding, FOB damage/repair, and capacity enforcement remain explicitly inactive until the remaining Issue #15 work is implemented.
-- Bumped local persistence to `dead-reckoning-mvp-v22` because constructed FOB state is now authoritative.
-- Corrected the Logistics economy follow-up audit: confirmations are now bound to both action and target, target changes cancel pending confirmation, and stale quoted resources are rejected without mutation.
-- Refactored Adapt purchases into registered action definitions with explicit effects, projected Logistics/reserve inventory, and a placement-capable command envelope for future FOB work. Added exact capped-result copy and removed irrelevant disabled actions from fully healthy targets.
-- Added consistent cyan map selection markers for the airfield, radar, SAM, and AAA; removed the unreachable legacy Debrief implementation; and expanded deterministic coverage for command retargeting, stale/insufficient purchases, capped repair, persistence normalization, and the Debrief → Adapt → Plan sequence.
-- Implemented the first playable Logistics economy slice for Issue #16. A committed round now settles a deterministic, persistent Adapt statement exactly once: base Logistics, recovered-intelligence rewards, and uncapped confirmed enemy-aircraft rewards are credited before the player can spend.
-- Added a distinct Adapt phase after read-only Debrief. The battlefield remains the primary surface: formations use a compact selection strip, friendly air-defense assets and the main airfield can be selected directly on the map, and every purchase uses a quote plus explicit confirmation.
-- Added authoritative, persisted Logistics actions for formation-condition repair, reserve-aircraft replacement, and radar/SAM/AAA repair. Replacement consumes both Logistics and a finite reserve-aircraft inventory; unavailable, unaffordable, stale-phase, and duplicate commands make no state change.
-- Added the mutually exclusive main-airfield capability branch: Maintenance Wing reduces formation-service costs, while Supply Depot adds recurring Logistics from subsequent completed rounds.
-- Deferred rearm, readiness restoration, runway/decoy service, and all FOB purchases to later work because their corresponding strategic effects are not yet part of the playable loop. The new command/quote/transaction model is intended to accept FOB construction, repair, and capacity actions when Issue #15 lands.
-- Bumped local persistence to `dead-reckoning-mvp-v21`; prior saves are invalidated rather than being loaded into the new authoritative economy state.
-
-### 2026-08-30
-
-- Completed Issue #23's engagement-cue timeline as a replay-only projection over the unchanged authoritative combat model. Opening position, first strike, impact result, merge, late arrival, formation loss, numerical advantage, and resolution now use clear stacked labels with short fade windows instead of being inferred independently by the renderer.
-- Reworked Observe around selection-driven formation detail and a compact event navigator. Friendly aircraft now use minimal geometric activity glyphs while authoritative status expands from the bottom dock; the event surface shows one navigable event, a severity timeline, direct map focus, and an optional bounded history list.
-- Removed the obsolete top-right base-status key from the live battlefield. Base health and exposure remain preserved in authoritative match state, while exposure continues to appear in the debrief where it has context.
-- Consolidated the Observe formation glyph: selection now uses a thin ring, tactical actions use distinct geometric symbols, and the authoritative radar-link `!` is integrated into that glyph instead of floating above the aircraft. This is presentation-only; flight behavior, doctrine, sensor authority, and replay data are unchanged.
-- Refined the formation glyph into a centered, high-contrast visual system. Tactical action is now an outer 2D silhouette, radar linkage is a centered inner `!`, and selection is the outermost ring, allowing simultaneous states to remain aligned and legible.
-- Increased tactical-glyph distinction with status-colored badge fills, bright perimeter accents, heavier light symbols, and a larger centered radar-link mark. Shape remains authoritative for meaning; color provides a secondary recognition channel.
-
-### 2026-08-29
-
-- Added a compact, role-aware risk-posture tip beneath the Planning aggression selector so the immediate operational tradeoff remains visible while setting orders.
-
-- Implemented Issue #11.5's shared side-based fighter engagement lifecycle. Eligible late arrivals join one authoritative combat after normal interception checks, attacks rotate deterministically by side, participant destruction no longer ends a multi-formation fight early, and all survivors resume their independently preserved routes when the opposing side is eliminated. Replay pause time and circular positioning now respect each participant's own join and exit times.
-- Implemented Issue #11.4's positional opening-fire phase. Both fighters are assessed immediately before merge; positional score or a seeded neutral tie-break determines one bounded missile opportunity, its launch and impact are replayed once against the actual approach pose, and surviving formations transition into the circular sustained dogfight. Opening-fire kills resolve without creating a duplicate merged attack.
-- Implemented Issue #11.3's centralized deterministic fighter hit-probability model for active dogfights. Neutral sustained gunfire retains its prior 69% seeded hit chance; each ordinary exchange now records the base chance, modifier slots, unclamped and clamped chance, and normalized seeded roll. Subsequent Issue #11 work activates the positional and numerical slots, while formation-condition remains inactive; the former exchange-cap safety finalization was later removed.
-- Implemented Issue #11.2's deterministic positional-geometry foundation. A pure, tunable helper classifies tail, head-on, crossing, reversed, and degenerate fighter approach vectors from authoritative movement directions; subsequent Issue #11 work records the assessment and uses it to determine opening-fire initiative and chance.
-- Implemented Issue #22's bounded numerical-advantage model. Each merged fighter exchange recalculates side power from living authoritative formation strength, applies a symmetric force-ratio tier to the centralized seeded hit probability, records the numerical assessment for replay diagnostics, and keeps the final chance within the existing 10–90% clamp. Matched 128-seed cohorts verify a material 2v1 win-rate improvement without making the outcome guaranteed.
-- Removed the periodic eighth-exchange lethal fighter missile. Multi-formation fights still focus attacks on the weakest opponent, but destruction now requires accumulated damage from normal seeded exchanges rather than an exchange-counter kill.
-- Implemented Issue #23's fighter-engagement presentation pass: dogfight labels now use live participant counts, show compact numerical-advantage cues, give same-side formations wider stable orbit spacing, render sustained gun bursts and misses from recorded exchanges, and play formation-loss feedback instead of silently dropping a destroyed formation.
-- Implemented Issue #24's deterministic fighter-engagement validation. Full-round tail-aspect, head-on, and reversed fixtures now exercise authoritative positional geometry; matched 128-seed cohorts confirm the bounded opening-fire advantage; and integration assertions cover doctrine avoidance, visual-contact authority, movement pauses, fixed speed, fuel caps, post-combat exit, and byte-equivalent serialized Commit results. No replay schema change was introduced.
-
-### 2026-08-27
-
-- Added the Issue #11.1 fighter-engagement data foundation: dogfight sequences now carry a versioned, side-aware participant record and explicit phase timeline while retaining all legacy replay fields and current one-versus-one behavior. The schema supports later approach, opening-fire, positional, probability, and multi-participant work without activating those mechanics yet.
-- Fixed fighter dogfight attrition presentation: formation damage no longer removes individual aircraft pips during the exchange sequence. Pips now remain visible until a formation is lethally destroyed, preventing damage from appearing as a random mid-fight aircraft death.
-- Closed the generated-world/fog/route-template validation slice: deterministic fixtures now synchronize executed routes with editable ingress, reset planning-review state, reliably recover new intelligence, and include a dedicated recovered-world-edge scenario. Added semantic fog-mask checks, recovered-intelligence coverage, and route-template fitting tests across all four generated start regions and knowledge-derived planning bounds.
-
-### 2026-08-22
-
-- Planning route-template changes now retain a formation's existing ingress instead of requiring the route to be drawn again. Debrief loss roll-ups can reveal compact formation-level detail on demand.
-- Recovered recon no longer repeats already-known enemy locations in the After Action intelligence sequence.
-- Clarified radar ownership in the execution resolver: only player-owned radar creates friendly communications receipts and radar-only contact inputs. Hostile radar coverage cannot provide enemy tracks to recon or produce a friendly radar warning while a recon flight egresses through hostile communications range; added a deterministic regression test.
-- Fixed dogfight replay presentation so both friendly and hostile formations use opposing circular positions around the shared merge point; the paused replay frames no longer leave the friendly formation frozen while the enemy circles.
-- Implemented Issue #10's generated `28 × 36` campaign world with deterministic central start regions and start-relative friendly assets, enemy assets, squadrons, and enemy routes.
-- Kept true world bounds out of initial player knowledge. The battlefield now renders generic terrain and continuous haze across a six-unit presentation apron, while planning and camera movement expand from recovered knowledge instead of exposing the hidden rectangle.
-- Added exact world-edge interception for movement. Recon that reaches an edge turns home; only successful recovery commits the observed edge segment and its flown mapping corridor, while loss discards both.
-- Added a knowledge-only `KNOWN WORLD` overview for recovered coverage, known fixed assets, and recovered edge segments, with uncharted labels for directions whose boundaries remain unknown.
-- Added knowledge-aware tactical pan/zoom, dynamic fog-mask sizing, dynamic terrain/grid/pointer surfaces, and recovered boundary lines without changing sensor, combat, fuel, or hidden-object authority.
-- Added deterministic world, multiplayer-placement, knowledge-projection, and recon recovery/loss tests; bumped local persistence to `dead-reckoning-mvp-v20`.
-- Optimized continuous fog for replay performance: persistent knowledge masks rebuild only when knowledge changes, live observation masks update at the authoritative 20 Hz cadence, and the two generated-world masks remain within a 72 KB total budget. Generic terrain ridges now use two instanced draws instead of one draw per ridge.
-- Separated route planning from on-station behavior. Template selection now appends the chosen CAP, patrol, search, or probe behavior after a player-drawn ingress route rather than forcing a straight shot to the template area.
-- Added the Search Area coverage mesh: a translucent rectangular interwoven grid communicates the intended search box while the formation still flies the finite lawnmower route that drives movement and reconnaissance.
-- Replaced generic route presets with role-aware `Defensive CAP`, `Forward Patrol`, `Search Area`, and `Deep Probe` templates while retaining custom drag routes.
-- Added deterministic template fitting against existing mission-distance and return-fuel rules. Oversized patterns shrink or shorten the ingress without using hidden enemy information; generated routes remain ordinary execution routes.
-- Replaced debrief tabs with a fixed-height After Action briefing carousel using Back/Next controls and clickable progress dots. Recovered intelligence reports each receive their own page and focus the map on entry.
-- Reduced the fixed briefing card and its roll-ups so they occupy less vertical space. Selecting an observed object on an intelligence page clears formation follow and issues a fresh direct camera snap to that asset, even when the same report is clicked again.
-- Repositioned the After Action briefing as a bottom-anchored deck over the full-height tactical map, preserving the battlefield as the dominant debrief surface.
-- Made Plan map-first with a compact bottom squadron rail and expandable command dock. A selected route remains prominent while the rest of the package is ghosted; reviewing every viable formation leads to a package-level commit state.
-- Made staging aircraft totals authoritative through a shared formation-status helper: each rail tile displays its surviving `N / max` aircraft as small pips, disables destroyed formations, and leaves readiness and ammunition as secondary state.
-- Compressed the developer scenario controls into a collapsible `DEV` menu and removed the remaining briefing-card scroll overflow so After Action stays a click-through deck.
-- Replaced the stacked Plan rail and orders panel with one 94-pixel command shelf. Formation cycling, force pips, review progress, and the primary Next/Commit action now share one consistent surface; route doctrine opens above it only on demand.
-- Reused the command-shelf interaction pattern in Observe, collapsed map overlays behind `MAP LAYERS`, and reduced the After Action deck to a shallow 210-pixel map-linked briefing.
-- Expanded the Plan map key with range values and plain-language effects: radar spots aircraft inside its ring, while communications sends those radar tracks to flights inside its larger ring.
-- Separated Observe playback controls vertically from the follow shelf to remove overlapping click targets. Added a direct Plan formation inventory strip and differentiated briefing stages by loss, enemy, intelligence, and adapt accents while keeping the final next-round action visible inside the standard controls.
-- Fixed the After Action Intel-stage class collision that had applied Intel-card styling to the whole briefing. Loss screens now use one-line tappable roll-ups with optional formation detail, confirmed enemy losses use a positive green accent, and the persistent Plan range key makes aircraft, radar, and comms ranges and effects readable at a glance.
-- Simplified range semantics: all SAM and AAA engagement rings now share one amber short-dashed weapon-range treatment and one key entry, while aircraft vision, radar detection, and communications retain their distinct three-layer grammar.
-- Changed tactical aircraft presentation from one formation model to a compact group of one smaller model per surviving aircraft pip. Attrition now visibly reduces the number of aircraft flying in each friendly or visually identified enemy formation.
-- Added a debrief aircraft-attrition roll-up. Friendly and confirmed enemy aircraft losses now use authoritative round-start versus final aircraft-pip states, report destroyed formations separately, and show each friendly formation's start/end count, losses, ending strength, and final status.
-- Routed dogfight and ground-defense damage through the shared strength-to-aircraft-pip conversion, so dogfight, SAM, and AAA damage all contribute to the same loss accounting without double-counting individual hits.
-- Replaced persistent Observe-phase ground coverage overlays with contextual active coverage: radar, SAM, and AAA ranges render only for the formation selected in the follow dock, while that formation is inside an opposing asset's applicable range. Active radar and SAM zones use a pulsing illuminated dome; inactive coverage does not render during the replay.
-- Hid all Observe-phase formation routes until a formation is selected in the follow dock, then show only that formation's route.
-- Replaced the visible hex-cell fog with a single continuous tactical-haze shader plane driven by persistent mapped-terrain and live-observation masks.
-- Kept terrain-prop filtering and enemy sensor/intelligence visibility on the existing authoritative rules; mask feathering and texture are presentation-only.
-- Added smooth inward fog transitions, subtle stationary world-space noise, and distinct unknown, mapped, and live/friendly treatments without changing reconnaissance ranges or recovery persistence.
-- Fixed the active deterministic resolver so only recon formations that reach `recovered` persist samples from their recorded executed path; destroyed, aborted, or unresolved flights retain no new terrain knowledge.
-- Corrected the Recon Loss fixture so its one-pip Raven reliably crosses the enemy SAM on a deterministic lethal seed, exercising the no-persistent-mapping branch.
-- Retuned fog-of-war from a heavy dark mask to a restrained atmospheric veil: unknown terrain remains faintly readable, stale mapped terrain is subtly muted, and live observation is effectively clear. This is a presentation-only change; hidden props and intelligence rules remain authoritative.
-- Kept generic, non-actionable terrain forms visible below the haze so unknown space reads as a continuous landscape rather than an empty green field; this does not reveal hidden enemy assets or other tactical information.
-- Scoped the Planning posture summary to the selected formation: fighter and recon orders now show only that formation's role-specific risk effect instead of presenting both aircraft types together.
-- Preserved the Planning command sheet's open/closed state while switching formations; double-clicking another formation opens it only when it was previously closed.
-
-### 2026-08-19
-
-- Distinguished LOS, radar detection, and radar communications overlays with different colors and line patterns, and clarified their legend labels.
-- Added a subtle translucent 3D radar-detection dome while retaining the dashed detection boundary.
-- Kept the friendly radar dome and coverage boundaries visible through the live Observe replay instead of limiting them to pre-run phases.
-- Implemented the #9 battlefield-first Observe/Debrief UX pass: compact phase labeling, clickable tactical event feed with map/friendly-formation focus, scalable formation follow dock, smooth camera follow, and concise formation outcome cards in After Action.
-- Added an `AIRFIELD` control to the Observe formation dock so follow mode can be exited while returning the camera to home base.
-- Adjusted Conservative fighter doctrine so fighters avoid hostile fighter combat but still intercept hostile recon flights and conduct the existing close-range pursuit behavior.
-
-### 2026-08-18
-
-- Consolidated active air combat behind a typed engagement-rule registry and one shared engagement lifecycle. Target selection, fuel eligibility, engagement startup, dogfight updates, pursuit updates, and completion now have separate responsibilities without changing serialized replay shapes.
-- Aggressive fighters now attack hostile recon flights at the normal fighter merge range after intercepting them. The pursuit records air-to-air exchanges and weapon effects; the fighter recovers afterward, while recon either continues if it survives or is destroyed.
-- Fixed recon-pursuit replay timing: fighters now remain in an attack state for the full recorded exchange, instead of turning toward home at pursuit start.
-- Fixed post-dogfight state resolution: at that time, the exchange cap produced a final lethal shot so the losing formation was destroyed and the survivor resumed normal movement and doctrine processing rather than remaining frozen or automatically recovering. That forced resolution was later removed in favor of ordinary accumulated combat damage.
-- Recon pursuits now use live chase movement: recon continues its route and the fighter follows using normal movement, with damage applied only while inside close strike range. They do not use a dogfight-circle overlay.
-- Refined recon pursuit so fighters no longer latch to recon: recon may evade by opening distance, and air-to-air damage is resolved only on close-range pursuit ticks.
-- Fixed aggressive fighter post-pursuit behavior: after recon escapes or is destroyed, the fighter resumes its assigned route; the normal fuel-reserve check determines whether it can continue or must recover.
-- Fixed aggressive fighter target selection for close recon fly-bys: a recon flight inside merge range now overrides the normal hostile-fighter priority and starts a pursuit.
-- Added deterministic Fighter vs Fighter and Fighter vs Recon play-test fixtures. Fighter vs Recon removes the enemy fighter and routes the enemy recon through a planned aggressive-fighter crossing.
-
-- Replaced route/contact prediction with a deterministic 0.05-second stateful round simulator. Commit now resolves movement, sensors, radar communications, doctrine, pursuit, dogfights, defenses, recovery, and reconnaissance into recorded unit frames; Observe only replays those frames.
-- Added recorded behavior and contact intervals, variable round duration (minimum 22 seconds, maximum 60), last-known-position pursuit with reacquisition, and live fuel-reserve enforcement. Radar-link `!` and `INTERCEPT` presentation are driven by recorded intervals.
-- Removed current-round Reserve Desk effects from Observe and renamed abort to `SKIP TO DEBRIEF`; v18 saves invalidate older replay results.
-- Radar-link receipts are compacted into real start/end intervals and the large red `!` now fades out after link loss instead of persisting until the round ends. Recon now follows doctrine on direct hostile-fighter contact: Conservative and Neutral abort to recovery, while Aggressive continues collection.
-- Expanded recon threat doctrine: Conservative aborts after a persistent radar receipt or any air-defense launch, Neutral aborts only from direct visual fighter contact or launch, and Aggressive presses until damage leaves the formation below 50% strength.
-- Added contextual friendly sensor-range overlays: radar detection and communications coverage appear during Deploy/Plan, while the selected formation's LOS ring is shown at its current position in Plan/Observe. Removed repeated LOS rings from every route waypoint.
-- Removed the left-side Plan / Orient / Adapt phase rail to leave the tactical map unobstructed.
-- Route drawing and deployment placement now read directly from the displayed map interaction surface, keeping cursor location, rendered route, and placed-object position aligned.
-- Restored the angled orthographic tactical camera. Route drawing and placement now resolve the cursor ray against the actual terrain plane, and route lines render at that same ground elevation so camera angle does not introduce parallax offset.
-- Implemented doctrine-driven fighter interception: Neutral fighters divert on visual contact, Aggressive fighters may divert on a current shared radar track or visual contact, and Conservative fighters recover instead of chasing. Intercepts preserve speed, fuel/recovery limits, dogfight timing, and post-combat recovery; stale radar tracks cause recovery rather than an endless chase.
-- Added an in-world large red `!` for formations currently receiving a radar link and an `INTERCEPT` label for a current diversion; v17 saves include intercept-plan data.
-
-### 2026-08-16
-
-- Enemy aircraft rendering is now strictly driven by current ground-radar or friendly-aircraft detection; remembered identity no longer preserves an exact live position after contact is lost.
-- Added sensor-driven transitions among hidden, radar-track, and visual-model presentation, including concealment of enemy-linked overlays and weapon effects when no current contact exists.
-- Aligned fighter encounter resolution with rendered flight paths, preserved flown route distance before recovery, and increased closest-approach precision without an unbounded simulation loop to reduce dogfight rubber-banding.
-- Replaced two-axis Aggression/Risk doctrine with a single Conservative, Neutral, or Aggressive setting; v15 saves invalidated older doctrine state.
-- Added a distinct 11-unit ground-radar communications radius and direct per-formation radar-track receipts without changing detection range, aircraft movement, or combat behavior; v16 saves invalidate older serialized results.
-- Documented the current fighter/recon-only playable state.
-- Fighter encounters now remain in a circular dogfight until one formation is destroyed.
-- Flight movement uses fixed distance over time instead of completing every route in the same duration.
-- Fuel limits cap drawn routes while reserving return-to-base distance.
-- Dogfight duration pauses route travel to prevent post-engagement jumps.
-- Visually identified MiGs remain depicted for the rest of the sortie.
-- Added spatial fog of war: unobserved enemy territory is obscured, current aircraft observation is fully revealed, and returned recon routes become dim persistent map knowledge.
-- Added `mappedAreas` to serializable match and round state; reconnaissance loss does not commit map knowledge.
-- Tightened the recon-loss debug scenario to reliably validate the failed-recovery branch.
-- Replaced stale README gameplay claims with a current core-loop summary that defers to this document.
-
-### 2026-09-04
-
-- Added the first playable Initial Planning flow: allocate three mixed-role formations, select two optional support assets alongside the required airfield/radar, place the selected package on the map, review, and confirm into Round 1 Planning.
-- Added deterministic friendly-territory placement validation that ignores hidden enemy positions and undiscovered world bounds; legacy debug scenarios still bypass setup.
-- Bumped persistence to `dead-reckoning-mvp-v23`; setup state is authoritative while readiness, ammunition, runway, decoy, and FOB operational effects remain deferred.
+- Verified the document against the live engine, route, basing, economy, setup, fog, UI, and deterministic tests. Removed superseded historical entries and corrected campaign force selection, live fighter damage, pursuit resolution, ground-defense resolution, inactive systems, and the current persistence defect.
+- Added the shared real-time aircraft reaction lifecycle: direct fighter combat interrupts recon pursuit; survivors are reassessed from current state without restoring hidden target intent; independent engagements can overlap without duplicate formation ownership; and accepted recon RTB commands remain authoritative during pursuit.
+- Removed the execution skip. Rounds now reach Debrief only through normal fixed-tick completion; 1× and 2× remain available.
+- Unified live execution presentation around a visibility-safe `UnitTrack` projection. Friendly and detected-hostile markers, status, camera follow, fog reveal, coverage, contact counts, and sortie identity memory now share absolute simulated time; UI-only dogfight choreography no longer overrides tactical world positions.

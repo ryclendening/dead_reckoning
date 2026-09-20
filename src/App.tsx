@@ -16,6 +16,7 @@ import { formationBaseGroups, formationBaseId } from './game/formationBasing'
 import { deriveRecoveryPlanningView, formationField, normalizeFormationBasing, snapRouteToRecoveryField, validateRecoveryPackage } from './game/forwardBasing'
 import { generateRouteTemplate, templatesForRole } from './game/routeTemplates'
 import { airfieldFirstPlanningIds, nextUnplannedFormationId, planningPackageReady, viablePlanningFormationIds } from './game/planningQueue'
+import { projectFriendlyUnitAt, projectHostileUnitAt } from './game/executionProjection'
 import {createScenario} from './game/scenarios'
 import { deriveKnownEnvelope, derivePlanningEnvelope } from './game/world'
 import type { Asset, CombatEvent, DebugScenario, EconomyActionId, EconomyCommand, EconomyTarget, MatchState, MissionId, Point, RoundResult, SimulationCommand } from './game/types'
@@ -166,14 +167,14 @@ function DeploymentPanel({assets,selectedId,onSelect,onLock}:{assets:Asset[];sel
 
 function ExecutionOverlay({progress,activeEvent,speed,onSpeed,match,result,selectedId,followId,onSelectFormation,onClearFollow,onAirfield,onEventFocus,onRtb}:{progress:number;activeEvent?:CombatEvent;speed:number;onSpeed:()=>void;match:MatchState;result?:RoundResult;selectedId:string;followId?:string;onSelectFormation:(id:string)=>void;onClearFollow:()=>void;onAirfield:()=>void;onEventFocus:(event:CombatEvent)=>void;onRtb:(id:string)=>void}){
   const seconds=progress*(result?.duration??22)
-  const windows=result?.enemyFlights.flatMap(f=>f.detectionWindows.filter(w=>progress>=w.start&&progress<=w.end))??[]
+  const contacts=result?.enemyFlights.flatMap(flight=>{const projection=projectHostileUnitAt(result,flight.id,seconds);return projection?[projection]:[]})??[]
   const friendlyRadarIds=new Set(match.playerAssets.filter(asset=>asset.kind==='radar').map(asset=>asset.id))
   const linkedTracks=result?.radarTrackReceipts?.filter(receipt=>friendlyRadarIds.has(receipt.radarId)&&seconds>=receipt.start&&seconds<=receipt.end)??[]
-  const visual=windows.some(w=>w.source==='visual')
+  const visual=contacts.some(contact=>contact.visibility==='visual')
   const cue=result?.defenseCues?.find(c=>progress>=c.start&&progress<=c.end)
   const network=linkedTracks.length>0
-  const recovering=(result?.behaviorIntervals??[]).some(interval=>interval.mode==='recovering'&&seconds>=interval.start&&seconds<=interval.end)
-  return <div className="execute-hud"><div className="timer live" aria-label={`${seconds.toFixed(1)} seconds elapsed`}><i style={{width:`${Math.min(100,seconds/60*100)}%`}}/></div><div className={`contact-status ${windows.length?'hot':''} ${visual?'visual':''} ${network?'network':''}`}>{recovering?'RECOVERY IN PROGRESS':windows.length?(visual?`${windows.length} VISUAL CONTACT`:network?`${linkedTracks.length} RADAR LINK${linkedTracks.length===1?'':'S'} ACTIVE`:`${windows.length} RADAR TRACK`):'NO HOSTILE TRACKS'}</div>{cue?<div className="cue-status"><ShieldCheck/> DEFENSE CUED · +{cue.rangeBonus.toFixed(1)} RANGE</div>:null}<ObserveEventFeed events={result?.events??[]} progress={progress} duration={result?.duration} onFocus={onEventFocus}/><FormationDock squadrons={match.squadrons} bases={match.playerAssets} result={result} progress={progress} selectedId={selectedId} followId={followId} onSelect={onSelectFormation} onClearFollow={onClearFollow} onAirfield={onAirfield} onRtb={onRtb}/>
+  const recovering=match.squadrons.some(squadron=>projectFriendlyUnitAt(result,squadron.id,seconds)?.frame.mode==='recovering')
+  return <div className="execute-hud"><div className="timer live" aria-label={`${seconds.toFixed(1)} seconds elapsed`}><i style={{width:`${Math.min(100,seconds/60*100)}%`}}/></div><div className={`contact-status ${contacts.length?'hot':''} ${visual?'visual':''} ${network?'network':''}`}>{recovering?'RECOVERY IN PROGRESS':contacts.length?(visual?`${contacts.length} VISUAL CONTACT${contacts.length===1?'':'S'}`:network?`${contacts.length} RADAR TRACK${contacts.length===1?'':'S'} ACTIVE`:`${contacts.length} RADAR TRACK${contacts.length===1?'':'S'}`):'NO HOSTILE TRACKS'}</div>{cue?<div className="cue-status"><ShieldCheck/> DEFENSE CUED · +{cue.rangeBonus.toFixed(1)} RANGE</div>:null}<ObserveEventFeed events={result?.events??[]} progress={progress} duration={result?.duration} onFocus={onEventFocus}/><FormationDock squadrons={match.squadrons} bases={match.playerAssets} result={result} progress={progress} selectedId={selectedId} followId={followId} onSelect={onSelectFormation} onClearFollow={onClearFollow} onAirfield={onAirfield} onRtb={onRtb}/>
     <div className="exec-controls"><button className="speed" onClick={onSpeed}><FastForward/>{speed}×</button></div></div>
 }
 

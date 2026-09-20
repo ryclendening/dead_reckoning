@@ -205,4 +205,4 @@ export interface MatchState {
   setup?: CampaignSetupState
   debugScenario?: DebugScenario
 }
-export type DebugScenario = 'campaign' | 'fighter-duel' | 'fighter-2v1' | 'fighter-tail' | 'fighter-head-on' | 'fighter-reversed' | 'fighter-recon' | 'neutral-los' | 'radar-intercept' | 'recon-recovery' | 'recon-edge' | 'recon-loss' | 'fob-recovery' | 'fob-divert' | 'fob-stranded' | 'fob-trapped'
+export type DebugScenario = 'campaign' | 'fighter-duel' | 'fighter-2v1' | 'fighter-tail' | 'fighter-head-on' | 'fighter-reversed' | 'fighter-recon' | 'neutral-los' | 'radar-intercept' | 'reaction-interrupt' | 'parallel-engagements' | 'recon-pursuit' | 'recon-recovery' | 'recon-edge' | 'recon-loss' | 'fob-recovery' | 'fob-divert' | 'fob-stranded' | 'fob-trapped'

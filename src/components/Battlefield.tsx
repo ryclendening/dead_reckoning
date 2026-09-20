@@ -3,7 +3,8 @@ import { Canvas, ThreeEvent, useFrame, useThree } from '@react-three/fiber'
 import { Billboard, Line, MapControls, Text, useGLTF, useTexture } from '@react-three/drei'
 import * as THREE from 'three'
 import type { MapControls as MapControlsImpl } from 'three-stdlib'
-import { effectiveSensorRange, EXECUTION_SECONDS, MAX_FLIGHT_DISTANCE, RADAR_COMMUNICATION_RANGE, RADAR_RANGE } from '../game/engine'
+import { effectiveSensorRange, EXECUTION_SECONDS, RADAR_COMMUNICATION_RANGE, RADAR_RANGE } from '../game/engine'
+import { projectFriendlyUnitAt, projectHostileUnitAt, sampleUnitTrack, unitTrackFor, type HostileUnitProjection } from '../game/executionProjection'
 import { axialToPoint, HEX_RADIUS, snapToHex } from '../game/hex'
 import { deriveFogMaskSize, MAPPED_RADIUS, updateLiveFogMask, updatePersistentFogMask } from '../game/fog'
 import { deriveDiscoveredBoundaryLines } from '../game/knownWorld'
@@ -11,7 +12,7 @@ import { fighterEngagementPresentationAt } from '../game/engagementPresentation'
 import { deriveFlightGlyph } from '../game/flightGlyph'
 import { airfieldLabel, formationBaseGroups } from '../game/formationBasing'
 import { fighterResponsibilityFor } from '../game/missionResponsibility'
-import type { Asset, BoundarySegment, CampaignWorld, CombatEvent, CombatSequence, ConstructibleAssetKind, DefenseCue, EnemyFlight, Phase, Point, ReinforcementCall, RoundResult, Squadron, UnitTrack, WeaponEffect, WorldBounds } from '../game/types'
+import type { Asset, BoundarySegment, CampaignWorld, CombatEvent, CombatSequence, ConstructibleAssetKind, DefenseCue, EnemyFlight, Phase, Point, ReinforcementCall, RoundResult, Squadron, UnitFrame, WeaponEffect, WorldBounds } from '../game/types'
 import type { FogMaskInput, MapObservation } from '../game/fog'
 
 const friendly='#55d6df', amber='#d99a25', hostile='#de4f3f'
@@ -23,7 +24,6 @@ const to3=(p:Point,y=.13):[number,number,number]=>[p[0],y,p[1]]
 const groundPlane=new THREE.Plane(new THREE.Vector3(0,1,0),0)
 const flightCurve=(route:Point[],altitude:number)=>{const points=route.map(p=>new THREE.Vector3(p[0],altitude,p[1]));const path=new THREE.CurvePath<THREE.Vector3>();for(let index=1;index<points.length;index++)path.add(new THREE.LineCurve3(points[index-1],points[index]));return path}
 const flightPoint=(curve:THREE.CurvePath<THREE.Vector3>,progress:number)=>{const normalized=Math.min(.999,Math.max(0,progress));const point=curve.getPointAt(normalized);const altitude=Math.min(1,normalized/.055,(1-normalized)/.085);point.y=.15+.45*Math.max(0,altitude);return point}
-function frameAt(track:UnitTrack|undefined,time:number){const frames=track?.frames??[];if(!frames.length)return;const after=frames.find(f=>f.time>=time)??frames.at(-1)!;const before=frames[frames.indexOf(after)-1]??after;const t=(time-before.time)/Math.max(.001,after.time-before.time);return {position:[before.position[0]+(after.position[0]-before.position[0])*t,before.position[1]+(after.position[1]-before.position[1])*t] as Point,facing:[before.facing[0]+(after.facing[0]-before.facing[0])*t,before.facing[1]+(after.facing[1]-before.facing[1])*t] as Point,strength:before.strength+(after.strength-before.strength)*t,aircraft:before.aircraft+(after.aircraft-before.aircraft)*t}}
 type FriendlyTerritory=CampaignWorld['friendlyTerritory']
 const boundsCenter=(bounds:WorldBounds):Point=>[(bounds.minX+bounds.maxX)/2,(bounds.minZ+bounds.maxZ)/2]
 const boundsWidth=(bounds:WorldBounds)=>bounds.maxX-bounds.minX
@@ -323,31 +323,14 @@ function Route({squadron,selected,packageReview=false,recoveryLabel}:{squadron:S
 
 type FlightStatus={aircraft:number;damaged:number;fraction:number;hasDamage:boolean;strength:number;morale:number;action:string;landed:boolean}
 const strengthToAircraft=(strength:number,maxAircraft:number)=>strength<=0?0:Math.max(1,Math.min(maxAircraft,Math.ceil(strength/25)))
-const actionLabel=(status?:string,sequence?:CombatSequence)=>sequence?.kind==='dogfight'?'DOGFIGHT':sequence?.kind==='pursuit'?'PURSUIT':sequence?.kind==='strike'?'ATTACK RUN':status==='destroyed'?'DESTROYED':status==='disengaging'?'BREAKING CONTACT':status==='rtb'?'RTB':'ENROUTE'
-function sequencePose(sequence:CombatSequence|undefined,seconds:number,id:string){
-  if(!sequence||sequence.kind!=='dogfight'||seconds<sequence.start||seconds>sequence.end)return undefined
-  const participant=sequence.engagement.participants.find(item=>item.id===id)
-  if(!participant||seconds<participant.joinedAt||seconds>participant.exitedAt)return undefined
-  const merged=sequence.engagement.phases.find(phase=>phase.kind==='merged')
-  if(!merged||seconds<merged.start)return undefined
-  const sideIds=sequence.engagement.sides[participant.side],sideIndex=Math.max(0,sideIds.indexOf(id)),sideOffset=(sideIndex-(sideIds.length-1)/2)*.72
-  const local=clamp01((seconds-merged.start)/Math.max(.01,merged.end-merged.start));const angle=local*Math.PI*4+(participant.side==='hostile'?Math.PI:0)+sideOffset;const next=angle+.08
-  const smooth=(value:number)=>value*value*(3-2*value)
-  const entryBlend=smooth(clamp01((seconds-Math.max(merged.start,participant.joinedAt))/.32))
-  const exitBlend=participant.finalDisposition==='destroyed'?1:smooth(clamp01((participant.exitedAt-seconds)/.32))
-  return {point:new THREE.Vector3(sequence.location[0]+Math.cos(angle)*.92,.72,sequence.location[1]+Math.sin(angle)*.64),look:new THREE.Vector3(sequence.location[0]+Math.cos(next)*.92,.72,sequence.location[1]+Math.sin(next)*.64),blend:Math.min(entryBlend,exitBlend)}
-}
-function dogfightWeaponEffects(sequences:CombatSequence[]):WeaponEffect[]{
+const actionLabel=(status?:string)=>status==='dogfighting'?'DOGFIGHT':status==='attacking-recon'?'PURSUIT':status==='intercepting'?'INTERCEPT':status==='recovering'||status==='recovered'||status==='rtb'?'RTB':status==='destroyed'?'DESTROYED':status==='disengaging'?'BREAKING CONTACT':'ENROUTE'
+function dogfightWeaponEffects(sequences:CombatSequence[],result:RoundResult|undefined):WeaponEffect[]{
   return sequences.flatMap(sequence=>sequence.kind==='dogfight'?sequence.exchanges.filter(exchange=>exchange.phase==='merged').flatMap(exchange=>{
-    const start=Math.max(sequence.start,exchange.time-.18),from=sequencePose(sequence,start,exchange.attackerId)?.point,to=sequencePose(sequence,exchange.time,exchange.defenderId)?.point
-    return from&&to?[{id:`weapon-${sequence.id}-${exchange.id}`,kind:exchange.weapon,sourceId:exchange.attackerId,targetId:exchange.defenderId,start,end:exchange.time+.16,from:[from.x,from.z] as Point,to:[to.x,to.z] as Point,hit:exchange.hit,damage:exchange.damage}]:[]
+    const start=Math.max(sequence.start,exchange.time-.18)
+    const from=sampleUnitTrack(unitTrackFor(result,exchange.attackerId),start)?.position
+    const to=sampleUnitTrack(unitTrackFor(result,exchange.defenderId),exchange.time)?.position
+    return from&&to?[{id:`weapon-${sequence.id}-${exchange.id}`,kind:exchange.weapon,sourceId:exchange.attackerId,targetId:exchange.defenderId,start,end:exchange.time+.16,from,to,hit:exchange.hit,damage:exchange.damage}]:[]
   }):[])
-}
-function travelProgress(curve:THREE.CurvePath<THREE.Vector3>,seconds:number,role:Squadron['role'],sequences:CombatSequence[],id:string){
-  const joinedAt=(sequence:CombatSequence)=>sequence.kind==='dogfight'?(sequence.engagement.participants.find(participant=>participant.id===id)?.joinedAt??sequence.start):sequence.start
-  const paused=sequences.filter(sequence=>sequence.kind==='dogfight'&&sequence.participantIds.includes(id)&&seconds>joinedAt(sequence)).reduce((total,sequence)=>total+Math.max(0,Math.min(seconds,sequence.end)-joinedAt(sequence)),0)
-  const traveled=Math.max(0,seconds-paused)/EXECUTION_SECONDS*MAX_FLIGHT_DISTANCE[role]
-  return Math.min(.999,traveled/Math.max(.001,curve.getLength()))
 }
 
 function AircraftSmoke(){
@@ -375,50 +358,48 @@ function ActivityGlyph3D({action,color,selected=false,radarLinkOpacity=0}:{actio
   </group></Billboard>
 }
 
-function Flight({squadron,route,track,progress,executionDuration,active,selected,status,activeEvent,activeSequence,sequences,radarLinkFade,intercepting,recoveryLabel}:{squadron:Squadron;route:Point[];track?:UnitTrack;progress:number;executionDuration:number;active:boolean;selected:boolean;status:FlightStatus;activeEvent?:CombatEvent;activeSequence?:CombatSequence;sequences:CombatSequence[];radarLinkFade:number;intercepting:boolean;recoveryLabel?:string}){
+function Flight({squadron,route,frame,active,selected,status,activeEvent,radarLinkFade,recoveryLabel}:{squadron:Squadron;route:Point[];frame?:UnitFrame;active:boolean;selected:boolean;status:FlightStatus;activeEvent?:CombatEvent;radarLinkFade:number;recoveryLabel?:string}){
   const ref=useRef<THREE.Group>(null)
   const modelRef=useRef<THREE.Group>(null)
   const reaction=useRef({id:'',age:2,kind:'none' as 'none'|'damage'|'strike'})
   const curve=useMemo(()=>flightCurve(route,.6),[route])
   const reactionEvent=activeEvent?.detail.includes(squadron.callsign)&&(airLossTitles.has(activeEvent.title)||airDamageTitles.has(activeEvent.title)||activeEvent.title==='WEAPONS IMPACT')?activeEvent:undefined
   useEffect(()=>{if(reactionEvent&&reaction.current.id!==reactionEvent.id)reaction.current={id:reactionEvent.id,age:0,kind:reactionEvent.title==='WEAPONS IMPACT'?'strike':'damage'}},[reactionEvent])
-  useFrame((_,delta)=>{if(ref.current&&active){const seconds=progress*executionDuration;const pose=sequencePose(activeSequence,seconds,squadron.id);const frame=frameAt(track,seconds);const basePoint=frame?new THREE.Vector3(frame.position[0],.6,frame.position[1]):flightPoint(curve,progress);const baseLook=frame?new THREE.Vector3(frame.facing[0],.6,frame.facing[1]):flightPoint(curve,Math.min(.999,progress+.01));const p=pose?basePoint.clone().lerp(pose.point,pose.blend):basePoint;const q=pose?baseLook.clone().lerp(pose.look,pose.blend):baseLook;ref.current.position.copy(p);ref.current.lookAt(q)}if(!modelRef.current)return;reaction.current.age+=delta;const age=reaction.current.age;if(age<1.35){const fade=1-age/1.35;if(reaction.current.kind==='damage'){modelRef.current.rotation.z=Math.sin(age*23)*.18*fade;modelRef.current.rotation.x=-Math.sin(age*9)*.08*fade;modelRef.current.position.y=Math.sin(age*18)*.055*fade}else{modelRef.current.rotation.z=Math.sin(age*8)*.12*fade;modelRef.current.position.y=-Math.sin(Math.min(1,age*2.5)*Math.PI)*.13*fade}}else{modelRef.current.rotation.set(0,0,0);modelRef.current.position.y=0}})
+  useFrame((_,delta)=>{if(ref.current&&active&&frame){ref.current.position.set(frame.position[0],.6,frame.position[1]);ref.current.lookAt(frame.facing[0],.6,frame.facing[1])}if(!modelRef.current)return;reaction.current.age+=delta;const age=reaction.current.age;if(age<1.35){const fade=1-age/1.35;if(reaction.current.kind==='damage'){modelRef.current.rotation.z=Math.sin(age*23)*.18*fade;modelRef.current.rotation.x=-Math.sin(age*9)*.08*fade;modelRef.current.position.y=Math.sin(age*18)*.055*fade}else{modelRef.current.rotation.z=Math.sin(age*8)*.12*fade;modelRef.current.position.y=-Math.sin(Math.min(1,age*2.5)*Math.PI)*.13*fade}}else{modelRef.current.rotation.set(0,0,0);modelRef.current.position.y=0}})
   const damageEvent=reactionEvent&&(airLossTitles.has(reactionEvent.title)||airDamageTitles.has(reactionEvent.title))?reactionEvent:undefined
   const formationLost=!!damageEvent&&airLossTitles.has(damageEvent.title)
   const calloutLabel=formationLost?'FORMATION LOST':damageEvent?'HIT · DAMAGE':''
-  const activity=intercepting?'INTERCEPT':status.action
-  return <group ref={ref} visible={!status.landed&&(status.aircraft>0||formationLost)} position={flightPoint(curve,active?progress:0)}>
+  const initialPosition=active&&frame?new THREE.Vector3(frame.position[0],.6,frame.position[1]):flightPoint(curve,0)
+  return <group ref={ref} visible={(!active||!!frame)&&!status.landed&&(status.aircraft>0||formationLost)} position={initialPosition}>
     <group ref={modelRef}><AircraftFormation role={squadron.role} aircraft={Math.max(1,status.aircraft)}/>{status.hasDamage?<AircraftSmoke/>:null}</group>
     <mesh position={[0,-.43,0]} rotation={[-Math.PI/2,0,0]}><circleGeometry args={[selected ? .55 : .42,16]}/><meshBasicMaterial color={selected?friendly:'#080a08'} transparent opacity={selected ? .18 : .22}/></mesh>
     {active?<>
-      <ActivityGlyph3D action={activity} color={friendly} selected={selected} radarLinkOpacity={radarLinkFade}/>
+      <ActivityGlyph3D action={status.action} color={friendly} selected={selected} radarLinkOpacity={radarLinkFade}/>
       {recoveryLabel&&!status.landed?<Billboard position={[0,.64,0]} follow lockZ={false}><Text fontSize={.16} color="#9ee6a8" anchorX="center" outlineWidth={.01} outlineColor="#102015">LANDING AT {recoveryLabel}</Text></Billboard>:null}
       {damageEvent?<HitCallout key={damageEvent.id} label={calloutLabel}/>:null}
     </>:null}
   </group>
 }
 
-function EnemyContact({flight,progress,executionDuration,status,activeEvent,activeSequence,sequences}:{flight:EnemyFlight;progress:number;executionDuration:number;status:FlightStatus;activeEvent?:CombatEvent;activeSequence?:CombatSequence;sequences:CombatSequence[]}){
-  const activeWindows=flight.detectionWindows.filter(window=>progress>=window.start&&progress<=window.end)
-  const window=activeWindows.find(window=>window.source==='visual')??activeWindows.find(window=>window.source==='network')??activeWindows[0]
+function EnemyContact({flight,projection,status,activeEvent}:{flight:EnemyFlight;projection:HostileUnitProjection;status:FlightStatus;activeEvent?:CombatEvent}){
   const ref=useRef<THREE.Group>(null)
   const modelRef=useRef<THREE.Group>(null)
   const reaction=useRef({id:'',age:2})
-  const curve=useMemo(()=>flightCurve(flight.route,.68),[flight.route])
   const hitEvent=flight.role==='fighter'&&activeEvent&&airLossTitles.has(activeEvent.title)&&activeEvent.detail.includes(flight.callsign)?activeEvent:undefined
   useEffect(()=>{if(hitEvent&&reaction.current.id!==hitEvent.id)reaction.current={id:hitEvent.id,age:0}},[hitEvent])
-  useFrame((_,delta)=>{if(ref.current){const seconds=progress*executionDuration;const routeProgress=travelProgress(curve,seconds,flight.role,sequences,flight.id);const pose=sequencePose(activeSequence,seconds,flight.id);const basePoint=flightPoint(curve,routeProgress);const baseLook=flightPoint(curve,Math.min(.999,routeProgress+.01));const p=pose?basePoint.clone().lerp(pose.point,pose.blend):basePoint;const q=pose?baseLook.clone().lerp(pose.look,pose.blend):baseLook;ref.current.position.copy(p);ref.current.lookAt(q)}if(!modelRef.current)return;reaction.current.age+=delta;const age=reaction.current.age;if(age<1.35){const fade=1-age/1.35;modelRef.current.rotation.z=Math.sin(age*24)*.22*fade;modelRef.current.rotation.x=-Math.sin(age*10)*.1*fade;modelRef.current.position.y=Math.sin(age*18)*.06*fade}else{modelRef.current.rotation.set(0,0,0);modelRef.current.position.y=0}})
-  if(!window)return null
-  const visual=window.source==='visual';const network=window.source==='network';const identityKnown=flight.identityLearnedAt!==undefined&&progress>=flight.identityLearnedAt
+  const frame=projection.frame
+  useFrame((_,delta)=>{if(ref.current){ref.current.position.set(frame.position[0],.6,frame.position[1]);ref.current.lookAt(frame.facing[0],.6,frame.facing[1])}if(!modelRef.current)return;reaction.current.age+=delta;const age=reaction.current.age;if(age<1.35){const fade=1-age/1.35;modelRef.current.rotation.z=Math.sin(age*24)*.22*fade;modelRef.current.rotation.x=-Math.sin(age*10)*.1*fade;modelRef.current.position.y=Math.sin(age*18)*.06*fade}else{modelRef.current.rotation.set(0,0,0);modelRef.current.position.y=0}})
+  const visual=projection.visibility==='visual'
   const damageEvent=hitEvent&&status.hasDamage?hitEvent:undefined
   const contactColor=visual?hostile:amber
-  const contactLabel=visual?`ENEMY · ${flight.callsign}`:identityKnown?`${flight.callsign} · ${flight.role.toUpperCase()} · RADAR TRACK`:network?'ENEMY · DEFENSE TRACK':'ENEMY · RADAR CONTACT'
-  if(!visual)return <group ref={ref} visible={status.aircraft>0||!!hitEvent} position={flightPoint(curve,progress)}>
-    <mesh rotation={[-Math.PI/2,0,Math.PI/4]}><planeGeometry args={[.72,.72]}/><meshBasicMaterial color={amber} transparent opacity={network ? .42 : .58} depthWrite={false}/></mesh>
+  const contactLabel=visual?`ENEMY · ${flight.callsign}`:projection.identityKnown?`${flight.callsign} · ${flight.role.toUpperCase()} · RADAR TRACK`:'ENEMY · RADAR CONTACT'
+  const position=new THREE.Vector3(frame.position[0],.6,frame.position[1])
+  if(!visual)return <group ref={ref} visible={status.aircraft>0||!!hitEvent} position={position}>
+    <mesh rotation={[-Math.PI/2,0,Math.PI/4]}><planeGeometry args={[.72,.72]}/><meshBasicMaterial color={amber} transparent opacity={.58} depthWrite={false}/></mesh>
     <Billboard position={[0,.56,0]} follow lockZ={false}><Text fontSize={.18} color={contactColor} anchorX="center" outlineWidth={.012} outlineColor="#100a03">{contactLabel}</Text></Billboard>
     <group position={[0,-.6,0]}><Ring radius={1.1} color={amber} opacity={.18}/></group>
   </group>
-  return <group ref={ref} visible={status.aircraft>0||!!hitEvent} position={flightPoint(curve,progress)}>
+  return <group ref={ref} visible={status.aircraft>0||!!hitEvent} position={position}>
     <group ref={modelRef}><AircraftFormation role={flight.role as Squadron['role']} aircraft={Math.max(1,status.aircraft)} color={contactColor} enemy/>{status.hasDamage?<AircraftSmoke/>:null}</group>
     <Billboard position={[0,.56,0]} follow lockZ={false}><Text fontSize={.19} color={contactColor} anchorX="center" outlineWidth={.012} outlineColor="#180806">{contactLabel}</Text></Billboard>
     <HealthBar3D fraction={status.fraction} color={contactColor} label={`${flight.callsign} · ${flight.role.toUpperCase()} · ${status.aircraft} PIPS`} status={status.action} position={[0,.9,0]}/>
@@ -525,31 +506,17 @@ function HistoryOverlay({result}:{result:RoundResult}){
   </group>
 }
 
-function friendlyStatusAt(squadron:Squadron,result:RoundResult|undefined,progress:number):FlightStatus{
-  const seconds=progress*(result?.duration??EXECUTION_SECONDS)
-  const track=result?.unitTracks.find(item=>item.unitId===squadron.id)
-  const sequences=result?.combatSequences??[]
-  const activeSequence=sequences.find(seq=>seconds>=seq.start&&seconds<=seq.end&&seq.participantIds.includes(squadron.id))
-  const exchange=sequences.flatMap(seq=>seq.exchanges).filter(x=>x.defenderId===squadron.id&&x.time<=seconds).at(-1)
-  const strength=exchange?.targetStrength??squadron.strength??Math.max(0,(squadron.aircraft/Math.max(1,squadron.maxAircraft))*100)
-  const morale=exchange?.targetMorale??squadron.morale??70
-  const finalStatus=result?.squadrons.find(s=>s.id===squadron.id)?.status
-  const aircraft=activeSequence?.kind==='dogfight'&&strength>0?squadron.aircraft:strengthToAircraft(strength,squadron.maxAircraft)
+function friendlyStatusAt(squadron:Squadron,frame:UnitFrame|undefined,initialStrength?:number):FlightStatus{
+  const strength=frame?.strength??squadron.strength??Math.max(0,(squadron.aircraft/Math.max(1,squadron.maxAircraft))*100)
+  const morale=frame?.morale??squadron.morale??70
+  const aircraft=frame?.aircraft??strengthToAircraft(strength,squadron.maxAircraft)
   const damaged=Math.max(0,Math.round((100-strength)/25)-(squadron.maxAircraft-aircraft))
-  const landedAt=track?.frames.find(frame=>frame.mode==='recovered')?.time
-  return {aircraft,damaged,fraction:clamp01(strength/100),strength,morale,action:actionLabel(seconds>=EXECUTION_SECONDS-2?'rtb':finalStatus,activeSequence),hasDamage:strength<(squadron.strength??100),landed:landedAt!==undefined&&seconds>=landedAt}
+  return {aircraft,damaged,fraction:clamp01(strength/100),strength,morale,action:actionLabel(frame?.mode??squadron.status),hasDamage:strength<(initialStrength??squadron.strength??100),landed:frame?.mode==='recovered'}
 }
 
-function enemyStatusAt(flight:EnemyFlight,result:RoundResult|undefined,progress:number):FlightStatus{
-  const seconds=progress*(result?.duration??EXECUTION_SECONDS)
-  const sequences=result?.combatSequences??[]
-  const activeSequence=sequences.find(seq=>seconds>=seq.start&&seconds<=seq.end&&seq.participantIds.includes(flight.id))
-  const exchange=sequences.flatMap(seq=>seq.exchanges).filter(x=>x.defenderId===flight.id&&x.time<=seconds).at(-1)
-  const strength=exchange?.targetStrength??flight.strength??Math.max(0,(flight.aircraft/Math.max(1,flight.initialAircraft))*100)
-  const morale=exchange?.targetMorale??flight.morale??62
-  const finalStatus=result?.enemyFlights.find(f=>f.id===flight.id)?.status
-  const aircraft=activeSequence?.kind==='dogfight'&&strength>0?flight.initialAircraft:strengthToAircraft(strength,flight.initialAircraft)
-  return {aircraft,damaged:0,fraction:clamp01(strength/100),strength,morale,action:actionLabel(finalStatus,activeSequence),hasDamage:strength<(flight.strength??100),landed:false}
+function enemyStatusAt(flight:EnemyFlight,frame:UnitFrame,initialStrength?:number):FlightStatus{
+  const strength=frame.strength
+  return {aircraft:frame.aircraft,damaged:0,fraction:clamp01(strength/100),strength,morale:frame.morale,action:actionLabel(frame.mode),hasDamage:strength<(initialStrength??100),landed:frame.mode==='recovered'}
 }
 
 function assetAtTime(asset:Asset,result:RoundResult|undefined,progress:number,enemy:boolean,phase:Phase):Asset{
@@ -574,34 +541,30 @@ function BattlefieldScene({squadrons,assets,playerAssets,mappedAreas,discoveredB
   useEffect(()=>{if(!construction)setConstructionHover(undefined)},[construction])
   const draft=useRef<Point[]>([])
   const seconds=progress*(executionResult?.duration??EXECUTION_SECONDS)
-  const selectedTrack=executionResult?.unitTracks.find(track=>track.unitId===selected.id)
-  const selectedFrame=phase==='execute'?frameAt(selectedTrack,seconds):undefined
-  const selectedPosition=selectedFrame?.position??selected.route[0]??playerBase
+  const friendlyProjections=useMemo(()=>new globalThis.Map(phase==='execute'?squadrons.flatMap(squadron=>{const projection=projectFriendlyUnitAt(executionResult,squadron.id,seconds);return projection?[[squadron.id,projection] as const]:[]}):[]),[executionResult,phase,seconds,squadrons])
+  const hostileProjections=useMemo(()=>new globalThis.Map(phase==='execute'?(executionResult?.enemyFlights??[]).flatMap(flight=>{const projection=projectHostileUnitAt(executionResult,flight.id,seconds);return projection?[[flight.id,projection] as const]:[]}):[]),[executionResult,phase,seconds])
+  const selectedFrame=friendlyProjections.get(selected.id)?.frame
+  const selectedPosition=selectedFrame?.position??(phase==='execute'?playerBase:selected.route[0]??playerBase)
   const selectedResponsibility=useMemo(()=>fighterResponsibilityFor(selected),[selected])
   const plannedStation=selected.routeIngress.at(-1)??selected.route.at(-1)??selectedPosition
   const planningLosPosition=phase==='plan'&&selected.role==='fighter'?(selectedResponsibility?.kind==='circle'?selectedResponsibility.center:plannedStation):selectedPosition
   const followSquadron=followId?squadrons.find(s=>s.id===followId):undefined
-  const followedTrack=followId?executionResult?.unitTracks.find(track=>track.unitId===followId):undefined
-  const followFrame=frameAt(followedTrack,seconds)
-  const cameraFocus=focusPoint??(followId?(followFrame?.position??followSquadron?.route[0]):undefined)
+  const followFrame=followId?(friendlyProjections.get(followId)?.frame??hostileProjections.get(followId)?.frame):undefined
+  const cameraFocus=focusPoint??(followId?(followFrame?.position??(phase==='execute'?undefined:followSquadron?.route[0])):undefined)
   const selectedRange=effectiveSensorRange({...selected,strength:selectedFrame?.strength??selected.strength})
-  const selectedAirborne=(selectedFrame?.aircraft??selected.aircraft)>0
+  const selectedAirborne=phase==='execute'?!!selectedFrame&&selectedFrame.aircraft>0:selected.aircraft>0
   const friendlyRadar=playerAssets.find(asset=>asset.kind==='radar'&&asset.health>0)
   const friendlyRadarIds=new Set(playerAssets.filter(asset=>asset.kind==='radar').map(asset=>asset.id))
-  const detectedEnemyIds=new Set((executionResult?.enemyFlights??[]).filter(flight=>flight.detectionWindows.some(window=>progress>=window.start&&progress<=window.end)).map(flight=>flight.id))
+  const detectedEnemyIds=new Set(hostileProjections.keys())
   const enemyVisibleFor=(ids:string[])=>ids.filter(id=>id.startsWith('red-')).every(id=>detectedEnemyIds.has(id))
-  const replayWeaponEffects=useMemo(()=>[...(executionResult?.weaponEffects??[]),...dogfightWeaponEffects(executionResult?.combatSequences??[])],[executionResult])
+  const replayWeaponEffects=useMemo(()=>[...(executionResult?.weaponEffects??[]),...dogfightWeaponEffects(executionResult?.combatSequences??[],executionResult)],[executionResult])
   const eventEnemyIds=(executionResult?.enemyFlights??[]).filter(flight=>activeEvent?.detail.includes(flight.callsign)).map(flight=>flight.id)
   const visibleActiveEvent=activeEvent&&(eventEnemyIds.length===0||enemyVisibleFor(eventEnemyIds))?activeEvent:undefined
   const observedAssetIds=new Set((executionResult?.contactObservations??[]).filter(o=>phase==='execute'&&seconds>=o.start&&seconds<=o.end&&o.targetId.startsWith('e-')).map(o=>o.targetId))
   const liveMapObservations:MapObservation[]=phase==='execute'?squadrons.flatMap(squadron=>{
-    const route=executionResult?.executionRoutes[squadron.id]??squadron.route
-    const status=friendlyStatusAt(squadron,executionResult,progress)
-    if(status.aircraft<=0||route.length<2)return []
-    const sequence=(executionResult?.combatSequences??[]).find(item=>seconds>=item.start&&seconds<=item.end&&item.participantIds.includes(squadron.id))
-    const curve=flightCurve(route,.6);const routeProgress=travelProgress(curve,seconds,squadron.role,executionResult?.combatSequences??[],squadron.id)
-    const point=sequencePose(sequence,seconds,squadron.id)?.point??flightPoint(curve,routeProgress)
-    return [{position:[point.x,point.z] as Point,radius:squadron.role==='recon'?2.7:1.45}]
+    const frame=friendlyProjections.get(squadron.id)?.frame
+    if(!frame||frame.aircraft<=0||frame.mode==='recovered'||frame.mode==='trapped')return []
+    return [{position:frame.position,radius:squadron.role==='recon'?2.7:1.45}]
   }):[]
   const displayedPlayerAssets=playerAssets.map(asset=>assetAtTime(asset,executionResult,progress,false,phase))
   const baseCounts=useMemo(()=>new globalThis.Map(formationBaseGroups(squadrons,playerAssets).map(group=>[group.base.id,group.formationIds.length])),[playerAssets,squadrons])
@@ -635,8 +598,8 @@ function BattlefieldScene({squadrons,assets,playerAssets,mappedAreas,discoveredB
     {phase==='plan'?squadrons.filter(s=>s.id!==selectedId||!planningRecoveryFieldId).map(s=><ResponsibilityOverlay key={`${s.id}-responsibility`} squadron={s} selected={s.id===selectedId}/>):phase==='execute'&&followId?squadrons.filter(s=>s.id===followId).map(s=><ResponsibilityOverlay key={`${s.id}-responsibility`} squadron={s} selected/>):null}
     {phase==='plan'&&planningRecoveryFieldId?(()=>{const field=playerAssets.find(asset=>asset.id===planningRecoveryFieldId);return field?<RecoveryLatchCue position={field.position} selected/>:null})():null}
     {phase==='plan'?squadrons.map(s=><Route key={s.id} squadron={s} selected={s.id===selectedId} packageReview={packageReview} recoveryLabel={s.id===selectedId&&planningRecoveryFieldId?playerAssets.find(asset=>asset.id===planningRecoveryFieldId)?.name??'HOME BASE':undefined}/>):phase==='execute'&&followId?squadrons.filter(s=>s.id===followId).map(s=><Route key={s.id} squadron={s} selected recoveryLabel={recoveryById.get(s.id)?.plannedFieldId?playerAssets.find(asset=>asset.id===recoveryById.get(s.id)?.plannedFieldId)?.name??'HOME BASE':undefined}/>):null}
-    {squadrons.filter(s=>(executionResult?.executionRoutes[s.id]??s.route).length>=2).map(s=>{const receipt=(executionResult?.radarTrackReceipts??[]).filter(item=>friendlyRadarIds.has(item.radarId)&&item.receiverId===s.id&&item.start<=seconds).at(-1);const radarLinkFade=receipt?clamp01((receipt.end+.8-seconds)/.8):0;const intercepting=(executionResult?.behaviorIntervals??[]).some(interval=>interval.unitId===s.id&&interval.mode==='intercepting'&&seconds>=interval.start&&seconds<=interval.end);const plannedFieldId=recoveryById.get(s.id)?.plannedFieldId;const recoveryLabel=plannedFieldId?playerAssets.find(asset=>asset.id===plannedFieldId)?.name??'HOME BASE':undefined;return <Flight key={s.id} squadron={s} route={executionResult?.executionRoutes[s.id]??s.route} track={executionResult?.unitTracks.find(track=>track.unitId===s.id)} executionDuration={executionResult?.duration??EXECUTION_SECONDS} active={phase==='execute'} progress={progress} selected={s.id===selectedId} status={friendlyStatusAt(s,executionResult,progress)} activeEvent={visibleActiveEvent} activeSequence={(executionResult?.combatSequences??[]).find(seq=>seconds>=seq.start&&seconds<=seq.end&&seq.participantIds.includes(s.id))} sequences={executionResult?.combatSequences??[]} radarLinkFade={radarLinkFade} intercepting={intercepting} recoveryLabel={recoveryLabel}/>}) }
-    {phase==='execute'?executionResult?.enemyFlights.map(f=><EnemyContact key={f.id} flight={f} progress={progress} executionDuration={executionResult?.duration??EXECUTION_SECONDS} status={enemyStatusAt(f,executionResult,progress)} activeEvent={visibleActiveEvent} activeSequence={(executionResult?.combatSequences??[]).find(seq=>seconds>=seq.start&&seconds<=seq.end&&seq.participantIds.includes(f.id))} sequences={executionResult?.combatSequences??[]}/>):null}
+    {squadrons.filter(s=>phase==='execute'?friendlyProjections.has(s.id):s.route.length>=2).map(s=>{const receipt=(executionResult?.radarTrackReceipts??[]).filter(item=>friendlyRadarIds.has(item.radarId)&&item.receiverId===s.id&&item.start<=seconds).at(-1);const radarLinkFade=receipt?clamp01((receipt.end+.8-seconds)/.8):0;const plannedFieldId=recoveryById.get(s.id)?.plannedFieldId;const recoveryLabel=plannedFieldId?playerAssets.find(asset=>asset.id===plannedFieldId)?.name??'HOME BASE':undefined;const frame=friendlyProjections.get(s.id)?.frame;const initialStrength=unitTrackFor(executionResult,s.id)?.frames[0]?.strength;return <Flight key={s.id} squadron={s} route={s.route} frame={frame} active={phase==='execute'} selected={s.id===selectedId} status={friendlyStatusAt(s,frame,initialStrength)} activeEvent={visibleActiveEvent} radarLinkFade={radarLinkFade} recoveryLabel={recoveryLabel}/>}) }
+    {phase==='execute'?executionResult?.enemyFlights.flatMap(f=>{const projection=hostileProjections.get(f.id);if(!projection)return [];const initialStrength=unitTrackFor(executionResult,f.id)?.frames[0]?.strength;return [<EnemyContact key={f.id} flight={f} projection={projection} status={enemyStatusAt(f,projection.frame,initialStrength)} activeEvent={visibleActiveEvent}/>]}):null}
     {phase==='execute'?executionResult?.reinforcementCalls.map(call=><ReinforcementFlight key={call.id} call={call} progress={progress}/>):null}
     {phase==='execute'?executionResult?.defenseCues?.filter(c=>progress>=c.start&&progress<=c.end).map(c=><DefenseNetworkCue key={c.id} cue={c} radar={playerRadar}/>):null}
     {phase==='execute'?(executionResult?.combatSequences??[]).filter(seq=>enemyVisibleFor(seq.participantIds)).map(seq=><ActiveSequenceVisual key={seq.id} sequence={seq} seconds={seconds}/>):null}

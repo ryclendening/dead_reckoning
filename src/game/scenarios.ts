@@ -1,7 +1,7 @@
-import {createMatch} from './data'
+import {createMatch,enemyBaseFor} from './data'
 import type {DebugScenario,MatchState,Point,Squadron} from './types'
 
-export const DEBUG_SCENARIOS:DebugScenario[]=['campaign','fighter-duel','fighter-2v1','fighter-tail','fighter-head-on','fighter-reversed','fighter-recon','neutral-los','radar-intercept','recon-recovery','recon-edge','recon-loss','fob-recovery','fob-divert','fob-stranded','fob-trapped']
+export const DEBUG_SCENARIOS:DebugScenario[]=['campaign','fighter-duel','fighter-2v1','fighter-tail','fighter-head-on','fighter-reversed','fighter-recon','neutral-los','radar-intercept','reaction-interrupt','parallel-engagements','recon-pursuit','recon-recovery','recon-edge','recon-loss','fob-recovery','fob-divert','fob-stranded','fob-trapped']
 
 export const DEBUG_SCENARIO_LABELS:Record<DebugScenario,string>={
   campaign:'CAMPAIGN',
@@ -13,6 +13,9 @@ export const DEBUG_SCENARIO_LABELS:Record<DebugScenario,string>={
   'fighter-recon':'FIGHTER VS RECON',
   'neutral-los':'VISUAL CONTACT',
   'radar-intercept':'RADAR INTERCEPT',
+  'reaction-interrupt':'PURSUIT INTERRUPTION',
+  'parallel-engagements':'PARALLEL ENGAGEMENTS',
+  'recon-pursuit':'RECON PURSUIT CONTROL',
   'recon-recovery':'RECON RECOVERY',
   'recon-edge':'RECON EDGE',
   'recon-loss':'RECON LOSS',
@@ -39,7 +42,7 @@ export function createScenario(scenario:DebugScenario):MatchState{
   const enemySam=match.enemyAssets.find(asset=>asset.kind==='sam')!.position
   const edgeTarget:Point=[base[0],base[1]>=0?match.world.bounds.maxZ+8:match.world.bounds.minZ-8]
   const geometryScenario=scenario==='fighter-tail'||scenario==='fighter-head-on'||scenario==='fighter-reversed'
-  const fighterScenario=scenario==='fighter-duel'||scenario==='fighter-2v1'||geometryScenario||scenario==='fighter-recon'||scenario==='neutral-los'||scenario==='radar-intercept'
+  const fighterScenario=scenario==='fighter-duel'||scenario==='fighter-2v1'||geometryScenario||scenario==='fighter-recon'||scenario==='neutral-los'||scenario==='radar-intercept'||scenario==='reaction-interrupt'||scenario==='parallel-engagements'
   const fobScenario=scenario==='fob-recovery'||scenario==='fob-divert'||scenario==='fob-stranded'||scenario==='fob-trapped'
   if(fobScenario){
     const direction=base[1]>=0?-1:1
@@ -58,6 +61,12 @@ export function createScenario(scenario:DebugScenario):MatchState{
     if(scenario==='fighter-duel'||scenario==='fighter-2v1'||scenario==='neutral-los')return squadron.id==='viper'||scenario==='fighter-2v1'&&squadron.id==='falcon'?withRoute(squadron,[base,midpoint(base,enemyRadar),enemyRadar]):grounded(squadron)
     if(scenario==='fighter-recon')return squadron.id==='viper'?withRoute(squadron,[base,midpoint(base,enemyRadar)]):grounded(squadron)
     if(scenario==='radar-intercept')return squadron.id==='viper'?withRoute(squadron,[base,radar,base]):grounded(squadron)
+    if(scenario==='reaction-interrupt')return squadron.id==='viper'?withRoute(squadron,[base,midpoint(base,enemyRadar),enemyRadar]):grounded(squadron)
+    if(scenario==='parallel-engagements'){
+      const enemyBase=enemyBaseFor(match.world),delta:Point=[enemyBase[0]-base[0],enemyBase[1]-base[1]],length=Math.max(.001,Math.hypot(delta[0],delta[1])),forward:Point=[delta[0]/length,delta[1]/length],side:Point=[-forward[1],forward[0]],lateral=squadron.id==='viper'?-4:4;const target:Point=[base[0]+forward[0]*10+side[0]*lateral,base[1]+forward[1]*10+side[1]*lateral]
+      return squadron.id==='viper'||squadron.id==='falcon'?withRoute(squadron,[base,target]):grounded(squadron)
+    }
+    if(scenario==='recon-pursuit')return squadron.id==='raven'?withRoute(squadron,[base,midpoint(base,enemyRadar),enemyRadar]):grounded(squadron)
     if(scenario==='recon-recovery')return squadron.id==='raven'?withRoute(squadron,[base,midpoint(base,enemyRadar),enemyRadar,midpoint(base,enemyRadar),base]):grounded(squadron)
     if(scenario==='recon-edge')return squadron.id==='raven'?withRoute(squadron,[base,edgeTarget]):grounded(squadron)
     if(scenario==='recon-loss')return squadron.id==='raven'?withRoute(squadron,[base,midpoint(base,enemySam),enemySam,enemyRadar],{aircraft:1,strength:1,morale:24}):grounded(squadron)
