@@ -8,10 +8,14 @@ The battlefield is a continuous low-poly diorama with a subtle H3-style overlay 
 
 ```bash
 npm install
-npm run dev
+npm run playtest
 ```
 
-Open `http://127.0.0.1:5173` and use a portrait viewport.
+This runs the automated game checks, creates the production build, and serves
+that exact build at `http://127.0.0.1:4173`. Use a portrait viewport.
+
+For quick development iteration without the production gate, run `npm run dev`
+and open `http://127.0.0.1:5173`.
 
 ## Current playable loop
 
