@@ -14,6 +14,7 @@ import { airfieldLabel, formationBaseGroups } from '../game/formationBasing'
 import { fighterResponsibilityFor } from '../game/missionResponsibility'
 import { cameraPresentationForPhase, commandMapFitZoomForBounds } from '../game/cameraPresentation'
 import { territoryBounds, territoryRegions } from '../game/territory'
+import { firstRouteFobLatch } from '../game/forwardBasing'
 import type { Asset, BoundarySegment, CombatEvent, CombatSequence, ConstructibleAssetKind, DefenseCue, EnemyFlight, FriendlyTerritory, Phase, Point, ReinforcementCall, RoundResult, Squadron, UnitFrame, WeaponEffect, WorldBounds } from '../game/types'
 import type { FogMaskInput, MapObservation } from '../game/fog'
 
@@ -570,6 +571,7 @@ function BattlefieldScene({squadrons,assets,playerAssets,mappedAreas,discoveredB
   const selectedFrame=friendlyProjections.get(selected.id)?.frame
   const selectedPosition=selectedFrame?.position??(phase==='execute'?playerBase:selected.route[0]??playerBase)
   const selectedResponsibility=useMemo(()=>fighterResponsibilityFor(selected),[selected])
+  const routeFobLatch=useMemo(()=>phase==='plan'?firstRouteFobLatch(playerAssets,selected.route):undefined,[phase,playerAssets,selected.route])
   const plannedStation=selected.routeIngress.at(-1)??selected.route.at(-1)??selectedPosition
   const planningLosPosition=phase==='plan'&&selected.role==='fighter'?(selectedResponsibility?.kind==='circle'?selectedResponsibility.center:plannedStation):selectedPosition
   const followSquadron=followId?squadrons.find(s=>s.id===followId):undefined
@@ -620,7 +622,7 @@ function BattlefieldScene({squadrons,assets,playerAssets,mappedAreas,discoveredB
     {displayedEnemyAssets.filter(a=>a.intel!=='unknown').map(a=><Text key={`${a.id}-label`} position={[a.position[0],.27,a.position[1]-.68]} rotation={[-Math.PI/2,0,0]} fontSize={.2} color={a.intel==='confirmed'?hostile:amber}>{observedAssetIds.has(a.id)&&assets.find(x=>x.id===a.id)?.intel==='unknown'?'OBSERVED':a.intel.toUpperCase()} {a.kind.toUpperCase()} · {a.confidence}%</Text>)}
     {activeCoverageAssets.map(({asset})=><ActiveCoverageOverlay key={`${asset.id}-active-coverage`} asset={asset}/>)}
     {phase==='plan'?squadrons.filter(s=>s.id!==selectedId||!planningRecoveryFieldId).map(s=><ResponsibilityOverlay key={`${s.id}-responsibility`} squadron={s} selected={s.id===selectedId}/>):phase==='execute'&&followId?squadrons.filter(s=>s.id===followId).map(s=><ResponsibilityOverlay key={`${s.id}-responsibility`} squadron={s} selected/>):null}
-    {phase==='plan'&&planningRecoveryFieldId?(()=>{const field=playerAssets.find(asset=>asset.id===planningRecoveryFieldId);return field?<RecoveryLatchCue position={field.position} selected/>:null})():null}
+    {phase==='plan'&&(planningRecoveryFieldId||routeFobLatch)?(()=>{const field=planningRecoveryFieldId?playerAssets.find(asset=>asset.id===planningRecoveryFieldId):routeFobLatch?.field;return field?<RecoveryLatchCue position={field.position} selected={Boolean(planningRecoveryFieldId)}/>:null})():null}
     {phase==='plan'?squadrons.map(s=><Route key={s.id} squadron={s} selected={s.id===selectedId} packageReview={packageReview} recoveryLabel={s.id===selectedId&&planningRecoveryFieldId?playerAssets.find(asset=>asset.id===planningRecoveryFieldId)?.name??'HOME BASE':undefined}/>):phase==='execute'&&followId?squadrons.filter(s=>s.id===followId).map(s=><Route key={s.id} squadron={s} selected recoveryLabel={recoveryById.get(s.id)?.plannedFieldId?playerAssets.find(asset=>asset.id===recoveryById.get(s.id)?.plannedFieldId)?.name??'HOME BASE':undefined}/>):null}
     {squadrons.filter(s=>phase==='execute'?friendlyProjections.has(s.id):s.route.length>=2).map(s=>{const receipt=(executionResult?.radarTrackReceipts??[]).filter(item=>friendlyRadarIds.has(item.radarId)&&item.receiverId===s.id&&item.start<=seconds).at(-1);const radarLinkFade=receipt?clamp01((receipt.end+.8-seconds)/.8):0;const plannedFieldId=recoveryById.get(s.id)?.plannedFieldId;const recoveryLabel=plannedFieldId?playerAssets.find(asset=>asset.id===plannedFieldId)?.name??'HOME BASE':undefined;const frame=friendlyProjections.get(s.id)?.frame;const initialStrength=unitTrackFor(executionResult,s.id)?.frames[0]?.strength;return <Flight key={s.id} squadron={s} route={s.route} frame={frame} active={phase==='execute'} selected={s.id===selectedId} status={friendlyStatusAt(s,frame,initialStrength)} activeEvent={visibleActiveEvent} radarLinkFade={radarLinkFade} recoveryLabel={recoveryLabel}/>}) }
     {phase==='execute'?executionResult?.enemyFlights.flatMap(f=>{const projection=hostileProjections.get(f.id);if(!projection)return [];const initialStrength=unitTrackFor(executionResult,f.id)?.frames[0]?.strength;return [<EnemyContact key={f.id} flight={f} projection={projection} status={enemyStatusAt(f,projection.frame,initialStrength)} activeEvent={visibleActiveEvent}/>]}):null}

@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { createMatch } from './data'
 import { MAX_FLIGHT_DISTANCE } from './engine'
-import { deriveRecoveryPlanningView, fieldAtRouteEnd, firstRouteFobLatch, formationField, normalizeFormationBasing, validateRecoveryPackage } from './forwardBasing'
+import { deriveRecoveryPlanningView, deriveRouteBudget, fieldAtRouteEnd, firstRouteFobLatch, formationField, normalizeFormationBasing, routeDistanceForBasing, validateRecoveryPackage } from './forwardBasing'
 import type { Asset, MatchState, Point } from './types'
 
 const withFob = (position: Point = [0, 0], basedFormationIds: string[] = []): MatchState => {
@@ -11,6 +11,16 @@ const withFob = (position: Point = [0, 0], basedFormationIds: string[] = []): Ma
 }
 
 describe('forward basing planning model', () => {
+  it('breaks the committed route into ingress, pattern, recovery, and remaining range', () => {
+    const state = withFob([2, 2])
+    const squadron = state.squadrons.find(item => item.id === 'viper')!
+    const route: Point[] = [squadron.routeIngress[0], squadron.routeIngress[1], [2, 2]]
+    const budget = deriveRouteBudget(state, squadron.id, route, squadron.routeIngress, MAX_FLIGHT_DISTANCE.fighter)!
+    expect(budget.ingressDistance).toBeLessThanOrEqual(routeDistanceForBasing(squadron.routeIngress))
+    expect(budget.missionDistance).toBeCloseTo(budget.ingressDistance + budget.patternDistance + budget.recoveryReserve, 6)
+    expect(budget.remainingRange).toBeCloseTo(MAX_FLIGHT_DISTANCE.fighter - budget.missionDistance, 6)
+  })
+
   it('normalizes every live formation to one field and gives explicit FOB assignments precedence', () => {
     const state = withFob([0, 0], ['raven', 'raven', 'missing'])
     const assets = normalizeFormationBasing(state.squadrons, state.playerAssets)

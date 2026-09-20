@@ -66,12 +66,12 @@ Aircraft visual range is multiplied by `0.68 + 0.32 × strength fraction`; destr
 - Fighter maximum mission distance is `40`; recon maximum mission distance is `48`. Each role moves at a fixed speed derived from that allowance over the nominal 22-second sortie window. Drawing a longer route does not increase speed.
 - A route that does not end at another friendly airfield reserves the direct return distance to its launch field. Execution appends the intended recovery field to the route when needed.
 - The first operational FOB whose 0.6-unit landing area is crossed becomes the intended recovery field and truncates later waypoints. A route ending within 0.6 units of any friendly airfield also becomes a landing order.
-- Plan shows the intended field and nearest reachable operational alternate. The main base has unlimited capacity; a baseline FOB has one formation slot. Confirmed recovery orders reserve that slot, and an occupant keeps its slot until its departure is confirmed.
+- Plan shows a live route budget split into ingress, generated mission pattern, direct recovery reserve, and remaining range. The intended field and nearest reachable operational alternate are shown from the same canonical distance calculation used by execution. The main base has unlimited capacity; a baseline FOB has one formation slot. Confirmed recovery orders reserve that slot, and an occupant keeps its slot until its departure is confirmed.
 - Every launchable formation must have a valid route and confirmed recovery field before Commit. Destroyed and trapped formations are excluded from the planning queue.
 - If the intended field becomes unusable during execution, the formation diverts to the nearest reachable operational field with capacity, with asset ID as the stable distance tie-breaker.
 - With no reachable alternate, a formation enters a visible holding circle and is destroyed only when its normal mission-distance allowance is exhausted.
 - A successful landing changes the formation's operating field. A formation based at an unusable FOB is trapped and cannot launch until the FOB is repaired.
-- Friendly territory is the union of the starting 4.5-unit home region and a 3-unit influence circle around each operational, undamaged friendly FOB. Disabled or destroyed FOBs provide no territory influence until repaired.
+- Friendly territory is the union of the starting 4.5-unit home region and a 3-unit influence circle around each operational, undamaged friendly FOB. Disabled or destroyed FOBs provide no territory influence until repaired. During routing, the first crossed operational FOB landing area receives a visible transit/latch cue and remains the authoritative recovery destination.
 - Dogfighting pauses movement and route-distance accumulation. Interception and pursuit distance count against the same mission allowance.
 
 ## Mission Responsibility and Reactions
@@ -234,6 +234,7 @@ This log keeps only current net changes. Superseded intermediate states belong i
 
 ### 2026-09-20
 
+- Added the live route budget readout for ingress, generated pattern, recovery reserve, and remaining range. The planner now reports map-limit clamping explicitly and shows the first crossed operational FOB as a transit/latch candidate before commitment; the budget reuses recovery validation's canonical mission distance.
 - Restored the shared angled 3D battlefield camera across Deploy and Plan so planning geometry matches the live execution view. Route and coverage measurements remain world-space Euclidean distances; the camera is presentation-only and does not change aircraft travel distance.
 - Added one shared friendly-territory union model: the starting home region plus 3-unit influence circles for operational FOBs. Placement validation, fog coverage, known-world bounds, camera framing, and battlefield overlays now reflect FOB expansion and remove disabled/destroyed FOB influence.
 - Verified the document against the live engine, route, basing, economy, setup, fog, UI, and deterministic tests. Removed superseded historical entries and corrected campaign force selection, live fighter damage, pursuit resolution, ground-defense resolution, inactive systems, and the current persistence defect.

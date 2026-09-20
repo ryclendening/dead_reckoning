@@ -96,6 +96,38 @@ export interface RecoveryPlanningView {
   summary: string
 }
 
+export interface RouteBudget {
+  ingressDistance: number
+  patternDistance: number
+  recoveryReserve: number
+  missionDistance: number
+  remainingRange: number
+  maxDistance: number
+  intendedField: Asset
+  alternateField?: Asset
+}
+
+/** Break down the exact route that execution and recovery validation will use. */
+export function deriveRouteBudget(state: MatchState, formationId: string, route: Point[], routeIngress: Point[], maxDistance: number): RouteBudget | undefined {
+  const view = deriveRecoveryPlanningView(state, formationId, route, maxDistance)
+  if (!view) return undefined
+  const flownDistance = routeDistanceForBasing(view.normalizedRoute)
+  // A FOB latch can truncate the committed route before the drawn ingress
+  // ends; report only the portion that is actually flown.
+  const ingressDistance = Math.min(routeDistanceForBasing(routeIngress), flownDistance)
+  const recoveryReserve = Math.max(0, view.missionDistance - flownDistance)
+  return {
+    ingressDistance,
+    patternDistance: Math.max(0, flownDistance - ingressDistance),
+    recoveryReserve,
+    missionDistance: view.missionDistance,
+    remainingRange: Math.max(0, maxDistance - view.missionDistance),
+    maxDistance,
+    intendedField: view.intendedField,
+    alternateField: view.alternateField,
+  }
+}
+
 export function nearestReachableAlternate(state: MatchState, formationId: string, from: Point, remainingRange: number, excludedFieldId: string, claims?: Map<string, Set<string>>): Asset | undefined {
   return state.playerAssets.filter(isOperationalAirfield).filter(field => field.id !== excludedFieldId).filter(field => {
     if (distanceBetween(from, field.position) > remainingRange + .001) return false

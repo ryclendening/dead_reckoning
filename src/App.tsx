@@ -13,7 +13,7 @@ import { beginNextRound, createEconomyState, economyAttentionTargets, executeEco
 import { snapToHex } from './game/hex'
 import { deriveKnownWorldModel } from './game/knownWorld'
 import { formationBaseGroups, formationBaseId } from './game/formationBasing'
-import { deriveRecoveryPlanningView, formationField, normalizeFormationBasing, snapRouteToRecoveryField, validateRecoveryPackage } from './game/forwardBasing'
+import { deriveRecoveryPlanningView, deriveRouteBudget, formationField, normalizeFormationBasing, snapRouteToRecoveryField, validateRecoveryPackage } from './game/forwardBasing'
 import { generateRouteTemplate, templatesForRole } from './game/routeTemplates'
 import { airfieldFirstPlanningIds, nextUnplannedFormationId, planningPackageReady, viablePlanningFormationIds } from './game/planningQueue'
 import { projectFriendlyUnitAt, projectHostileUnitAt } from './game/executionProjection'
@@ -75,13 +75,15 @@ export default function App(){
   const planningReady=planningPackageReady(match.squadrons,reviewedIds)
   const selectedLaunchField=formationField(planningBaseGroups.map(group=>group.base),selected.id)??match.playerAssets.find(asset=>asset.kind==='base')
   const recoveryView=useMemo(()=>deriveRecoveryPlanningView(match,selected.id,selected.route,MAX_FLIGHT_DISTANCE[selected.role]),[match,selected])
+  const routeBudget=useMemo(()=>deriveRouteBudget(match,selected.id,selected.route,selected.routeIngress,MAX_FLIGHT_DISTANCE[selected.role]),[match,selected])
+  const routeAdjustmentNotice=(adjustment:ReturnType<typeof generateRouteTemplate>['adjustment'])=>adjustment==='ingress-clamped'?'ROUTE CLAMPED AT THE KNOWN MAP LIMIT':adjustment==='pattern-shrunk'?'ON-STATION PATTERN REDUCED TO FIT FUEL':adjustment==='ingress-shortened'?'INGRESS ROUTE SHORTENED TO PRESERVE RETURN FUEL':undefined
 
   const setRoute=useCallback((ingress:Point[])=>{
     const squadron=match.squadrons.find(s=>s.id===match.selectedId)??match.squadrons[0]
     const launch=formationField(match.playerAssets,squadron.id)?.position??playerBase
     const withOrigin=ingress.length ? [[...launch] as Point,...ingress.slice(1)] : [[...launch] as Point]
     const generated=generateRouteTemplate({template:squadron.mission,ingress:withOrigin,maxDistance:MAX_FLIGHT_DISTANCE[squadron.role],bounds:planningEnvelope})
-    setRouteNotice(generated.adjustment==='pattern-shrunk'?'ON-STATION PATTERN REDUCED TO FIT FUEL':generated.adjustment==='ingress-shortened'?'INGRESS ROUTE SHORTENED TO PRESERVE RETURN FUEL':undefined)
+    setRouteNotice(routeAdjustmentNotice(generated.adjustment))
     setReviewedIds(ids=>{const next=new Set(ids);next.delete(squadron.id);return next});setMatch(m=>({...m,squadrons:m.squadrons.map(s=>s.id===squadron.id?{...s,route:generated.route,routeIngress:generated.ingress,plannedRecoveryFieldId:undefined}:s)}))
   },[match,planningEnvelope,playerBase])
   const selectMission=useCallback((mission:MissionId)=>{
@@ -90,7 +92,7 @@ export default function App(){
     const existing=squadron.routeIngress.length>=2?squadron.routeIngress:squadron.route.length>=2?squadron.route:[base]
     const ingress:[[number,number],...Point[]]=[[...base],...existing.slice(1)]
     const generated=generateRouteTemplate({template:mission,ingress,maxDistance:MAX_FLIGHT_DISTANCE[squadron.role],bounds:planningEnvelope})
-    setRouteNotice(generated.adjustment==='pattern-shrunk'?'ON-STATION PATTERN REDUCED TO FIT FUEL':generated.adjustment==='ingress-shortened'?'INGRESS ROUTE SHORTENED TO PRESERVE RETURN FUEL':undefined)
+    setRouteNotice(routeAdjustmentNotice(generated.adjustment))
     setReviewedIds(ids=>{const next=new Set(ids);next.delete(squadron.id);return next})
     setMatch(m=>({...m,squadrons:m.squadrons.map(s=>s.id===squadron.id?{...s,mission,route:generated.route,routeIngress:generated.ingress,plannedRecoveryFieldId:undefined}:s)}))
   },[match,planningEnvelope,playerBase])
@@ -155,7 +157,7 @@ export default function App(){
       {match.phase==='plan'&&planningStep!=='idle'?<PlanningChitRail squadrons={match.squadrons} bases={match.playerAssets} activeBaseId={activePlanningBaseId} selectedId={match.selectedId} reviewedIds={reviewedIds} onSelect={selectPlanningFormation}/>:null}
       {match.phase==='execute'&&executionBaseId?<ExecutionChitRail squadrons={match.squadrons} bases={match.playerAssets} result={liveResult} progress={progress} activeBaseId={executionBaseId} selectedId={match.selectedId} followId={followId} threatenedIds={new Set((liveResult?.threatAlerts??[]).filter(alert=>!acknowledgedThreatIds.has(alert.id)).map(alert=>alert.unitId))} onSelect={selectFormation}/>:null}
       {match.phase==='deploy'&&match.setup?<CampaignSetupPanel match={match} placementId={placementId} onSelectPlacement={setPlacementId} onChange={setup=>setMatch(m=>({...m,setup}))} onContinue={advanceCampaignSetup}/>:match.phase==='deploy'?<DeploymentPanel assets={match.playerAssets} selectedId={placementId} onSelect={setPlacementId} onLock={()=>setMatch(m=>({...m,phase:'plan'}))}/>:null}
-      {match.phase==='plan'?<CommandShelf squadrons={match.squadrons} bases={match.playerAssets} activeBaseId={activePlanningBaseId} rosterMode={planningRosterMode} squadron={selected} routeDistance={recoveryView?.missionDistance??missionDistance(selected.route,playerBase)} maxDistance={MAX_FLIGHT_DISTANCE[selected.role]} routeNotice={routeNotice} recoverySummary={recoveryView?.summary} onSelect={selectPlanningFormation} onBaseSelect={selectPlanningBase} onRosterMode={mode=>{setPlanningRosterMode(mode);if(mode!=='closed')setPlanningStep('idle')}} onMission={selectMission} onClear={()=>{setRouteNotice(undefined);setRoute([])}} onAdvance={reviewNextFormation} onCommit={commit} step={planningStep} onClose={()=>setPlanningStep('idle')} reviewedIds={reviewedIds} reviewedCount={reviewedCount} totalCount={viableFormationIds.length}/>:null}
+      {match.phase==='plan'?<CommandShelf squadrons={match.squadrons} bases={match.playerAssets} activeBaseId={activePlanningBaseId} rosterMode={planningRosterMode} squadron={selected} routeDistance={recoveryView?.missionDistance??missionDistance(selected.route,playerBase)} maxDistance={MAX_FLIGHT_DISTANCE[selected.role]} routeNotice={routeNotice} recoverySummary={recoveryView?.summary} routeBudget={routeBudget} onSelect={selectPlanningFormation} onBaseSelect={selectPlanningBase} onRosterMode={mode=>{setPlanningRosterMode(mode);if(mode!=='closed')setPlanningStep('idle')}} onMission={selectMission} onClear={()=>{setRouteNotice(undefined);setRoute([])}} onAdvance={reviewNextFormation} onCommit={commit} step={planningStep} onClose={()=>setPlanningStep('idle')} reviewedIds={reviewedIds} reviewedCount={reviewedCount} totalCount={viableFormationIds.length}/>:null}
       {match.phase==='debrief'&&match.lastResult?<Debrief match={match} onFocus={point=>{setFollowId(undefined);setFocusPoint([...point] as Point)}} onAdapt={enterAdapt}/>:null}
       {match.phase==='adapt'?<AdaptPanel match={match} selectedTarget={economyTarget} onSelectTarget={selectEconomyTarget} onPurchase={purchaseEconomy} onNextRound={nextRound} procurementMode={procurementMode} procurementActionId={procurementActionId} procurementPlacement={procurementPlacement} onProcurementMode={changeProcurementMode} onProcurementAction={selectProcurementAction}/>:null}
       {(match.phase==='victory'||match.phase==='defeat')?<EndState victory={match.phase==='victory'} round={match.round} onRestart={restart}/>:null}

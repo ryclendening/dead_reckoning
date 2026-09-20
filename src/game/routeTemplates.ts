@@ -3,8 +3,8 @@ import { missionDistance } from './engine'
 
 export interface RouteBounds { minX:number; maxX:number; minZ:number; maxZ:number }
 export interface RouteTemplateDefinition { id:MissionId; label:string; shortLabel:string; description:string; roles:Role[]; requiresTarget:boolean }
-export type RouteAdjustment = 'none' | 'pattern-shrunk' | 'ingress-shortened'
-export interface RouteGenerationResult { route:Point[]; ingress:Point[]; adjustment:RouteAdjustment }
+export type RouteAdjustment = 'none' | 'pattern-shrunk' | 'ingress-shortened' | 'ingress-clamped'
+export interface RouteGenerationResult { route:Point[]; ingress:Point[]; requestedIngress:Point[]; adjustment:RouteAdjustment }
 
 export const ROUTE_TEMPLATES:RouteTemplateDefinition[]=[
   {id:'defensive-cap',label:'Defensive CAP',shortLabel:'DEFENSIVE CAP',description:'Patrol a 4.5-unit defended area and intercept known contacts inside it.',roles:['fighter'],requiresTarget:true},
@@ -80,10 +80,11 @@ function prefixAtRatio(route:Point[],ratio:number):Point[]{
 
 export function generateRouteTemplate({template,ingress,maxDistance,bounds}:{template:MissionId;ingress:Point[];maxDistance:number;bounds:RouteBounds}):RouteGenerationResult{
   const safeIngress=ingress.map(point=>clampPoint(point,bounds))
+  const clampedIngress=safeIngress.some((point,index)=>point[0]!==ingress[index]?.[0]||point[1]!==ingress[index]?.[1])
   const base=safeIngress[0]??[0,0] as Point
-  if(safeIngress.length<2)return {route:safeIngress,ingress:safeIngress,adjustment:'none'}
+  if(safeIngress.length<2)return {route:safeIngress,ingress:safeIngress,requestedIngress:ingress,adjustment:clampedIngress?'ingress-clamped':'none'}
   const initial=build(template,safeIngress,1)
-  if(valid(initial,base,maxDistance,bounds))return {route:initial,ingress:safeIngress,adjustment:'none'}
+  if(valid(initial,base,maxDistance,bounds))return {route:initial,ingress:safeIngress,requestedIngress:ingress,adjustment:clampedIngress?'ingress-clamped':'none'}
 
   let low=.25,high=1
   for(let index=0;index<24;index++){
@@ -92,7 +93,7 @@ export function generateRouteTemplate({template,ingress,maxDistance,bounds}:{tem
     else high=midpoint
   }
   if(low>.25+.0001){
-    return {route:build(template,safeIngress,low),ingress:safeIngress,adjustment:'pattern-shrunk'}
+    return {route:build(template,safeIngress,low),ingress:safeIngress,requestedIngress:ingress,adjustment:clampedIngress?'ingress-clamped':'pattern-shrunk'}
   }
   low=0;high=1
   for(let index=0;index<24;index++){
@@ -102,5 +103,5 @@ export function generateRouteTemplate({template,ingress,maxDistance,bounds}:{tem
     else high=midpoint
   }
   const shortened=prefixAtRatio(safeIngress,low)
-  return {route:build(template,shortened,.25),ingress:shortened,adjustment:'ingress-shortened'}
+  return {route:build(template,shortened,.25),ingress:shortened,requestedIngress:ingress,adjustment:clampedIngress?'ingress-clamped':'ingress-shortened'}
 }
