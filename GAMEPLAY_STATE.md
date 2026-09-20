@@ -154,6 +154,7 @@ Direct fighter combat interrupts a fighter's recon pursuit. When combat or pursu
 
 ## Presentation and Phase Surfaces
 
+- Deploy and Plan use a true top-down orthographic command-map camera fitted to the known friendly territory. Their pan and zoom preserve equal scale in every map direction; Execute retains the angled battlefield camera and formation-follow presentation.
 - Plan shows the selected aircraft's LOS, fighter responsibility areas, friendly radar detection and communications, weapon ranges, generated routes, recovery intent, and per-airfield formation queues.
 - Execute hides general radar coverage. It shows the followed formation's route and responsibility, current sensor-authorized enemy air contacts, relevant active weapon coverage, weapon effects, a compact event navigator, an airfield sortie rail, and a selected-formation status shelf.
 - Friendly formation glyphs distinguish intercept, combat, recon pursuit, recovery, selection, and friendly-radar receipt. The radar receipt fades for 0.8 simulated seconds after it ends.
@@ -232,6 +233,7 @@ This log keeps only current net changes. Superseded intermediate states belong i
 
 ### 2026-09-20
 
+- Changed Deploy and Plan to a true top-down command-map camera so placement geometry, route direction, and range circles use an undistorted equal-scale presentation. Execute keeps its angled follow camera.
 - Verified the document against the live engine, route, basing, economy, setup, fog, UI, and deterministic tests. Removed superseded historical entries and corrected campaign force selection, live fighter damage, pursuit resolution, ground-defense resolution, inactive systems, and the current persistence defect.
 - Added the shared real-time aircraft reaction lifecycle: direct fighter combat interrupts recon pursuit; survivors are reassessed from current state without restoring hidden target intent; independent engagements can overlap without duplicate formation ownership; and accepted recon RTB commands remain authoritative during pursuit.
 - Removed the execution skip. Rounds now reach Debrief only through normal fixed-tick completion; 1× and 2× remain available.

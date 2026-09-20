@@ -12,6 +12,7 @@ import { fighterEngagementPresentationAt } from '../game/engagementPresentation'
 import { deriveFlightGlyph } from '../game/flightGlyph'
 import { airfieldLabel, formationBaseGroups } from '../game/formationBasing'
 import { fighterResponsibilityFor } from '../game/missionResponsibility'
+import { cameraPresentationForPhase, commandMapFitZoom } from '../game/cameraPresentation'
 import type { Asset, BoundarySegment, CampaignWorld, CombatEvent, CombatSequence, ConstructibleAssetKind, DefenseCue, EnemyFlight, Phase, Point, ReinforcementCall, RoundResult, Squadron, UnitFrame, WeaponEffect, WorldBounds } from '../game/types'
 import type { FogMaskInput, MapObservation } from '../game/fog'
 
@@ -31,13 +32,15 @@ const boundsDepth=(bounds:WorldBounds)=>bounds.maxZ-bounds.minZ
 const expandBounds=(bounds:WorldBounds,margin:number):WorldBounds=>({minX:bounds.minX-margin,maxX:bounds.maxX+margin,minZ:bounds.minZ-margin,maxZ:bounds.maxZ+margin})
 const territoryBounds=(territory:FriendlyTerritory):WorldBounds=>({minX:territory.center[0]-territory.radius,maxX:territory.center[0]+territory.radius,minZ:territory.center[1]-territory.radius,maxZ:territory.center[1]+territory.radius})
 
-function CameraRig({friendlyTerritory,planningBounds,presentationBounds,focusPoint,followKey}:{friendlyTerritory:FriendlyTerritory;planningBounds:WorldBounds;presentationBounds:WorldBounds;focusPoint?:Point;followKey?:string}){
+function CameraRig({phase,friendlyTerritory,planningBounds,presentationBounds,focusPoint,followKey}:{phase:Phase;friendlyTerritory:FriendlyTerritory;planningBounds:WorldBounds;presentationBounds:WorldBounds;focusPoint?:Point;followKey?:string}){
   const {camera,size}=useThree(),controls=useRef<MapControlsImpl>(null)
-  const minimumZoom=useMemo(()=>Math.max(size.width/Math.max(1,boundsWidth(presentationBounds)-2),size.height/Math.max(1,boundsDepth(presentationBounds)-2)),[presentationBounds,size.height,size.width])
-  useEffect(()=>{const c=camera as THREE.OrthographicCamera,target=friendlyTerritory.center;c.up.set(0,1,0);c.position.set(target[0]+15,23,target[1]+26);c.lookAt(target[0],0,target[1]);c.zoom=Math.max(minimumZoom,size.height/18);c.updateProjectionMatrix();controls.current?.target.set(target[0],0,target[1]);controls.current?.update()},[camera,friendlyTerritory.center,minimumZoom,size.height])
-  useEffect(()=>{if(!followKey)return;const c=camera as THREE.OrthographicCamera;c.zoom=Math.min(64,Math.max(minimumZoom,size.height/13.5));c.updateProjectionMatrix()},[camera,followKey,minimumZoom,size.height])
+  const {width:viewportWidth,height:viewportHeight}=size
+  const presentation=cameraPresentationForPhase(phase)
+  const minimumZoom=useMemo(()=>Math.max(viewportWidth/Math.max(1,boundsWidth(presentationBounds)-2),viewportHeight/Math.max(1,boundsDepth(presentationBounds)-2)),[presentationBounds,viewportHeight,viewportWidth])
+  useEffect(()=>{const c=camera as THREE.OrthographicCamera,target=friendlyTerritory.center,{offset,up}=presentation;c.up.set(...up);c.position.set(target[0]+offset[0],offset[1],target[1]+offset[2]);c.lookAt(target[0],0,target[1]);c.zoom=presentation.kind==='command-map'?commandMapFitZoom({width:viewportWidth,height:viewportHeight},friendlyTerritory.radius,minimumZoom):Math.min(64,Math.max(minimumZoom,viewportHeight/presentation.worldHeight));c.updateProjectionMatrix();controls.current?.target.set(target[0],0,target[1]);controls.current?.update()},[camera,friendlyTerritory.center[0],friendlyTerritory.center[1],friendlyTerritory.radius,minimumZoom,presentation,viewportHeight,viewportWidth])
+  useEffect(()=>{if(!followKey||presentation.kind==='command-map')return;const c=camera as THREE.OrthographicCamera;c.zoom=Math.min(64,Math.max(minimumZoom,viewportHeight/presentation.followWorldHeight));c.updateProjectionMatrix()},[camera,followKey,minimumZoom,presentation,viewportHeight])
   useFrame((_,delta)=>{const c=camera as THREE.OrthographicCamera,control=controls.current;if(!control)return;if(focusPoint){const desired=new THREE.Vector3(focusPoint[0],0,focusPoint[1]),shift=desired.sub(control.target).multiplyScalar(Math.min(1,delta*5));control.target.add(shift);c.position.add(shift)}const halfWidth=size.width/(2*c.zoom),halfDepth=size.height/(2*c.zoom),padding=.75,safeMinX=presentationBounds.minX+halfWidth+padding,safeMaxX=presentationBounds.maxX-halfWidth-padding,safeMinZ=presentationBounds.minZ+halfDepth+padding,safeMaxZ=presentationBounds.maxZ-halfDepth-padding,minX=Math.max(planningBounds.minX,Math.min(safeMinX,safeMaxX)),maxX=Math.min(planningBounds.maxX,Math.max(safeMinX,safeMaxX)),minZ=Math.max(planningBounds.minZ,Math.min(safeMinZ,safeMaxZ)),maxZ=Math.min(planningBounds.maxZ,Math.max(safeMinZ,safeMaxZ)),nextX=minX<=maxX?THREE.MathUtils.clamp(control.target.x,minX,maxX):(presentationBounds.minX+presentationBounds.maxX)/2,nextZ=minZ<=maxZ?THREE.MathUtils.clamp(control.target.z,minZ,maxZ):(presentationBounds.minZ+presentationBounds.maxZ)/2,shift=new THREE.Vector3(nextX-control.target.x,0,nextZ-control.target.z);if(shift.lengthSq()>0){control.target.add(shift);c.position.add(shift)}control.update()})
-  return <MapControls ref={controls} makeDefault enableRotate={false} enableDamping dampingFactor={.12} screenSpacePanning minZoom={minimumZoom} maxZoom={64} mouseButtons={{LEFT:THREE.MOUSE.ROTATE,MIDDLE:THREE.MOUSE.DOLLY,RIGHT:THREE.MOUSE.PAN}} touches={{ONE:THREE.TOUCH.ROTATE,TWO:THREE.TOUCH.DOLLY_PAN}}/>
+  return <MapControls ref={controls} makeDefault enableRotate={false} enableDamping dampingFactor={.12} screenSpacePanning minZoom={minimumZoom} maxZoom={64} mouseButtons={{LEFT:THREE.MOUSE.PAN,MIDDLE:THREE.MOUSE.DOLLY,RIGHT:THREE.MOUSE.PAN}} touches={{ONE:THREE.TOUCH.PAN,TWO:THREE.TOUCH.DOLLY_PAN}}/>
 }
 
 function HexOverlay({opacity,bounds}:{opacity:number;bounds:WorldBounds}){
@@ -585,7 +588,7 @@ function BattlefieldScene({squadrons,assets,playerAssets,mappedAreas,discoveredB
   const up=()=>setDrawing(false)
   const constructionPoint=constructionHover??construction?.placement
   return <>
-    <CameraRig friendlyTerritory={resolvedTerritory} planningBounds={resolvedPlanningBounds} presentationBounds={resolvedPresentationBounds} focusPoint={cameraFocus} followKey={followId}/>
+    <CameraRig phase={phase} friendlyTerritory={resolvedTerritory} planningBounds={resolvedPlanningBounds} presentationBounds={resolvedPresentationBounds} focusPoint={cameraFocus} followKey={followId}/>
     <color attach="background" args={['#11140f']}/><fog attach="fog" args={['#11140f',34,60]}/>
     <ambientLight intensity={1.1}/><directionalLight position={[-5,10,5]} intensity={2.1} castShadow shadow-mapSize={[1024,1024]}/>
     <Terrain phase={phase} presentationBounds={resolvedPresentationBounds} planningBounds={resolvedPlanningBounds}/><FogOfWar mappedAreas={mappedAreas} observations={liveMapObservations} presentationBounds={resolvedPresentationBounds} friendlyTerritory={resolvedTerritory}/><DiscoveredBoundaryLines segments={discoveredBoundaries}/>{phase==='deploy'&&placement?<PlacementHex position={placement.position}/>:null}{construction&&constructionPoint?<ConstructionPlacementGhost kind={construction.kind} position={constructionPoint} valid={construction.isValid(constructionPoint)}/>:null}
