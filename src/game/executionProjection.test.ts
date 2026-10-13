@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { contactProjectionAt, projectFriendlyUnitAt, projectHostileUnitAt, sampleUnitTrack, unitTrackFor, visibleTrackSegments } from './executionProjection'
+import { contactProjectionAt, projectFriendlyUnitAt, projectHostileUnitAt, sampleUnitTrack, sampleUnitTrackForRender, unitTrackFor, visibleTrackSegments } from './executionProjection'
 import { resolveRound } from './engine'
 import { createScenario } from './scenarios'
 import type { RoundResult, UnitTrack } from './types'
@@ -50,12 +50,19 @@ describe('execution projection', () => {
     expect(sampleUnitTrack(track, 1)?.aircraft).toBe(2)
   })
 
+  it('clamps frame interpolation to current authority and the active hostile contact window',()=>{
+    expect(sampleUnitTrackForRender(track,.8,.6)?.position).toEqual([1.2,2.4])
+    expect(sampleUnitTrackForRender(track,.3,.65,{contactStart:.5})?.position).toEqual([1,2])
+    expect(sampleUnitTrackForRender(track,.8,.3,{contactStart:.5})).toBeUndefined()
+    expect(sampleUnitTrackForRender(track,.8,.9,{contactStart:null})).toBeUndefined()
+  })
+
   it('uses visual contact over radar and remembers learned identity in simulated seconds', () => {
     const result = resultWithContacts()
     expect(contactProjectionAt(result, 'red-fighter', .3)).toMatchObject({ level: 'radar', identityKnown: false })
-    expect(contactProjectionAt(result, 'red-fighter', .6)).toMatchObject({ level: 'visual', identityKnown: true })
+    expect(contactProjectionAt(result, 'red-fighter', .6)).toMatchObject({ level: 'visual', identityKnown: true, visibleSince: .5 })
     expect(contactProjectionAt(result, 'red-fighter', 1.1)).toBeUndefined()
-    expect(contactProjectionAt(result, 'red-fighter', 1.5)).toMatchObject({ level: 'radar', identityKnown: true })
+    expect(contactProjectionAt(result, 'red-fighter', 1.5)).toMatchObject({ level: 'radar', identityKnown: true, visibleSince: 1.25 })
   })
 
   it('fails closed for hostile truth when no current contact exists', () => {

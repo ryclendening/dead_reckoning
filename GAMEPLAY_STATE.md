@@ -159,8 +159,13 @@ Direct fighter combat interrupts a fighter's recon pursuit. When combat or pursu
 - Plan shows the selected aircraft's LOS, fighter responsibility areas, friendly radar detection and communications, weapon ranges, generated routes, recovery intent, and per-airfield formation queues.
 - Execute hides general radar coverage. It shows the followed formation's route and responsibility, current sensor-authorized enemy air contacts, relevant active weapon coverage, weapon effects, a compact event navigator, an airfield sortie rail, and a selected-formation status shelf.
 - Friendly formation glyphs distinguish intercept, combat, recon pursuit, recovery, selection, and friendly-radar receipt. The radar receipt fades for 0.8 simulated seconds after it ends.
-- During Execute, aircraft markers, strength and aircraft state, selected-formation details, camera follow, live terrain reveal, and active coverage all sample the same authoritative `UnitTrack` at the current simulated time. Original mission routes do not reconstruct live aircraft positions.
+- During Execute, aircraft position and facing interpolate from authoritative `UnitTrack` snapshots on a shared scene frame clock that never advances beyond the latest snapshot. Strength, aircraft count, action, selection, camera follow, live terrain reveal, and active coverage stay on the current authoritative snapshot. Hostile interpolation requires a current contact and starts no earlier than that contact window; no exact hostile position is rendered before detection. Original mission routes do not reconstruct live aircraft positions.
 - Dogfight ornamentation remains centered on the recorded engagement, but it does not displace aircraft tactical anchors from their authoritative tracks.
+- Engagement orbit cues use a stable local path and animate as a Three.js group between simulation snapshots. Opening-fire, merge, join, loss, and resolution cues remain derived from the immutable combat sequence timeline; weapon effects remain derived from recorded weapon events and sensor-authorized visibility.
+- Short-lived weapon motion and engagement cue opacity sample a frame clock that interpolates only up to the latest authoritative simulation snapshot at the observed playback rate. Projectile, trail, and impact transforms update through object refs between snapshots; this does not change combat timing, contact authorization, or tactical aircraft positions.
+- Dogfight event, phase, and context labels render above aircraft contact labels with depth testing disabled, on a narrow dark backdrop at the recorded engagement location. The cue is lifted for separation from contact cards, and the backdrop fades with the resolved cue; this improves legibility without moving aircraft or changing combat visibility.
+- Visually identified hostile aircraft use one raised health card with callsign and aircraft count alongside the action state; the count and segmented strength bar stay legible without a second callsign/role label competing beneath the dogfight cue.
+- Live execution publishes an active dogfight presentation summary containing only the current participants and sides, engagement location, start, and merge time. The renderer shows the active orbit and count cue only while at least one hostile participant is currently visible; completed combat sequences take over at resolution. The live summary contains no exchanges or outcome data.
 - Friendly fighters use the F-16 model; visually identified enemy fighters use the MiG-23 model. Recon uses a top-down role rendering. A formation renders one aircraft per current pip.
 - Debrief is a bottom click-through deck. Adapt keeps the battlefield visible and uses contextual targets plus a separate Build catalog.
 
@@ -231,6 +236,16 @@ Available fixtures:
 ## Running Change Log
 
 This log keeps only current net changes. Superseded intermediate states belong in git history.
+
+### 2026-10-12
+
+- Changed engagement orbit rendering to use stable local line geometry with per-frame group rotation, removing time-dependent point reconstruction on each 20 Hz React update. The cue remains centered on the recorded engagement and does not alter combat or aircraft tracks.
+- Added frame-rate interpolation for recorded weapon motion and dogfight cue opacity. The renderer estimates playback rate from authoritative snapshots, caps its visual clock at the latest snapshot, and updates effect transforms through refs; no combat records, fog-of-war rules, or UnitTrack anchors changed.
+- Raised dogfight world-space cue labels above aircraft contact labels with explicit render priority and added a dark backdrop that fades with resolution. The cue remains at the sequence location; aircraft anchors, sensor authorization, and combat are unchanged.
+- Published a minimal current-only active dogfight view in live round results so the orbit and participant-count cue render during combat, before the completed sequence is recorded. It is gated by existing hostile visibility, carries no future exchange/outcome data, and disappears when the completed sequence takes over.
+- Narrowed the dogfight cue backing panel and lifted the cue to leave more space above hostile contact cards; its anchor and all gameplay presentation rules remain unchanged.
+- Smoothed friendly and currently detected hostile aircraft motion between 20 Hz snapshots with one shared render clock capped at authoritative track data. Hostile interpolation is clamped to the active contact window, while status, selection, and other tactical state remain snapshot-authoritative.
+- Raised the hostile aircraft health card and shortened its text to callsign plus aircraft count, leaving the action state distinct on the opposite side of the card. This reduces label crowding beneath dogfight cues without changing contact positions, visibility, or combat state.
 
 ### 2026-09-20
 
