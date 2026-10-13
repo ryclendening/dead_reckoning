@@ -1,13 +1,14 @@
 import type { Asset, AssetUpgradeId, ConstructibleAssetKind, EconomyActionId, EconomyActionQuote, EconomyCommand, EconomyEffect, EconomyState, EconomyTarget, LogisticsIncome, LogisticsStatementEntry, MatchState, RoundResult, Squadron } from './types'
 import { MAPPED_RADIUS } from './fog'
 import { FOB_MIN_CAPACITY, formationField, normalizeFormationBasing } from './forwardBasing'
-import { friendlyTerritoryForAssets, territoryContains } from './territory'
+import { friendlyTerritoryForAssets, territoryContains, territoryRegions } from './territory'
 import { campaignOutcome } from './campaign'
 
 export const LOGISTICS_COSTS = { formationRepair: 2, aircraftReplacement: 4, defenseRepair: 2, fobRepair: 4, upgrade: 12, fobConstruction: 8, decoyConstruction: 4, aaaConstruction: 6, samConstruction: 8 } as const
 export const LOGISTICS_EFFECTS = { formationRepair: 25, defenseRepair: 25, baseIncome: 6, intelRecovery: 2, confirmedEnemyAircraft: 1, supplyDepotIncome: 2 } as const
 export const FOB_INITIAL_CAPACITY = FOB_MIN_CAPACITY
 export const FOB_PLACEMENT_SPACING = 1.5
+export const FOB_PLACEMENT_MAX_TERRITORY_GAP = 7
 
 export const createEconomyState = (): EconomyState => ({ statement: [] })
 
@@ -35,7 +36,7 @@ interface ProcurementDefinition {
 }
 
 export const PROCUREMENT_CATALOG: readonly ProcurementDefinition[] = [
-  { actionId: 'build-fob', kind: 'fob', cost: LOGISTICS_COSTS.fobConstruction, maxHealth: 100, capacity: FOB_INITIAL_CAPACITY, detail: `Operational forward field with capacity for ${FOB_INITIAL_CAPACITY} formation.` },
+  { actionId: 'build-fob', kind: 'fob', cost: LOGISTICS_COSTS.fobConstruction, maxHealth: 100, capacity: FOB_INITIAL_CAPACITY, detail: `Operational forward field with capacity for ${FOB_INITIAL_CAPACITY} formations. Place within ${FOB_PLACEMENT_MAX_TERRITORY_GAP} units of current territory.` },
   { actionId: 'build-decoy', kind: 'decoy', cost: LOGISTICS_COSTS.decoyConstruction, maxHealth: 60, detail: 'Creates a false airfield target that can draw hostile attacks.' },
   { actionId: 'build-aaa', kind: 'aaa', cost: LOGISTICS_COSTS.aaaConstruction, maxHealth: 100, detail: 'Short-range gun defense with a 1.9-unit engagement radius.' },
   { actionId: 'build-sam', kind: 'sam', cost: LOGISTICS_COSTS.samConstruction, maxHealth: 100, detail: 'Missile defense with a 3.2-unit engagement radius.' },
@@ -54,11 +55,14 @@ export const AIRFIELD_UPGRADE_CATALOG: readonly AirfieldUpgradeDefinition[] = [
 ]
 
 export interface FobPlacementValidation { valid: boolean; reason?: string }
-export function validateAssetPlacement(state: MatchState, _kind: ConstructibleAssetKind, placement: [number, number] | undefined): FobPlacementValidation {
+export function validateAssetPlacement(state: MatchState, kind: ConstructibleAssetKind, placement: [number, number] | undefined): FobPlacementValidation {
   if (!placement || !Number.isFinite(placement[0]) || !Number.isFinite(placement[1])) return { valid: false, reason: 'SELECT A MAP LOCATION' }
   const territory = friendlyTerritoryForAssets(state.world.friendlyTerritory,state.playerAssets)
   const persistentlyKnown = territoryContains(placement,territory) || state.mappedAreas.some(area => pointDistance(placement, area) <= MAPPED_RADIUS)
   if (!persistentlyKnown) return { valid: false, reason: 'SITE MUST BE IN RECOVERED TERRITORY' }
+  if (kind === 'fob' && !territoryRegions(territory).some(region => pointDistance(placement, region.center) <= region.radius + FOB_PLACEMENT_MAX_TERRITORY_GAP + 1e-7)) {
+    return { valid: false, reason: `FOB MUST BE WITHIN ${FOB_PLACEMENT_MAX_TERRITORY_GAP} UNITS OF FRIENDLY TERRITORY` }
+  }
   if (state.playerAssets.some(asset => pointDistance(placement, asset.position) < FOB_PLACEMENT_SPACING)) return { valid: false, reason: 'SITE TOO CLOSE TO AN EXISTING ASSET' }
   return { valid: true }
 }

@@ -6,6 +6,7 @@ export interface ContactProjection {
   level: ContactLevel
   identityKnown: boolean
   observerIds: string[]
+  visibleSince: number
 }
 
 export interface FriendlyUnitProjection {
@@ -20,6 +21,7 @@ export interface HostileUnitProjection {
   visibility: ContactLevel
   identityKnown: boolean
   observerIds: string[]
+  visibleSince: number
 }
 
 export interface VisibleTrackSegment {
@@ -71,6 +73,21 @@ export function sampleUnitTrack(track: UnitTrack | undefined, seconds: number): 
   }
 }
 
+/** Samples smooth motion without advancing beyond authority or a contact window. */
+export function sampleUnitTrackForRender(
+  track: UnitTrack | undefined,
+  requestedSeconds: number,
+  authoritativeSeconds: number,
+  visibility?: { contactStart: number | null },
+): UnitFrame | undefined {
+  const frames=track?.frames
+  if(!frames?.length||visibility?.contactStart===null)return undefined
+  const earliest=Math.max(frames[0].time,visibility?.contactStart??frames[0].time)
+  const latest=Math.min(authoritativeSeconds,frames.at(-1)!.time)
+  if(latest<earliest)return undefined
+  return sampleUnitTrack(track,Math.max(earliest,Math.min(latest,requestedSeconds)))
+}
+
 export function unitTrackFor(result: RoundResult | undefined, unitId: string): UnitTrack | undefined {
   return result?.unitTracks.find(track => track.unitId === unitId)
 }
@@ -85,11 +102,13 @@ export function contactProjectionAt(
   const active = targetIntervals.filter(interval => seconds >= interval.start && seconds <= interval.end)
   if (!active.length) return undefined
   const level: ContactLevel = active.some(interval => interval.source === 'visual') ? 'visual' : 'radar'
+  const visibleSince = Math.min(...active.filter(interval => interval.source === level).map(interval => interval.start))
   const identityKnown = targetIntervals.some(interval => interval.source === 'visual' && interval.start <= seconds)
   return {
     level,
     identityKnown,
     observerIds: [...new Set(active.map(interval => interval.observerId))].sort(),
+    visibleSince,
   }
 }
 
@@ -116,6 +135,7 @@ export function projectHostileUnitAt(
     visibility: contact.level,
     identityKnown: contact.identityKnown,
     observerIds: contact.observerIds,
+    visibleSince: contact.visibleSince,
   } : undefined
 }
 

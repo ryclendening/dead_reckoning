@@ -4,6 +4,26 @@ import {createScenario} from './scenarios'
 import type {SimulationCommand} from './types'
 
 describe('incremental round simulation',()=>{
+  it('publishes only current dogfight presentation while duels and 2v1 fights remain active',()=>{
+    for(const scenario of ['fighter-duel','fighter-2v1'] as const){
+      const simulation=createRoundSimulation(createScenario(scenario))
+      const ready=(item:{mergedAt?:number;sides:{friendly:string[];hostile:string[]}})=>item.mergedAt!==undefined&&(scenario==='fighter-duel'||item.sides.friendly.length===2)
+      while(!simulation.complete&&!simulation.result.activeDogfights?.some(ready))simulation.advance()
+      const active=simulation.result.activeDogfights?.find(ready)
+      expect(active).toBeDefined()
+      expect(simulation.complete).toBe(false)
+      expect(simulation.result.combatSequences.some(sequence=>sequence.id===active!.id)).toBe(false)
+      expect(Object.keys(active!).sort()).toEqual(['id','location','mergedAt','participantIds','sides','start'])
+      expect(active!.sides.friendly).toHaveLength(scenario==='fighter-duel'?1:2)
+      expect(active!.sides.hostile).toHaveLength(1)
+
+      const activeId=active!.id
+      while(!simulation.complete&&simulation.result.activeDogfights?.some(item=>item.id===activeId))simulation.advance()
+      expect(simulation.result.activeDogfights?.some(item=>item.id===activeId)).toBe(false)
+      expect(simulation.result.combatSequences.some(sequence=>sequence.id===activeId&&sequence.kind==='dogfight')).toBe(true)
+    }
+  })
+
   it('produces the same deterministic result as the synchronous compatibility resolver',()=>{
     const state=createScenario('fighter-duel')
     const simulation=createRoundSimulation(structuredClone(state))

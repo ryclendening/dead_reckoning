@@ -210,7 +210,14 @@ export default function App(){
   const selectProtectFlight=(id:string)=>{const squadron=match.squadrons.find(item=>item.id===match.selectedId);const target=match.squadrons.find(item=>item.id===id);if(!squadron||squadron.mission!=='defensive-cap'||!target||target.id===squadron.id||!reviewedIds.has(target.id)||target.aircraft<=0)return;const coverage=escortEstimateFor(squadron,target);if(!coverage.recoveryFeasible||coverage.percent<30){setRouteNotice(`NO USEFUL ESCORT COVERAGE · ${coverage.percent}% PREDICTED · RECOVERY NOT FEASIBLE`);return}const launch=formationField(match.playerAssets,squadron.id)?.position??playerBase;const generated=generateRouteTemplate({template:'defensive-cap',ingress:[[...launch] as Point,[...target.route[0]] as Point],maxDistance:MAX_FLIGHT_DISTANCE.fighter,bounds:planningEnvelope});setSelectingProtectTarget(false);setRouteNotice(`${target.callsign} ESCORT · ${coverage.percent}% PREDICTED COVERAGE · ${100-coverage.percent}% UNCOVERED`);setReviewedIds(ids=>{const next=new Set(ids);next.delete(squadron.id);return next});setMatch(state=>({...state,squadrons:state.squadrons.map(item=>item.id===squadron.id?{...item,protectedTargetId:target.id,protectedPoint:undefined,route:generated.route,routeIngress:generated.ingress,plannedRecoveryFieldId:undefined}:item)}))}
   const orderRtb=(id:string)=>{const simulation=simulationRef.current;if(!simulation||simulation.complete)return;const issuedAtTick=simulation.nextTick();if(pendingCommandsRef.current.some(command=>command.unitId===id&&command.type==='rtb')||(simulation.result.simulationCommands??[]).some(command=>command.unitId===id&&command.type==='rtb'))return;pendingCommandsRef.current.push({id:`rtb-${match.round}-${id}-${issuedAtTick}`,unitId:id,type:'rtb',issuedAtTick})}
   const selectPlanningFormation=(id:string)=>{
-    if(id===selected.id)return
+    if(id===selected.id){
+      if(planningStep!=='idle')return
+      setSelectingProtectTarget(false)
+      setRouteNotice(undefined)
+      setPlanningRosterMode('closed')
+      setPlanningStep(reviewedIds.has(id)||selected.role==='recon'?'route':'mission')
+      return
+    }
     if(planningStep==='route'&&selected.route.length>=2&&!selectingProtectTarget&&!confirmPlanningOrder(selected))return
     const target=match.squadrons.find(s=>s.id===id)
     if(!target)return

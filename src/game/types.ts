@@ -145,6 +145,15 @@ interface CombatSequenceBase {
 export interface FighterCombatSequence extends CombatSequenceBase {kind:'dogfight';engagement:FighterEngagementRecord}
 export interface OtherCombatSequence extends CombatSequenceBase {kind:'pursuit'|'strike'|'defense';engagement?:never}
 export type CombatSequence = FighterCombatSequence | OtherCombatSequence
+/** Current-only dogfight presentation summary; excludes exchanges and outcomes. */
+export interface ActiveDogfightPresentation {
+  id: string
+  participantIds: string[]
+  sides: Record<FighterEngagementSide,string[]>
+  location: Point
+  start: number
+  mergedAt?: number
+}
 export interface WeaponEffect {
   id: string; kind: WeaponKind; sourceId: string; targetId: string; start: number; end: number
   from: Point; to: Point; hit: boolean; damage: number
@@ -189,7 +198,7 @@ export interface RoundResult {
   executionRoutes: Record<string, Point[]>; enemyFlights: EnemyFlight[]; defenseCues: DefenseCue[]
   defensiveAwareness: number; lessons: OperationalFinding[]; playerAssets: Asset[]
   reinforcementCalls: ReinforcementCall[]; roundScore: number; baseExposure: number; baseExposureDelta: number
-  combatSequences: CombatSequence[]; weaponEffects: WeaponEffect[]; contactObservations: ContactObservation[]; interceptPlans: InterceptPlan[]; intelReports: IntelReport[]
+  combatSequences: CombatSequence[]; activeDogfights?: ActiveDogfightPresentation[]; weaponEffects: WeaponEffect[]; contactObservations: ContactObservation[]; interceptPlans: InterceptPlan[]; intelReports: IntelReport[]
   mappedAreas: Point[]
   discoveredBoundaries: BoundarySegment[]
   recoveryOutcomes: FormationRecoveryOutcome[]
