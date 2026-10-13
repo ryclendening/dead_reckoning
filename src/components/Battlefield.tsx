@@ -13,6 +13,7 @@ import { deriveFlightGlyph } from '../game/flightGlyph'
 import { airfieldLabel, formationBaseGroups } from '../game/formationBasing'
 import { escortCoverageLabel, fighterResponsibilityFor } from '../game/missionResponsibility'
 import { cameraPresentationForPhase, commandMapFitZoomForBounds } from '../game/cameraPresentation'
+import { FOB_PLACEMENT_MAX_TERRITORY_GAP } from '../game/economy'
 import { territoryBounds, territoryRegions } from '../game/territory'
 import { firstRouteFobLatch } from '../game/forwardBasing'
 import type { ActiveDogfightPresentation, Asset, BoundarySegment, CombatEvent, CombatSequence, ConstructibleAssetKind, DefenseCue, EnemyFlight, FriendlyTerritory, Phase, Point, ReinforcementCall, RoundResult, Squadron, UnitFrame, UnitTrack, WeaponEffect, WorldBounds } from '../game/types'
@@ -218,7 +219,7 @@ function Ring({radius,color,opacity=.32,dashSize=.18,gapSize=.12,lineWidth=1,das
   return dashed?<Line points={pts} color={color} transparent opacity={opacity} dashed dashSize={dashSize} gapSize={gapSize} lineWidth={lineWidth} depthTest={false}/>:<Line points={pts} color={color} transparent opacity={opacity} lineWidth={lineWidth} depthTest={false}/>
 }
 
-function TerritoryOverlay({territory}:{territory:FriendlyTerritory}){
+function TerritoryOverlay({territory,showFobPlacementReach=false}:{territory:FriendlyTerritory;showFobPlacementReach?:boolean}){
   const regions=useMemo(()=>territoryRegions(territory),[territory])
   const outlines=useMemo(()=>regions.flatMap((region,regionIndex)=>{
     const sampleCount=96
@@ -230,6 +231,7 @@ function TerritoryOverlay({territory}:{territory:FriendlyTerritory}){
     return lines.map(points=>({points,kind:region.kind}))
   }),[regions])
   return <group renderOrder={6}>
+    {showFobPlacementReach?regions.map(region=><group key={`${region.id}-fob-placement-reach`} position={to3(region.center,0)}><Ring radius={region.radius+FOB_PLACEMENT_MAX_TERRITORY_GAP} color="#f1c65b" opacity={.68} dashSize={.3} gapSize={.2} lineWidth={1.5}/></group>):null}
     {regions.map(region=><mesh key={`${region.id}-territory`} position={to3(region.center,.102)} rotation={[-Math.PI/2,0,0]}><circleGeometry args={[region.radius,64]}/><meshBasicMaterial color={region.kind==='fob'?'#7bdc9b':'#55d6df'} transparent opacity={region.kind==='fob'?.1:.14} depthTest={false} depthWrite={false}/></mesh>)}
     {outlines.map((line,index)=><group key={`territory-outline-${index}`}><Line points={line.points.map(point=>to3(point,.112))} color="#101611" transparent opacity={.92} dashed={line.kind==='fob'} dashSize={.24} gapSize={.12} lineWidth={4} depthTest={false}/><Line points={line.points.map(point=>to3(point,.118))} color={line.kind==='fob'?'#9ee6a8':'#f1c65b'} transparent opacity={1} dashed={line.kind==='fob'} dashSize={.24} gapSize={.12} lineWidth={2.5} depthTest={false}/></group>)}
     {regions.map(region=><Text key={`${region.id}-territory-label`} position={to3([region.center[0],region.center[1]-region.radius*.68],.14)} rotation={[-Math.PI/2,0,0]} fontSize={.21} color={region.kind==='fob'?'#b8f2bf':'#ffe08a'} anchorX="center" outlineWidth={.025} outlineColor="#101611">{region.kind==='fob'?'FOB INFLUENCE':'HOME TERRITORY'}</Text>)}
@@ -725,7 +727,7 @@ function BattlefieldScene({squadrons,assets,playerAssets,mappedAreas,discoveredB
     <CameraRig phase={phase} friendlyTerritory={resolvedTerritory} planningBounds={resolvedPlanningBounds} presentationBounds={resolvedPresentationBounds} focusPoint={cameraFocus} followKey={followId}/>
     <color attach="background" args={['#11140f']}/><fog attach="fog" args={['#11140f',34,60]}/>
     <ambientLight intensity={1.1}/><directionalLight position={[-5,10,5]} intensity={2.1} castShadow shadow-mapSize={[1024,1024]}/>
-    <Terrain phase={phase} presentationBounds={resolvedPresentationBounds} planningBounds={resolvedPlanningBounds}/><FogOfWar mappedAreas={mappedAreas} observations={liveMapObservations} presentationBounds={resolvedPresentationBounds} friendlyTerritory={resolvedTerritory}/><TerritoryOverlay territory={resolvedTerritory}/><DiscoveredBoundaryLines segments={discoveredBoundaries}/>{phase==='deploy'&&placement?<PlacementHex position={placement.position}/>:null}{construction&&constructionPoint?<ConstructionPlacementGhost kind={construction.kind} position={constructionPoint} valid={construction.isValid(constructionPoint)}/>:null}
+    <Terrain phase={phase} presentationBounds={resolvedPresentationBounds} planningBounds={resolvedPlanningBounds}/><FogOfWar mappedAreas={mappedAreas} observations={liveMapObservations} presentationBounds={resolvedPresentationBounds} friendlyTerritory={resolvedTerritory}/><TerritoryOverlay territory={resolvedTerritory} showFobPlacementReach={phase==='adapt'&&construction?.kind==='fob'}/><DiscoveredBoundaryLines segments={discoveredBoundaries}/>{phase==='deploy'&&placement?<PlacementHex position={placement.position}/>:null}{construction&&constructionPoint?<ConstructionPlacementGhost kind={construction.kind} position={constructionPoint} valid={construction.isValid(constructionPoint)}/>:null}
     {phase==='deploy'?<SensorRangeOverlay phase={phase} radar={friendlyRadar} position={playerBase} losRange={0} showLos={false}/>:null}
     {phase==='plan'&&showMissionPreview&&selected.mission==='base-strike'&&strikeTarget?<StrikeReleasePreview center={strikeTarget.position}/>:null}
     {displayedPlayerAssets.map(a=>a.kind==='base'||a.kind==='fob'||a.kind==='decoy'?<Runway key={a.id} asset={a} selected={phase==='plan'&&a.id===planningBaseId||phase==='execute'&&a.id===executionBaseId||phase==='adapt'&&a.id===economySelectionId} onSelect={phase==='plan'&&selectingProtectTarget?()=>onPlanningProtectTarget?.(a.id):phase==='plan'&&(a.kind==='base'||a.kind==='fob')?routePlanningEnabled?()=>onPlanningRecoverySelect?.(a.id):()=>onPlanningBaseSelect?.(a.id):phase==='execute'&&(a.kind==='base'||a.kind==='fob')?()=>onExecutionBaseSelect?.(a.id):phase==='adapt'&&!construction&&a.kind!=='decoy'?()=>onEconomySelect?.(a.id):undefined}/>:<Defense key={a.id} asset={a} enemy={false} selected={phase==='deploy'&&a.id===placementId||phase==='adapt'&&a.id===economySelectionId} showRange={phase==='deploy'} onSelect={phase==='plan'&&selectingProtectTarget?()=>onPlanningProtectTarget?.(a.id):phase==='adapt'&&!construction?()=>onEconomySelect?.(a.id):undefined}/>) }
