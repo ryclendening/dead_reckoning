@@ -4,7 +4,7 @@ import {resolveRound} from './engine'
 import type {Point} from './types'
 
 describe('radar ownership',()=>{
-  it('does not turn hostile radar coverage into friendly comms or a recon radar abort',()=>{
+  it('does not turn hostile radar coverage into a friendly track or recon abort',()=>{
     const initial=createMatch(7301)
     const base=initial.world.friendlyTerritory.center
     const hostileRadar=initial.enemyAssets.find(asset=>asset.kind==='radar')!
@@ -17,7 +17,7 @@ describe('radar ownership',()=>{
         :{...squadron,aircraft:0,strength:0}),
     }
     const result=resolveRound(match)
-    expect(result.radarTrackReceipts.some(receipt=>receipt.receiverId==='raven')).toBe(false)
+    expect(result.contactIntervals.some(contact=>contact.observerId==='raven'&&contact.source==='radar')).toBe(false)
     expect(result.behaviorIntervals.some(interval=>interval.unitId==='raven'&&interval.reason==='persistent-radar-threat')).toBe(false)
   })
 })

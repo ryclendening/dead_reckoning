@@ -1,6 +1,6 @@
 export type Phase = 'deploy' | 'plan' | 'execute' | 'debrief' | 'adapt' | 'victory' | 'defeat'
 export type Role = 'fighter' | 'recon'
-export type MissionId = 'defensive-cap' | 'forward-patrol' | 'search-area'
+export type MissionId = 'defensive-cap' | 'forward-patrol' | 'transit' | 'search-area' | 'base-strike'
 export type IntelLevel = 'unknown' | 'suspected' | 'probable' | 'confirmed'
 export type Point = [number, number]
 export type ReinforcementType = 'alert-cap' | 'replacement-flight'
@@ -21,10 +21,12 @@ export interface CampaignWorld {
 export interface Squadron {
   id: string; callsign: string; role: Role; mission: MissionId
   aircraft: number; maxAircraft: number; damaged: number; readiness: number; ammo: number; route: Point[]; routeIngress: Point[]
-  strength?: number; morale?: number; status?: ExecutionStatus; plannedRecoveryFieldId?: string
+  strength?: number; morale?: number; status?: ExecutionStatus; plannedRecoveryFieldId?: string; sortieOrdered?: boolean
+  /** Optional site, map point, or friendly flight assigned to a Protect order. */
+  protectedTargetId?: string; protectedPoint?: Point
 }
 export interface DetectionWindow {
-  start: number; end: number; source: 'radar' | 'visual' | 'network'; observer?: string
+  start: number; end: number; source: 'radar' | 'visual'; observer?: string
 }
 export interface DefenseCue {
   id: string; flightId: string; start: number; end: number; observer: string
@@ -79,12 +81,12 @@ export interface CombatEvent {
   id: string; time: number; tone: 'info' | 'friendly' | 'warning' | 'danger'; title: string; detail: string; position?: Point
 }
 export type ExecutionStatus = 'enroute' | 'dogfight' | 'disengaging' | 'rtb' | 'trapped' | 'destroyed'
-export type FlightMode = 'following-route' | 'intercepting' | 'dogfighting' | 'attacking-recon' | 'recovering' | 'stranded' | 'trapped' | 'recovered' | 'destroyed'
+export type FlightMode = 'following-route' | 'intercepting' | 'dogfighting' | 'attacking-recon' | 'recovering' | 'stranded' | 'trapped' | 'grounded' | 'recovered' | 'destroyed'
 export interface UnitFrame { time: number; position: Point; facing: Point; mode: FlightMode; strength: number; morale: number; aircraft: number; traveledDistance: number }
 export interface UnitTrack { unitId: string; frames: UnitFrame[] }
 export interface ContactInterval { id: string; observerId: string; targetId: string; source: 'radar' | 'visual'; start: number; end: number; position: Point }
 export interface BehaviorInterval { id: string; unitId: string; mode: FlightMode; start: number; end: number; targetId?: string; source?: 'radar' | 'visual'; reason: string }
-export type WeaponKind = 'gun' | 'air-to-air-missile' | 'sam' | 'aaa'
+export type WeaponKind = 'gun' | 'air-to-air-missile' | 'air-to-ground-missile' | 'sam' | 'aaa'
 export type FighterEngagementSide = 'friendly' | 'hostile'
 export type FighterEngagementPhaseKind = 'approach' | 'opening-fire' | 'merged' | 'resolved'
 export type FighterPositionalAdvantage = 'dominant' | 'favorable' | 'neutral' | 'disadvantaged'
@@ -98,7 +100,7 @@ export interface FighterPositionalEvaluation {
 }
 export interface CombatProbabilityRecord {
   baseHitProbability: number
-  modifiers: Array<{source:'position'|'numbers'|'formation-condition';key:string;delta:number}>
+  modifiers: Array<{source:'position'|'numbers'|'formation-condition'|'mission';key:string;delta:number}>
   unclampedHitProbability: number
   finalHitProbability: number
   roll: number
@@ -151,9 +153,6 @@ export interface ContactObservation {
   id: string; observerId: string; targetId: string; start: number; end: number
   source: 'radar' | 'visual'; confidence: number; position: Point; recovered: boolean
 }
-export interface RadarTrackReceipt {
-  id: string; radarId: string; receiverId: string; targetId: string; start: number; end: number
-}
 export interface InterceptPlan {
   squadronId: string; targetId: string; start: number; end: number; source: 'radar' | 'visual'; outcome: 'merge' | 'lost-contact'
 }
@@ -190,7 +189,7 @@ export interface RoundResult {
   executionRoutes: Record<string, Point[]>; enemyFlights: EnemyFlight[]; defenseCues: DefenseCue[]
   defensiveAwareness: number; lessons: OperationalFinding[]; playerAssets: Asset[]
   reinforcementCalls: ReinforcementCall[]; roundScore: number; baseExposure: number; baseExposureDelta: number
-  combatSequences: CombatSequence[]; weaponEffects: WeaponEffect[]; contactObservations: ContactObservation[]; radarTrackReceipts: RadarTrackReceipt[]; interceptPlans: InterceptPlan[]; intelReports: IntelReport[]
+  combatSequences: CombatSequence[]; weaponEffects: WeaponEffect[]; contactObservations: ContactObservation[]; interceptPlans: InterceptPlan[]; intelReports: IntelReport[]
   mappedAreas: Point[]
   discoveredBoundaries: BoundarySegment[]
   recoveryOutcomes: FormationRecoveryOutcome[]

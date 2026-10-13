@@ -1,9 +1,9 @@
 import { memo, Suspense, useEffect, useMemo, useRef, useState } from 'react'
 import { Canvas, ThreeEvent, useFrame, useThree } from '@react-three/fiber'
-import { Billboard, Line, MapControls, Text, useGLTF, useTexture } from '@react-three/drei'
+import { Billboard, Html, Line, MapControls, Text, useGLTF, useTexture } from '@react-three/drei'
 import * as THREE from 'three'
 import type { MapControls as MapControlsImpl } from 'three-stdlib'
-import { effectiveSensorRange, EXECUTION_SECONDS, RADAR_COMMUNICATION_RANGE, RADAR_RANGE } from '../game/engine'
+import { EXECUTION_SECONDS, RADAR_RANGE } from '../game/engine'
 import { projectFriendlyUnitAt, projectHostileUnitAt, sampleUnitTrack, unitTrackFor, type HostileUnitProjection } from '../game/executionProjection'
 import { axialToPoint, HEX_RADIUS, snapToHex } from '../game/hex'
 import { deriveFogMaskSize, MAPPED_RADIUS, updateLiveFogMask, updatePersistentFogMask } from '../game/fog'
@@ -11,7 +11,7 @@ import { deriveDiscoveredBoundaryLines } from '../game/knownWorld'
 import { fighterEngagementPresentationAt } from '../game/engagementPresentation'
 import { deriveFlightGlyph } from '../game/flightGlyph'
 import { airfieldLabel, formationBaseGroups } from '../game/formationBasing'
-import { fighterResponsibilityFor } from '../game/missionResponsibility'
+import { escortCoverageLabel, fighterResponsibilityFor } from '../game/missionResponsibility'
 import { cameraPresentationForPhase, commandMapFitZoomForBounds } from '../game/cameraPresentation'
 import { territoryBounds, territoryRegions } from '../game/territory'
 import { firstRouteFobLatch } from '../game/forwardBasing'
@@ -55,6 +55,15 @@ function HexOverlay({opacity,bounds}:{opacity:number;bounds:WorldBounds}){
 function PlacementHex({position}:{position:Point}){
   const outline=useMemo(()=>Array.from({length:7},(_,i)=>{const a=Math.PI/6+i*Math.PI/3;return [Math.cos(a)*HEX_RADIUS,.1,Math.sin(a)*HEX_RADIUS] as [number,number,number]}),[])
   return <group position={to3(position,.02)}><mesh rotation={[-Math.PI/2,0,Math.PI/6]}><circleGeometry args={[HEX_RADIUS*.88,6]}/><meshBasicMaterial color="#f1c65b" transparent opacity={.13} depthWrite={false}/></mesh><Line points={outline} color="#f1c65b" opacity={.95} transparent lineWidth={2}/></group>
+}
+
+function RouteWaypoint({position,index,selected,onSelect}:{position:Point;index:number;selected:boolean;onSelect:()=>void}){
+  const edge=selected?'#f1c65b':'#72e8df',fill=selected?'#46391d':'#142a28'
+  return <group position={[position[0],.18,position[1]]}>
+    <mesh rotation={[-Math.PI/2,0,0]} onClick={event=>{event.stopPropagation();onSelect()}}><ringGeometry args={[selected?0.24:0.17,selected?0.3:0.22,24]}/><meshBasicMaterial color={edge} depthWrite={false}/></mesh>
+    <mesh rotation={[-Math.PI/2,0,0]} onClick={event=>{event.stopPropagation();onSelect()}}><circleGeometry args={[selected?0.23:0.14,24]}/><meshBasicMaterial color={fill} depthWrite={false}/></mesh>
+    <Text position={[0,.012,0]} rotation={[-Math.PI/2,0,0]} fontSize={selected?0.19:0.16} color="#e9fff8" anchorX="center" anchorY="middle" onClick={event=>{event.stopPropagation();onSelect()}}>{index}</Text>
+  </group>
 }
 
 const terrainUnit=(index:number,salt:number)=>{const value=Math.sin(index*91.17+salt*43.71)*43758.5453;return value-Math.floor(value)}
@@ -155,7 +164,7 @@ function Runway({asset,enemy=false,selected=false,onSelect}:{asset:Asset;enemy?:
   const health=asset.health
   const forward=asset.kind==='fob'
   const length=forward?1.35:2
-  return <group position={to3(position,.14)} rotation={[0,.2,0]} onClick={event=>{event.stopPropagation();onSelect?.()}}>
+  return <group position={to3(position,.14)} rotation={[0,.2,0]} onPointerDown={event=>{if(onSelect)event.stopPropagation()}} onClick={event=>{event.stopPropagation();onSelect?.()}}>
     {selected?<mesh position={[0,.01,0]} rotation={[-Math.PI/2,0,0]}><ringGeometry args={[forward?.62:.78,forward?.7:.86,32]}/><meshBasicMaterial color="#7ceaf0" depthTest={false}/></mesh>:null}
     <mesh castShadow><boxGeometry args={[length,.08,forward?.38:.5]}/><meshStandardMaterial color={health>0?'#343732':'#25221f'} roughness={.9}/></mesh>
     {(forward?[-.4,0,.4]:[-.65,0,.65]).map(x=><mesh key={x} position={[x,.05,0]}><boxGeometry args={[.2,.012,.035]}/><meshBasicMaterial color={enemy?'#bd5b4a':'#d2cfb5'}/></mesh>)}
@@ -163,6 +172,23 @@ function Runway({asset,enemy=false,selected=false,onSelect}:{asset:Asset;enemy?:
     {asset.struck?<HealthBar3D fraction={health/asset.maxHealth} label={`${Math.round(health)}%`} position={[0,.88,0]}/>:null}
     {asset.struck&&health<asset.maxHealth?<DamageSmoke severity={Math.max(.15,severity)} position={[0,.22,-.1]}/>:null}
   </group>
+}
+
+function AirfieldFormationPips({base,formations,selectedId,plannedFormationIds,selectingProtectTarget,onSelect}:{base:Asset;formations:Squadron[];selectedId:string;plannedFormationIds:string[];selectingProtectTarget?:boolean;onSelect:(id:string)=>void}){
+  const available=formations.filter(squadron=>squadron.aircraft>0&&squadron.status!=='trapped')
+  if(!available.length)return null
+  return <Html position={[base.position[0],1.2,base.position[1]]} center zIndexRange={[7,7]} style={{pointerEvents:'none'}}>
+    <div className="airfield-pip-anchor">
+      <div className="airfield-pip-list" role="group" aria-label={`${airfieldLabel(base)} aircraft`}>
+        {available.map(squadron=>{
+          const planned=plannedFormationIds.includes(squadron.id)
+          return <button key={squadron.id} type="button" className={`airfield-pip${squadron.id===selectedId?' selected':''}${planned?' planned':''}`} aria-label={selectingProtectTarget?`Protect ${squadron.callsign}`:`Plan route for ${squadron.callsign}`} title={selectingProtectTarget&&!planned?'Confirm this flight’s order before selecting it as an escort target':''} disabled={selectingProtectTarget&&(squadron.id===selectedId||!planned)} aria-pressed={squadron.id===selectedId} onPointerDown={event=>event.stopPropagation()} onClick={event=>{event.stopPropagation();onSelect(squadron.id)}}>
+            <span className="airfield-pip-role">{squadron.role==='recon'?'R':'F'}</span><span className="airfield-pip-name">{squadron.callsign}</span>{planned?<span className="airfield-pip-check" aria-label="Order confirmed">✓</span>:null}
+          </button>
+        })}
+      </div>
+    </div>
+  </Html>
 }
 
 function ConstructionPlacementGhost({position,valid,kind}:{position:Point;valid:boolean;kind:ConstructibleAssetKind}){
@@ -191,7 +217,7 @@ function Ring({radius,color,opacity=.32,dashSize=.18,gapSize=.12,lineWidth=1,das
   return dashed?<Line points={pts} color={color} transparent opacity={opacity} dashed dashSize={dashSize} gapSize={gapSize} lineWidth={lineWidth} depthTest={false}/>:<Line points={pts} color={color} transparent opacity={opacity} lineWidth={lineWidth} depthTest={false}/>
 }
 
-function TerritoryOverlay({territory,phase}:{territory:FriendlyTerritory;phase:Phase}){
+function TerritoryOverlay({territory}:{territory:FriendlyTerritory}){
   const regions=useMemo(()=>territoryRegions(territory),[territory])
   const outlines=useMemo(()=>regions.flatMap((region,regionIndex)=>{
     const sampleCount=96
@@ -202,11 +228,10 @@ function TerritoryOverlay({territory,phase}:{territory:FriendlyTerritory;phase:P
     if(current.length>1)lines.push(current)
     return lines.map(points=>({points,kind:region.kind}))
   }),[regions])
-  const bounds=useMemo(()=>territoryBounds(territory),[territory]),labelPosition=boundsCenter(bounds)
   return <group renderOrder={6}>
-    {regions.map(region=><mesh key={`${region.id}-territory`} position={to3(region.center,.102)} rotation={[-Math.PI/2,0,0]}><circleGeometry args={[region.radius,64]}/><meshBasicMaterial color={region.kind==='fob'?'#7bdc9b':'#55d6df'} transparent opacity={region.kind==='fob'?.09:.11} depthTest={false} depthWrite={false}/></mesh>)}
-    {outlines.map((line,index)=><Line key={`territory-outline-${index}`} points={line.points.map(point=>to3(point,.115))} color={line.kind==='fob'?'#9ee6a8':'#7ceaf0'} transparent opacity={.9} dashed={line.kind==='fob'} dashSize={.24} gapSize={.12} lineWidth={1.8} depthTest={false}/>) }
-    {(phase==='deploy'||regions.length>1)?<Text position={to3([labelPosition[0],labelPosition[1]-Math.max(bounds.maxZ-bounds.minZ,bounds.maxX-bounds.minX)/2-.35],.14)} rotation={[-Math.PI/2,0,0]} fontSize={.17} color="#d7fff2" anchorX="center" outlineWidth={.012} outlineColor="#102015">FRIENDLY TERRITORY</Text>:null}
+    {regions.map(region=><mesh key={`${region.id}-territory`} position={to3(region.center,.102)} rotation={[-Math.PI/2,0,0]}><circleGeometry args={[region.radius,64]}/><meshBasicMaterial color={region.kind==='fob'?'#7bdc9b':'#55d6df'} transparent opacity={region.kind==='fob'?.1:.14} depthTest={false} depthWrite={false}/></mesh>)}
+    {outlines.map((line,index)=><group key={`territory-outline-${index}`}><Line points={line.points.map(point=>to3(point,.112))} color="#101611" transparent opacity={.92} dashed={line.kind==='fob'} dashSize={.24} gapSize={.12} lineWidth={4} depthTest={false}/><Line points={line.points.map(point=>to3(point,.118))} color={line.kind==='fob'?'#9ee6a8':'#f1c65b'} transparent opacity={1} dashed={line.kind==='fob'} dashSize={.24} gapSize={.12} lineWidth={2.5} depthTest={false}/></group>)}
+    {regions.map(region=><Text key={`${region.id}-territory-label`} position={to3([region.center[0],region.center[1]-region.radius*.68],.14)} rotation={[-Math.PI/2,0,0]} fontSize={.21} color={region.kind==='fob'?'#b8f2bf':'#ffe08a'} anchorX="center" outlineWidth={.025} outlineColor="#101611">{region.kind==='fob'?'FOB INFLUENCE':'HOME TERRITORY'}</Text>)}
   </group>
 }
 
@@ -220,9 +245,9 @@ function CoverageDome({radius,color='#4aa9e8',illuminated=false}:{radius:number;
 }
 
 function SensorRangeOverlay({phase,radar,position,losRange,showLos}:{phase:Phase;radar?:Asset;position:Point;losRange:number;showLos:boolean}){
-  const showGround=(phase==='deploy'||phase==='plan')&&radar?.health!>0
+  const showGround=phase==='deploy'&&radar?.health!>0
   return <group renderOrder={1}>
-    {showGround?<group position={to3(radar!.position,.1)}><CoverageDome radius={RADAR_RANGE}/><Ring radius={RADAR_RANGE} color="#4aa9e8" opacity={.58} dashSize={.42} gapSize={.16} lineWidth={1.5}/><Ring radius={RADAR_COMMUNICATION_RANGE} color="#8bd6a2" opacity={.42} dashSize={.06} gapSize={.2} lineWidth={1.35}/></group>:null}
+    {showGround?<group position={to3(radar!.position,.1)}><CoverageDome radius={RADAR_RANGE}/><Ring radius={RADAR_RANGE} color="#4aa9e8" opacity={.58} dashSize={.42} gapSize={.16} lineWidth={1.5}/></group>:null}
     {showLos?<group position={to3(position,.16)} renderOrder={7}><mesh rotation={[-Math.PI/2,0,0]} renderOrder={7}><circleGeometry args={[losRange,96]}/><meshBasicMaterial color="#4debf2" transparent opacity={phase==='plan'?.055:.025} depthTest={false} depthWrite={false}/></mesh><mesh rotation={[-Math.PI/2,0,0]} renderOrder={9}><ringGeometry args={[Math.max(.05,losRange-.055),losRange+.055,96]}/><meshBasicMaterial color="#65f2f6" transparent opacity={.96} depthTest={false} depthWrite={false}/></mesh><Text position={[0,.04,-losRange-.28]} rotation={[-Math.PI/2,0,0]} fontSize={.14} color="#9affff" anchorX="center" outlineWidth={.012} outlineColor="#0b2021">{phase==='plan'?'LOS':'DETECTION'} · {losRange.toFixed(1)}</Text></group>:null}
   </group>
 }
@@ -295,39 +320,38 @@ function AircraftFormation({role,aircraft,color=friendly,enemy=false}:{role:Squa
 useGLTF.preload('/assets/f16.glb')
 useGLTF.preload('/assets/mig-23_mld.glb')
 
-function SearchAreaOverlay({points,selected}:{points:Point[];selected:boolean}){
+function SearchAreaOverlay({points,selected,tintColor}:{points:Point[];selected:boolean;tintColor?:string}){
   if(points.length<4)return null
   const minX=Math.min(...points.map(point=>point[0])),maxX=Math.max(...points.map(point=>point[0])),minZ=Math.min(...points.map(point=>point[1])),maxZ=Math.max(...points.map(point=>point[1]))
-  const width=Math.max(.3,maxX-minX),height=Math.max(.3,maxZ-minZ),center:[number,number]=[(minX+maxX)/2,(minZ+maxZ)/2],color=selected?'#7ceaf0':'#348c93'
+  const width=Math.max(.3,maxX-minX),height=Math.max(.3,maxZ-minZ),center:[number,number]=[(minX+maxX)/2,(minZ+maxZ)/2],color=tintColor??(selected?'#7ceaf0':'#348c93')
   const vertical=Array.from({length:6},(_,index)=>minX+width*index/5),horizontal=Array.from({length:6},(_,index)=>minZ+height*index/5)
   return <group renderOrder={2}><mesh position={to3(center,.026)} rotation={[-Math.PI/2,0,0]}><planeGeometry args={[width,height]}/><meshBasicMaterial color={color} transparent opacity={selected ? .12 : .045} depthTest={false} depthWrite={false}/></mesh><Line points={[to3([minX,minZ],.034),to3([maxX,minZ],.034),to3([maxX,maxZ],.034),to3([minX,maxZ],.034),to3([minX,minZ],.034)]} color={color} transparent opacity={selected ? .9 : .32} lineWidth={selected?1.4:.8} depthTest={false}/>{vertical.map((x,index)=><Line key={`vertical-${index}`} points={[to3([x,minZ],.032),to3([x,maxZ],.032)]} color={color} transparent opacity={selected ? .5 : .16} lineWidth={.65} depthTest={false}/>) }{horizontal.map((z,index)=><Line key={`horizontal-${index}`} points={[to3([minX,z],.033),to3([maxX,z],.033)]} color={color} transparent opacity={selected ? .5 : .16} lineWidth={.65} depthTest={false}/>)}</group>
 }
 
 function ResponsibilityCircle({center,radius,selected}:{center:Point;radius:number;selected:boolean}){
   const points=useMemo(()=>Array.from({length:65},(_,index)=>{const angle=index*Math.PI*2/64;return to3([center[0]+Math.cos(angle)*radius,center[1]+Math.sin(angle)*radius],.042)}),[center,radius])
-  return <group renderOrder={8}><Line points={points} color="#9ee6a8" transparent opacity={selected?.9:.25} dashed dashSize={.24} gapSize={.13} lineWidth={selected?1.7:.8} depthTest={false}/>{selected?<Text position={to3([center[0],center[1]-radius-.3],.09)} rotation={[-Math.PI/2,0,0]} fontSize={.14} color="#b9f2c1" anchorX="center" outlineWidth={.01} outlineColor="#102015">ENGAGE AREA</Text>:null}</group>
+  return <group renderOrder={8}><Line points={points} color="#9ee6a8" transparent opacity={selected?.9:.25} lineWidth={selected?1.7:.8} depthTest={false}/></group>
+}
+
+function StrikeReleasePreview({center,range=6}:{center:Point;range?:number}){
+  const points=useMemo(()=>Array.from({length:97},(_,index)=>{const angle=index*Math.PI*2/96;return to3([center[0]+Math.cos(angle)*range,center[1]+Math.sin(angle)*range],.035)}),[center,range])
+  return <group renderOrder={7}><mesh position={to3(center,.026)} rotation={[-Math.PI/2,0,0]}><circleGeometry args={[range,64]}/><meshBasicMaterial color="#d99a25" transparent opacity={.055} depthWrite={false}/></mesh><Line points={points} color="#f1c65b" transparent opacity={.78} dashed dashSize={.28} gapSize={.18} lineWidth={1.2} depthTest={false}/><Billboard position={to3([center[0],center[1]-range-.32],.09)} follow lockZ={false}><Text fontSize={.17} color="#f4d074" anchorX="center" outlineWidth={.012} outlineColor="#201708">MISSILE RELEASE · 6 UNITS</Text></Billboard></group>
 }
 
 function ResponsibilityCorridor({path,halfWidth,selected}:{path:Point[];halfWidth:number;selected:boolean}){
-  const [left,right]=useMemo(()=>{
-    const closed=path.length>2&&Math.hypot(path[0][0]-path.at(-1)![0],path[0][1]-path.at(-1)![1])<.001
-    const source=closed?path.slice(0,-1):path
-    const offset=(side:number)=>{
-      const points=source.map((point,index)=>{
-        const previous=closed?source[(index+source.length-1)%source.length]:source[Math.max(0,index-1)]
-        const next=closed?source[(index+1)%source.length]:source[Math.min(source.length-1,index+1)]
-        const dx=next[0]-previous[0],dz=next[1]-previous[1],length=Math.hypot(dx,dz)||1
-        return to3([point[0]+(-dz/length)*halfWidth*side,point[1]+(dx/length)*halfWidth*side],.044)
-      })
-      return closed?[...points,points[0]]:points
-    }
-    return [offset(-1),offset(1)] as const
+  const geometry=useMemo(()=>{
+    const points=path.slice(0,64),xs=points.map(point=>point[0]),zs=points.map(point=>point[1])
+    const minX=Math.min(...xs)-halfWidth,maxX=Math.max(...xs)+halfWidth,minZ=Math.min(...zs)-halfWidth,maxZ=Math.max(...zs)+halfWidth
+    return {center:[(minX+maxX)/2,(minZ+maxZ)/2] as Point,width:maxX-minX,depth:maxZ-minZ,points:[...points.map(point=>new THREE.Vector2(...point)),...Array.from({length:64-points.length},()=>new THREE.Vector2())],count:points.length}
   },[halfWidth,path])
-  return <group renderOrder={8}><Line points={left} color="#9ee6a8" transparent opacity={selected?.82:.2} dashed dashSize={.28} gapSize={.13} lineWidth={selected?1.25:.7} depthTest={false}/><Line points={right} color="#9ee6a8" transparent opacity={selected?.82:.2} dashed dashSize={.28} gapSize={.13} lineWidth={selected?1.25:.7} depthTest={false}/></group>
+  return <mesh position={to3(geometry.center,.045)} rotation={[-Math.PI/2,0,0]} renderOrder={8}>
+    <planeGeometry args={[geometry.width,geometry.depth]}/>
+    <shaderMaterial transparent depthWrite={false} side={THREE.DoubleSide} uniforms={{uPoints:{value:geometry.points},uCount:{value:geometry.count},uWidth:{value:halfWidth},uOpacity:{value:selected?.09:.02}}} vertexShader={`varying vec2 vWorld; void main(){vec4 world=modelMatrix*vec4(position,1.0);vWorld=world.xz;gl_Position=projectionMatrix*viewMatrix*world;}`} fragmentShader={`uniform vec2 uPoints[64];uniform int uCount;uniform float uWidth;uniform float uOpacity;varying vec2 vWorld;void main(){float distanceToRoute=1.0e6;for(int i=0;i<63;i++){if(i>=uCount-1)break;vec2 a=uPoints[i];vec2 b=uPoints[i+1];vec2 delta=b-a;float t=clamp(dot(vWorld-a,delta)/max(dot(delta,delta),0.00001),0.0,1.0);distanceToRoute=min(distanceToRoute,length(vWorld-(a+t*delta)));}float edge=1.0-smoothstep(uWidth-0.12,uWidth+0.12,distanceToRoute);gl_FragColor=vec4(0.62,0.9,0.66,uOpacity*edge);}`}/>
+  </mesh>
 }
 
-const ResponsibilityOverlay=memo(function ResponsibilityOverlay({squadron,selected}:{squadron:Squadron;selected:boolean}){
-  const responsibility=useMemo(()=>fighterResponsibilityFor(squadron),[squadron])
+const ResponsibilityOverlay=memo(function ResponsibilityOverlay({squadron,selected,protectedPosition}:{squadron:Squadron;selected:boolean;protectedPosition?:Point}){
+  const responsibility=useMemo(()=>fighterResponsibilityFor(squadron,protectedPosition),[squadron,protectedPosition])
   if(!responsibility)return null
   return responsibility.kind==='circle'?<ResponsibilityCircle center={responsibility.center} radius={responsibility.radius} selected={selected}/>:<ResponsibilityCorridor path={responsibility.path} halfWidth={responsibility.halfWidth} selected={selected}/>
 })
@@ -338,17 +362,18 @@ function RecoveryLatchCue({position,selected}:{position:Point;selected:boolean})
   return <group position={to3(position,.06)}><group ref={pulse}><mesh rotation={[-Math.PI/2,0,0]}><ringGeometry args={[.48,.56,32]}/><meshBasicMaterial color="#9ee6a8" transparent opacity={.65} depthWrite={false}/></mesh><mesh rotation={[-Math.PI/2,0,0]}><ringGeometry args={[.12,.17,24]}/><meshBasicMaterial color="#d7ffe0" transparent opacity={.7} depthWrite={false}/></mesh></group><Billboard position={[0,.42,0]} follow lockZ={false}><Text fontSize={.17} color="#9ee6a8" anchorX="center" outlineWidth={.012} outlineColor="#102015">LATCHED · TRANSIT</Text></Billboard></group>
 }
 
-function Route({squadron,selected,packageReview=false,recoveryLabel}:{squadron:Squadron,selected:boolean,packageReview?:boolean;recoveryLabel?:string}){
+function Route({squadron,selected,packageReview=false,recoveryLabel,escortCoveragePercent,showPattern=true}:{squadron:Squadron,selected:boolean,packageReview?:boolean;recoveryLabel?:string;escortCoveragePercent?:number;showPattern?:boolean}){
   if(squadron.route.length<2)return null
   const ingressLength=Math.min(squadron.routeIngress.length,squadron.route.length),ingress=squadron.route.slice(0,ingressLength),station=squadron.route.slice(Math.max(0,ingressLength-1)),hasStation=station.length>1
   const ghostOpacity=packageReview?.62:.18
-  const recovery=Boolean(squadron.plannedRecoveryFieldId||recoveryLabel),routeColor=recovery?'#9ee6a8':selected?'#7ceaf0':'#348c93'
-  return <group>{ingress.length>1?<Line points={ingress.map(p=>to3(p,.065))} color={routeColor} opacity={selected||recovery?1:ghostOpacity} transparent lineWidth={selected||recovery?2.2:1} depthTest={false}/>:null}{hasStation&&!recovery?<Line points={station.map(p=>to3(p,.07))} color={selected?'#f1c65b':'#7a7250'} opacity={selected?.9:ghostOpacity} transparent lineWidth={selected?1.7:1} depthTest={false}/>:null}{squadron.mission==='search-area'&&!recovery?<SearchAreaOverlay points={station.slice(1)} selected={selected}/>:null}{selected?ingress.map((p,i)=><group key={i} position={to3(p,.08)}><mesh position={[0,.1,0]}><sphereGeometry args={[i===ingress.length-1?.15:.1,12,8]}/><meshBasicMaterial color={recovery?'#9ee6a8':friendly}/></mesh></group>):null}{recoveryLabel?<Billboard position={to3(squadron.route.at(-1)??[0,0],.82)} follow lockZ={false}><Text fontSize={.18} color="#9ee6a8" anchorX="center" outlineWidth={.012} outlineColor="#102015">RTB · {recoveryLabel}</Text></Billboard>:null}</group>
+  const recovery=Boolean(squadron.plannedRecoveryFieldId||recoveryLabel),routeColor=escortCoveragePercent!==undefined?(escortCoveragePercent>=99?'#9ee6a8':'#f1c65b'):recovery?'#9ee6a8':selected?'#7ceaf0':'#348c93'
+  const annotationPoint=station[Math.floor(station.length/2)]??squadron.route.at(-1)??[0,0]
+  return <group>{ingress.length>1?<Line points={ingress.map(p=>to3(p,.065))} color={routeColor} opacity={selected||recovery||escortCoveragePercent!==undefined?1:ghostOpacity} transparent lineWidth={selected||recovery||escortCoveragePercent!==undefined?2.2:1} depthTest={false}/>:null}{showPattern&&hasStation&&!recovery?<Line points={station.map(p=>to3(p,.07))} color={escortCoveragePercent!==undefined?routeColor:selected?'#f1c65b':'#7a7250'} opacity={escortCoveragePercent!==undefined?1:selected?.9:ghostOpacity} transparent lineWidth={selected||escortCoveragePercent!==undefined?1.7:1} depthTest={false}/>:null}{showPattern&&squadron.mission==='search-area'&&!recovery?<SearchAreaOverlay points={station.slice(1)} selected={selected||escortCoveragePercent!==undefined} tintColor={escortCoveragePercent!==undefined?routeColor:undefined}/>:null}{escortCoveragePercent!==undefined?<Billboard position={to3(annotationPoint,.88)} follow lockZ={false}><Text fontSize={.19} color={routeColor} anchorX="center" outlineWidth={.015} outlineColor="#10150f">{escortCoverageLabel(escortCoveragePercent)}</Text></Billboard>:null}{selected?ingress.map((p,i)=><group key={i} position={to3(p,.08)}><mesh position={[0,.1,0]}><sphereGeometry args={[i===ingress.length-1?.15:.1,12,8]}/><meshBasicMaterial color={recovery?'#9ee6a8':friendly}/></mesh></group>):null}{recoveryLabel?<Billboard position={to3(squadron.route.at(-1)??[0,0],.82)} follow lockZ={false}><Text fontSize={.18} color="#9ee6a8" anchorX="center" outlineWidth={.012} outlineColor="#102015">RTB · {recoveryLabel}</Text></Billboard>:null}</group>
 }
 
 type FlightStatus={aircraft:number;damaged:number;fraction:number;hasDamage:boolean;strength:number;morale:number;action:string;landed:boolean}
 const strengthToAircraft=(strength:number,maxAircraft:number)=>strength<=0?0:Math.max(1,Math.min(maxAircraft,Math.ceil(strength/25)))
-const actionLabel=(status?:string)=>status==='dogfighting'?'DOGFIGHT':status==='attacking-recon'?'PURSUIT':status==='intercepting'?'INTERCEPT':status==='recovering'||status==='recovered'||status==='rtb'?'RTB':status==='destroyed'?'DESTROYED':status==='disengaging'?'BREAKING CONTACT':'ENROUTE'
+const actionLabel=(status?:string)=>status==='grounded'?'STATIONED':status==='dogfighting'?'DOGFIGHT':status==='attacking-recon'?'PURSUIT':status==='intercepting'?'INTERCEPT':status==='recovering'||status==='recovered'||status==='rtb'?'RTB':status==='destroyed'?'DESTROYED':status==='disengaging'?'BREAKING CONTACT':'ENROUTE'
 function dogfightWeaponEffects(sequences:CombatSequence[],result:RoundResult|undefined):WeaponEffect[]{
   return sequences.flatMap(sequence=>sequence.kind==='dogfight'?sequence.exchanges.filter(exchange=>exchange.phase==='merged').flatMap(exchange=>{
     const start=Math.max(sequence.start,exchange.time-.18)
@@ -365,25 +390,22 @@ function AircraftSmoke(){
   return <group ref={ref}>{[0,1,2].map(i=><mesh key={i}><sphereGeometry args={[.18,6,4]}/><meshBasicMaterial color="#34342f" transparent opacity={.38} depthWrite={false}/></mesh>)}</group>
 }
 
-function ActivityGlyph3D({action,color,selected=false,radarLinkOpacity=0}:{action:string;color:string;selected?:boolean;radarLinkOpacity?:number}){
-  const glyph=deriveFlightGlyph(action,selected,radarLinkOpacity)
-  if(glyph.kind==='none'&&!glyph.selected&&glyph.radarLinkOpacity<=0)return null
-  const plate=glyph.kind!=='none'||glyph.radarLinkOpacity>0
-  const palette=glyph.kind==='engaged'?{plate:'#6a211d',accent:'#ff7466'}:glyph.kind==='pursuit'?{plate:'#604010',accent:'#ffd36a'}:glyph.kind==='returning'?{plate:'#25492e',accent:'#9ee6a8'}:glyph.kind==='intercept'?{plate:'#124d54',accent:'#70eff7'}:{plate:'#651d1a',accent:'#ff665b'}
+function ActivityGlyph3D({action}:{action:string}){
+  const glyph=deriveFlightGlyph(action,false)
+  if(glyph.kind==='none')return null
+  const plateColor=glyph.kind==='engaged'?'#6a211d':glyph.kind==='pursuit'?'#604010':glyph.kind==='returning'?'#25492e':glyph.kind==='intercept'?'#124d54':'#651d1a'
   const foreground='#fffdf0'
   const lineProps={color:foreground,transparent:true,opacity:1,lineWidth:3,depthTest:false} as const
   return <Billboard position={[0,.82,0]} follow lockZ={false}><group>
-    {plate?<><mesh renderOrder={34}><circleGeometry args={[.22,24]}/><meshBasicMaterial color={palette.plate} transparent opacity={.96} depthTest={false} depthWrite={false}/></mesh><mesh renderOrder={35}><ringGeometry args={[.19,.22,24]}/><meshBasicMaterial color={palette.accent} depthTest={false} depthWrite={false}/></mesh></>:null}
-    {glyph.selected?<mesh renderOrder={35}><ringGeometry args={[.235,.258,28]}/><meshBasicMaterial color={color} depthTest={false} depthWrite={false}/></mesh>:null}
-    {glyph.kind==='engaged'?<><mesh renderOrder={35}><ringGeometry args={[.105,.135,20]}/><meshBasicMaterial color={foreground} depthTest={false} depthWrite={false}/></mesh>{glyph.radarLinkOpacity<=0?<><Line points={[[ -.082,-.082,.006],[.082,.082,.006]]} {...lineProps}/><Line points={[[ -.082,.082,.006],[.082,-.082,.006]]} {...lineProps}/></>:null}</>:null}
+    <mesh renderOrder={34}><circleGeometry args={[.22,24]}/><meshBasicMaterial color={plateColor} transparent opacity={.96} depthTest={false} depthWrite={false}/></mesh>
+    {glyph.kind==='engaged'?<><mesh renderOrder={35}><ringGeometry args={[.105,.135,20]}/><meshBasicMaterial color={foreground} depthTest={false} depthWrite={false}/></mesh><Line points={[[ -.082,-.082,.006],[.082,.082,.006]]} {...lineProps}/><Line points={[[ -.082,.082,.006],[.082,-.082,.006]]} {...lineProps}/></>:null}
     {glyph.kind==='intercept'?<Line points={[[ -.09,.12,.006],[.105,0,.006],[-.09,-.12,.006]]} {...lineProps}/>:null}
     {glyph.kind==='pursuit'?<Line points={[[ -.105,.13,.006],[.125,0,.006],[-.105,-.13,.006],[-.105,.13,.006]]} {...lineProps}/>:null}
     {glyph.kind==='returning'?<Line points={[[0,.14,.006],[.14,0,.006],[0,-.14,.006],[-.14,0,.006],[0,.14,.006]]} {...lineProps}/>:null}
-    {glyph.radarLinkOpacity>0?<group position={[0,0,.012]}><mesh position={[0,.035,0]} renderOrder={36}><planeGeometry args={[.04,.12]}/><meshBasicMaterial color={foreground} transparent opacity={glyph.radarLinkOpacity} depthTest={false} depthWrite={false}/></mesh><mesh position={[0,-.075,.001]} renderOrder={36}><circleGeometry args={[.029,10]}/><meshBasicMaterial color={foreground} transparent opacity={glyph.radarLinkOpacity} depthTest={false} depthWrite={false}/></mesh></group>:null}
   </group></Billboard>
 }
 
-function Flight({squadron,route,frame,active,selected,status,activeEvent,radarLinkFade,recoveryLabel}:{squadron:Squadron;route:Point[];frame?:UnitFrame;active:boolean;selected:boolean;status:FlightStatus;activeEvent?:CombatEvent;radarLinkFade:number;recoveryLabel?:string}){
+function Flight({squadron,route,frame,active,status,activeEvent,recoveryLabel}:{squadron:Squadron;route:Point[];frame?:UnitFrame;active:boolean;status:FlightStatus;activeEvent?:CombatEvent;recoveryLabel?:string}){
   const ref=useRef<THREE.Group>(null)
   const modelRef=useRef<THREE.Group>(null)
   const reaction=useRef({id:'',age:2,kind:'none' as 'none'|'damage'|'strike'})
@@ -394,12 +416,11 @@ function Flight({squadron,route,frame,active,selected,status,activeEvent,radarLi
   const damageEvent=reactionEvent&&(airLossTitles.has(reactionEvent.title)||airDamageTitles.has(reactionEvent.title))?reactionEvent:undefined
   const formationLost=!!damageEvent&&airLossTitles.has(damageEvent.title)
   const calloutLabel=formationLost?'FORMATION LOST':damageEvent?'HIT · DAMAGE':''
-  const initialPosition=active&&frame?new THREE.Vector3(frame.position[0],.6,frame.position[1]):flightPoint(curve,0)
+  const initialPosition=active&&frame?new THREE.Vector3(frame.position[0],.6,frame.position[1]):route.length>=2?flightPoint(curve,0):new THREE.Vector3(route[0]?.[0]??0,.6,route[0]?.[1]??0)
   return <group ref={ref} visible={(!active||!!frame)&&!status.landed&&(status.aircraft>0||formationLost)} position={initialPosition}>
     <group ref={modelRef}><AircraftFormation role={squadron.role} aircraft={Math.max(1,status.aircraft)}/>{status.hasDamage?<AircraftSmoke/>:null}</group>
-    <mesh position={[0,-.43,0]} rotation={[-Math.PI/2,0,0]}><circleGeometry args={[selected ? .55 : .42,16]}/><meshBasicMaterial color={selected?friendly:'#080a08'} transparent opacity={selected ? .18 : .22}/></mesh>
     {active?<>
-      <ActivityGlyph3D action={status.action} color={friendly} selected={selected} radarLinkOpacity={radarLinkFade}/>
+      <ActivityGlyph3D action={status.action}/>
       {recoveryLabel&&!status.landed?<Billboard position={[0,.64,0]} follow lockZ={false}><Text fontSize={.16} color="#9ee6a8" anchorX="center" outlineWidth={.01} outlineColor="#102015">LANDING AT {recoveryLabel}</Text></Billboard>:null}
       {damageEvent?<HitCallout key={damageEvent.id} label={calloutLabel}/>:null}
     </>:null}
@@ -426,7 +447,6 @@ function EnemyContact({flight,projection,status,activeEvent}:{flight:EnemyFlight
   </group>
   return <group ref={ref} visible={status.aircraft>0||!!hitEvent} position={position}>
     <group ref={modelRef}><AircraftFormation role={flight.role as Squadron['role']} aircraft={Math.max(1,status.aircraft)} color={contactColor} enemy/>{status.hasDamage?<AircraftSmoke/>:null}</group>
-    <Billboard position={[0,.56,0]} follow lockZ={false}><Text fontSize={.19} color={contactColor} anchorX="center" outlineWidth={.012} outlineColor="#180806">{contactLabel}</Text></Billboard>
     <HealthBar3D fraction={status.fraction} color={contactColor} label={`${flight.callsign} · ${flight.role.toUpperCase()} · ${status.aircraft} PIPS`} status={status.action} position={[0,.9,0]}/>
     {damageEvent?<HitCallout key={damageEvent.id} label="ENEMY −1 AIRCRAFT"/>:null}
     <group position={[0,-.6,0]}><Ring radius={1.1} color={hostile} opacity={.3}/></group>
@@ -469,9 +489,22 @@ function lerpPoint(a:Point,b:Point,t:number):Point{return [a[0]+(b[0]-a[0])*t,a[
 function WeaponEffectVisual({effect,seconds}:{effect:WeaponEffect;seconds:number}){
   const local=clamp01((seconds-effect.start)/Math.max(.01,effect.end-effect.start))
   if(seconds<effect.start||seconds>effect.end+.28)return null
-  const position=lerpPoint(effect.from,effect.to,local)
+  const airborne=effect.kind==='air-to-air-missile'||effect.kind==='gun'
+  const dx=effect.to[0]-effect.from[0],dz=effect.to[1]-effect.from[1],distance=Math.hypot(dx,dz)||1
+  const endpoint:Point=!effect.hit&&airborne?[effect.to[0]-dz/distance*.48,effect.to[1]+dx/distance*.48]:effect.to
+  const position=lerpPoint(effect.from,endpoint,local)
   const hostileSource=effect.sourceId.startsWith('e-')||effect.sourceId==='red-fighter'
   const color=effect.kind==='aaa'?'#ffcf62':effect.kind==='gun'?'#ffd48a':hostileSource?hostile:friendly
+  if(airborne){
+    const inFlight=seconds<=effect.end
+    const height=.74+(effect.kind==='air-to-air-missile'?Math.sin(local*Math.PI)*.16:0)
+    const tail=lerpPoint(effect.from,endpoint,Math.max(0,local-(effect.kind==='gun'?.19:.32)))
+    const impactFade=clamp01(1-(seconds-effect.end)/.28)
+    return <group>
+      {inFlight?<><Line points={[to3(tail,height),to3(position,height)]} color={color} transparent opacity={effect.kind==='gun'?.9:.75} lineWidth={effect.kind==='gun'?2.2:2.8} depthTest={false}/><mesh position={to3(position,height)}><sphereGeometry args={[effect.kind==='gun'?.075:.11,8,6]}/><meshBasicMaterial color={color} depthTest={false} depthWrite={false}/></mesh></>:null}
+      {effect.hit&&seconds>=effect.end-.06?<mesh position={to3(effect.to,.74)}><sphereGeometry args={[.26+(1-impactFade)*.2,10,8]}/><meshBasicMaterial color="#ffb64a" transparent opacity={impactFade*.8} depthTest={false} depthWrite={false}/></mesh>:null}
+    </group>
+  }
   const isBurst=effect.kind==='gun'||effect.kind==='aaa'
   const height=effect.kind==='sam' ? .28+Math.sin(local*Math.PI)*1.28 : .75+Math.sin(local*Math.PI)*.28
   const trailPoint=lerpPoint(effect.from,effect.to,Math.max(0,local-.23))
@@ -485,20 +518,23 @@ function WeaponEffectVisual({effect,seconds}:{effect:WeaponEffect;seconds:number
   </>
 }
 
-function ActiveSequenceVisual({sequence,seconds}:{sequence:CombatSequence;seconds:number}){
+function ActiveSequenceVisual({sequence,seconds,result}:{sequence:CombatSequence;seconds:number;result?:RoundResult}){
   const presentation=sequence.kind==='dogfight'?fighterEngagementPresentationAt(sequence,seconds):undefined
   if(seconds<sequence.start||seconds>sequence.end+(sequence.kind==='dogfight'?.7:0))return null
   if(sequence.kind==='pursuit')return <Billboard position={[sequence.location[0],1.35,sequence.location[1]]} follow lockZ={false}><Text fontSize={.22} color="#f4e7b1" anchorX="center" outlineWidth={.015} outlineColor="#080806">RECON UNDER PURSUIT</Text></Billboard>
-  const merged=sequence.kind==='dogfight'?sequence.engagement.phases.find(phase=>phase.kind==='merged'):undefined
-  if(sequence.kind==='dogfight'&&presentation?.stage==='opening-fire'){
+  if(sequence.kind==='dogfight'&&presentation){
+    const positions=sequence.participantIds.map(id=>sampleUnitTrack(unitTrackFor(result,id),seconds)?.position).filter((point):point is Point=>Boolean(point))
+    const center=positions.length?[positions.reduce((sum,point)=>sum+point[0],0)/positions.length,positions.reduce((sum,point)=>sum+point[1],0)/positions.length] as Point:sequence.location
     const eventColor=presentation.eventCueTone==='neutral'?'#d4d2c6':'#f1c65b'
-    return <Billboard position={[sequence.location[0],1.48,sequence.location[1]]} follow lockZ={false}>
-      {presentation.eventCue?<Text position={[0,.12,0]} fontSize={.25} color={eventColor} fillOpacity={presentation.eventCueOpacity} anchorX="center" outlineWidth={.017} outlineColor="#080806">{presentation.eventCue}</Text>:null}
-      <Text position={[0,-.13,0]} fontSize={.17} color="#f4e7b1" anchorX="center" outlineWidth={.012} outlineColor="#080806">{presentation.label}</Text>
-      {presentation.contextCue?<Text position={[0,-.34,0]} fontSize={.14} color="#f1c65b" anchorX="center" outlineWidth={.01} outlineColor="#080806">{presentation.contextCue}</Text>:null}
+    const recentExchange=[...sequence.exchanges].reverse().find(exchange=>seconds>=exchange.time&&seconds<exchange.time+.7)
+    const shotLabel=recentExchange?.probability?`${sequence.engagement.sides.friendly.includes(recentExchange.attackerId)?'FRIENDLY':'HOSTILE'} ${recentExchange.hit?'HIT':'MISS'} · ${recentExchange.hit?`${recentExchange.damage} DAMAGE · `:''}${Math.round(recentExchange.probability.finalHitProbability*100)}% SHOT`:undefined
+    return <Billboard position={[center[0],1.95,center[1]]} follow lockZ={false}>
+      {presentation.eventCue&&presentation.eventCueOpacity>.05?<Text position={[0,.1,0]} fontSize={.22} color={eventColor} fillOpacity={presentation.eventCueOpacity} anchorX="center" outlineWidth={.016} outlineColor="#080806">{presentation.eventCue}</Text>:null}
+      <Text position={[0,-.15,0]} fontSize={.16} color="#f4e7b1" fillOpacity={presentation.presentationOpacity} anchorX="center" outlineWidth={.012} outlineColor="#080806">{presentation.label}</Text>
+      {shotLabel?<Text position={[0,-.36,0]} fontSize={.13} color={recentExchange?.hit?'#ffcf62':'#d4d2c6'} anchorX="center" outlineWidth={.01} outlineColor="#080806">{shotLabel}</Text>:null}
     </Billboard>
   }
-  const visualStart=merged?.start??sequence.start
+  const visualStart=sequence.start
   const local=clamp01((seconds-visualStart)/Math.max(.01,sequence.end-visualStart))
   const radius=sequence.kind==='dogfight'?1.05:.5
   const loops=Array.from({length:32},(_,i)=>{const t=i/31*Math.PI*2+local*Math.PI*2;return [sequence.location[0]+Math.cos(t)*radius,.64+Math.sin(i*.7)*.05,sequence.location[1]+Math.sin(t)*radius*.62] as [number,number,number]})
@@ -536,12 +572,12 @@ function friendlyStatusAt(squadron:Squadron,frame:UnitFrame|undefined,initialStr
   const morale=frame?.morale??squadron.morale??70
   const aircraft=frame?.aircraft??strengthToAircraft(strength,squadron.maxAircraft)
   const damaged=Math.max(0,Math.round((100-strength)/25)-(squadron.maxAircraft-aircraft))
-  return {aircraft,damaged,fraction:clamp01(strength/100),strength,morale,action:actionLabel(frame?.mode??squadron.status),hasDamage:strength<(initialStrength??squadron.strength??100),landed:frame?.mode==='recovered'}
+  return {aircraft,damaged,fraction:clamp01(strength/100),strength,morale,action:actionLabel(frame?.mode??squadron.status),hasDamage:strength<(initialStrength??squadron.strength??100),landed:frame?.mode==='recovered'||frame?.mode==='grounded'}
 }
 
 function enemyStatusAt(flight:EnemyFlight,frame:UnitFrame,initialStrength?:number):FlightStatus{
   const strength=frame.strength
-  return {aircraft:frame.aircraft,damaged:0,fraction:clamp01(strength/100),strength,morale:frame.morale,action:actionLabel(frame.mode),hasDamage:strength<(initialStrength??100),landed:frame.mode==='recovered'}
+  return {aircraft:frame.aircraft,damaged:0,fraction:clamp01(strength/100),strength,morale:frame.morale,action:actionLabel(frame.mode),hasDamage:strength<(initialStrength??100),landed:frame.mode==='recovered'||frame.mode==='grounded'}
 }
 
 function assetAtTime(asset:Asset,result:RoundResult|undefined,progress:number,enemy:boolean,phase:Phase):Asset{
@@ -551,8 +587,8 @@ function assetAtTime(asset:Asset,result:RoundResult|undefined,progress:number,en
   return (enemy?result.assets:result.playerAssets).find(candidate=>candidate.id===asset.id)??asset
 }
 
-export interface BattlefieldProps {squadrons:Squadron[]; assets:Asset[]; playerAssets:Asset[]; mappedAreas:Point[]; discoveredBoundaries?:BoundarySegment[]; presentationBounds?:WorldBounds; planningBounds?:WorldBounds; friendlyTerritory?:FriendlyTerritory; selectedId:string; followId?:string; focusPoint?:Point; placementId:string; planningBaseId?:string; executionBaseId?:string; planningRecoveryFieldId?:string; routeOrigin?:Point; routePlanningEnabled?:boolean; phase:Phase; progress:number; activeEvent?:CombatEvent; executionResult?:RoundResult; packageReview?:boolean; economySelectionId?:string; onPlanningBaseSelect?:(id:string)=>void; onExecutionBaseSelect?:(id:string)=>void; onEconomySelect?:(id:string)=>void; construction?:{kind:ConstructibleAssetKind;placement?:Point;isValid:(point:Point)=>boolean;onStage:(point:Point)=>void}; onRoute:(route:Point[])=>void; onPlace:(id:string,position:Point)=>void}
-function BattlefieldScene({squadrons,assets,playerAssets,mappedAreas,discoveredBoundaries=EMPTY_BOUNDARIES,presentationBounds,planningBounds,friendlyTerritory,selectedId,followId,focusPoint,placementId,planningBaseId,executionBaseId,planningRecoveryFieldId,routeOrigin,routePlanningEnabled=false,phase,progress,activeEvent,executionResult,packageReview,economySelectionId,onPlanningBaseSelect,onExecutionBaseSelect,onEconomySelect,construction,onRoute,onPlace}:BattlefieldProps){
+export interface BattlefieldProps {squadrons:Squadron[]; assets:Asset[]; playerAssets:Asset[]; mappedAreas:Point[]; discoveredBoundaries?:BoundarySegment[]; presentationBounds?:WorldBounds; planningBounds?:WorldBounds; friendlyTerritory?:FriendlyTerritory; selectedId:string; followId?:string; focusPoint?:Point; placementId:string; planningBaseId?:string; executionBaseId?:string; planningRecoveryFieldId?:string; plannedFormationIds?:string[]; routeOrigin?:Point; routePlanningEnabled?:boolean; showMissionPreview?:boolean; selectingProtectTarget?:boolean; escortPreview?:{targetId:string;percent:number}; phase:Phase; progress:number; activeEvent?:CombatEvent; executionResult?:RoundResult; packageReview?:boolean; economySelectionId?:string; onPlanningBaseSelect?:(id:string)=>void; onPlanningFormationSelect?:(id:string)=>void; onPlanningProtectTarget?:(id:string)=>void; onPlanningProtectPoint?:(point:Point)=>void; onPlanningProtectFlight?:(id:string)=>void; onPlanningRecoverySelect?:(id:string)=>void; onExecutionBaseSelect?:(id:string)=>void; onEconomySelect?:(id:string)=>void; construction?:{kind:ConstructibleAssetKind;placement?:Point;isValid:(point:Point)=>boolean;onStage:(point:Point)=>void}; onRoute:(route:Point[])=>void; onPlace:(id:string,position:Point)=>void}
+function BattlefieldScene({squadrons,assets,playerAssets,mappedAreas,discoveredBoundaries=EMPTY_BOUNDARIES,presentationBounds,planningBounds,friendlyTerritory,selectedId,followId,focusPoint,placementId,planningBaseId,executionBaseId,planningRecoveryFieldId,plannedFormationIds=[],routeOrigin,routePlanningEnabled=false,showMissionPreview=false,selectingProtectTarget=false,escortPreview,phase,progress,activeEvent,executionResult,packageReview,economySelectionId,onPlanningBaseSelect,onPlanningFormationSelect,onPlanningProtectTarget,onPlanningProtectPoint,onPlanningProtectFlight,onPlanningRecoverySelect,onExecutionBaseSelect,onEconomySelect,construction,onRoute,onPlace}:BattlefieldProps){
   const selected=squadrons.find(s=>s.id===selectedId)!
   const playerBase=playerAssets.find(a=>a.kind==='base')?.position??[-7.8,11.2];const playerRadar=playerAssets.find(a=>a.kind==='radar')?.position??[-6.7,5.8]
   const resolvedTerritory=useMemo<FriendlyTerritory>(()=>friendlyTerritory??{center:playerBase,radius:4.5},[friendlyTerritory,playerBase[0],playerBase[1]])
@@ -561,28 +597,27 @@ function BattlefieldScene({squadrons,assets,playerAssets,mappedAreas,discoveredB
   const resolvedPresentationBounds=useMemo(()=>presentationBounds??expandBounds(resolvedPlanningBounds,6),[presentationBounds,resolvedPlanningBounds])
   const presentationCenter=boundsCenter(resolvedPresentationBounds)
   const placement=playerAssets.find(a=>a.id===placementId)
-  const [drawing,setDrawing]=useState(false)
   const [constructionHover,setConstructionHover]=useState<Point>()
+  const [activeWaypoint,setActiveWaypoint]=useState<number>()
   useEffect(()=>{if(!construction)setConstructionHover(undefined)},[construction])
   const draft=useRef<Point[]>([])
+  useEffect(()=>{draft.current=[];setActiveWaypoint(undefined)},[selectedId,routePlanningEnabled,phase])
+  useEffect(()=>{if(draft.current.length>0)draft.current=selected.routeIngress.map(point=>[...point] as Point)},[selected.routeIngress])
   const seconds=progress*(executionResult?.duration??EXECUTION_SECONDS)
   const friendlyProjections=useMemo(()=>new globalThis.Map(phase==='execute'?squadrons.flatMap(squadron=>{const projection=projectFriendlyUnitAt(executionResult,squadron.id,seconds);return projection?[[squadron.id,projection] as const]:[]}):[]),[executionResult,phase,seconds,squadrons])
   const hostileProjections=useMemo(()=>new globalThis.Map(phase==='execute'?(executionResult?.enemyFlights??[]).flatMap(flight=>{const projection=projectHostileUnitAt(executionResult,flight.id,seconds);return projection?[[flight.id,projection] as const]:[]}):[]),[executionResult,phase,seconds])
   const selectedFrame=friendlyProjections.get(selected.id)?.frame
-  const selectedPosition=selectedFrame?.position??(phase==='execute'?playerBase:selected.route[0]??playerBase)
-  const selectedResponsibility=useMemo(()=>fighterResponsibilityFor(selected),[selected])
   const routeFobLatch=useMemo(()=>phase==='plan'?firstRouteFobLatch(playerAssets,selected.route):undefined,[phase,playerAssets,selected.route])
-  const plannedStation=selected.routeIngress.at(-1)??selected.route.at(-1)??selectedPosition
-  const planningLosPosition=phase==='plan'&&selected.role==='fighter'?(selectedResponsibility?.kind==='circle'?selectedResponsibility.center:plannedStation):selectedPosition
   const followSquadron=followId?squadrons.find(s=>s.id===followId):undefined
   const followFrame=followId?(friendlyProjections.get(followId)?.frame??hostileProjections.get(followId)?.frame):undefined
+  const followingDogfight=phase==='execute'&&followFrame?.mode==='dogfighting'
   const cameraFocus=focusPoint??(followId?(followFrame?.position??(phase==='execute'?undefined:followSquadron?.route[0])):undefined)
-  const selectedRange=effectiveSensorRange({...selected,strength:selectedFrame?.strength??selected.strength})
-  const selectedAirborne=phase==='execute'?!!selectedFrame&&selectedFrame.aircraft>0:selected.aircraft>0
   const friendlyRadar=playerAssets.find(asset=>asset.kind==='radar'&&asset.health>0)
-  const friendlyRadarIds=new Set(playerAssets.filter(asset=>asset.kind==='radar').map(asset=>asset.id))
   const detectedEnemyIds=new Set(hostileProjections.keys())
+  const knownEnemyAssetIds=new Set(assets.filter(asset=>!asset.hidden&&asset.intel==='confirmed').map(asset=>asset.id))
+  const strikeTarget=assets.find(asset=>asset.kind==='base'&&asset.intel==='confirmed'&&!asset.hidden)
   const enemyVisibleFor=(ids:string[])=>ids.filter(id=>id.startsWith('red-')).every(id=>detectedEnemyIds.has(id))
+  const weaponVisibleFor=(ids:string[])=>ids.filter(id=>id.startsWith('red-')).every(id=>detectedEnemyIds.has(id)||knownEnemyAssetIds.has(id))
   const replayWeaponEffects=useMemo(()=>[...(executionResult?.weaponEffects??[]),...dogfightWeaponEffects(executionResult?.combatSequences??[],executionResult)],[executionResult])
   const eventEnemyIds=(executionResult?.enemyFlights??[]).filter(flight=>activeEvent?.detail.includes(flight.callsign)).map(flight=>flight.id)
   const visibleActiveEvent=activeEvent&&(eventEnemyIds.length===0||enemyVisibleFor(eventEnemyIds))?activeEvent:undefined
@@ -602,37 +637,59 @@ function BattlefieldScene({squadrons,assets,playerAssets,mappedAreas,discoveredB
     const range=asset.kind==='sam'?3.2:1.9
     return followedAircraftIsHostile===friendlyOwner&&distance2(asset.position,followFrame.position)<=range
   }):[]
-  const mapPoint=(e:ThreeEvent<PointerEvent>):Point=>{
+  const mapPoint=(e:{ray:THREE.Ray;point:THREE.Vector3}):Point=>{
     const hit=e.ray.intersectPlane(groundPlane,new THREE.Vector3())
     return hit?[hit.x,hit.z]:[e.point.x,e.point.z]
   }
-  const down=(e:ThreeEvent<PointerEvent>)=>{if(phase==='adapt'&&construction){const point=snapToHex(mapPoint(e));e.stopPropagation();construction.onStage(point);setConstructionHover(point);return}if(phase==='deploy'){const point=snapToHex(mapPoint(e));e.stopPropagation();onPlace(placementId,point);return}if(phase!=='plan'||!routePlanningEnabled)return;const point=mapPoint(e);e.stopPropagation();setDrawing(true);draft.current=[[...(routeOrigin??playerBase)] as Point,point];onRoute(draft.current)}
-  const move=(e:ThreeEvent<PointerEvent>)=>{if(phase==='adapt'&&construction){setConstructionHover(snapToHex(mapPoint(e)));return}if(!drawing||phase!=='plan'||!routePlanningEnabled)return;const point=mapPoint(e);draft.current=[...draft.current,point];onRoute(draft.current)}
-  const up=()=>setDrawing(false)
+  const down=(e:ThreeEvent<PointerEvent>)=>{if(phase==='adapt'&&construction){const hit=e.ray.intersectPlane(groundPlane,new THREE.Vector3());const point=snapToHex(hit?[hit.x,hit.z]:[e.point.x,e.point.z]);e.stopPropagation();construction.onStage(point);setConstructionHover(point);return}if(phase==='deploy'){const hit=e.ray.intersectPlane(groundPlane,new THREE.Vector3());const point=snapToHex(hit?[hit.x,hit.z]:[e.point.x,e.point.z]);e.stopPropagation();onPlace(placementId,point)}}
+  const selectWaypoint=(index:number)=>{if(draft.current.length===0)draft.current=selected.routeIngress.map(point=>[...point] as Point);setActiveWaypoint(current=>current===index?undefined:index)}
+  const mapClick=(e:ThreeEvent<MouseEvent>)=>{
+    if(phase!=='plan'||!routePlanningEnabled)return
+    e.stopPropagation()
+    const point=mapPoint(e)
+    if(selectingProtectTarget){onPlanningProtectPoint?.(point);return}
+    if(draft.current.length===0)draft.current=[[...(routeOrigin??playerBase)] as Point]
+    if(activeWaypoint!==undefined&&activeWaypoint+1<draft.current.length){
+      const next=draft.current.map(item=>[...item] as Point)
+      next[activeWaypoint+1]=point
+      draft.current=next
+      setActiveWaypoint(undefined)
+      onRoute(next)
+      return
+    }
+    if(draft.current.length>=6)return
+    draft.current=[...draft.current,point]
+    onRoute(draft.current)
+  }
+  const mapMove=(e:ThreeEvent<PointerEvent>)=>{if(phase==='adapt'&&construction){const hit=e.ray.intersectPlane(groundPlane,new THREE.Vector3());setConstructionHover(snapToHex(hit?[hit.x,hit.z]:[e.point.x,e.point.z]))}}
   const constructionPoint=constructionHover??construction?.placement
   return <>
     <CameraRig phase={phase} friendlyTerritory={resolvedTerritory} planningBounds={resolvedPlanningBounds} presentationBounds={resolvedPresentationBounds} focusPoint={cameraFocus} followKey={followId}/>
     <color attach="background" args={['#11140f']}/><fog attach="fog" args={['#11140f',34,60]}/>
     <ambientLight intensity={1.1}/><directionalLight position={[-5,10,5]} intensity={2.1} castShadow shadow-mapSize={[1024,1024]}/>
-    <Terrain phase={phase} presentationBounds={resolvedPresentationBounds} planningBounds={resolvedPlanningBounds}/><FogOfWar mappedAreas={mappedAreas} observations={liveMapObservations} presentationBounds={resolvedPresentationBounds} friendlyTerritory={resolvedTerritory}/><TerritoryOverlay territory={resolvedTerritory} phase={phase}/><DiscoveredBoundaryLines segments={discoveredBoundaries}/>{phase==='deploy'&&placement?<PlacementHex position={placement.position}/>:null}{construction&&constructionPoint?<ConstructionPlacementGhost kind={construction.kind} position={constructionPoint} valid={construction.isValid(constructionPoint)}/>:null}
-    <SensorRangeOverlay phase={phase} radar={friendlyRadar} position={planningLosPosition} losRange={selectedRange} showLos={phase==='plan'||phase==='execute'&&selectedAirborne}/>
-    {displayedPlayerAssets.map(a=>a.kind==='base'||a.kind==='fob'||a.kind==='decoy'?<Runway key={a.id} asset={a} selected={phase==='plan'&&a.id===planningBaseId||phase==='execute'&&a.id===executionBaseId||phase==='adapt'&&a.id===economySelectionId} onSelect={phase==='plan'&&(a.kind==='base'||a.kind==='fob')?()=>onPlanningBaseSelect?.(a.id):phase==='execute'&&(a.kind==='base'||a.kind==='fob')?()=>onExecutionBaseSelect?.(a.id):phase==='adapt'&&!construction&&a.kind!=='decoy'?()=>onEconomySelect?.(a.id):undefined}/>:<Defense key={a.id} asset={a} enemy={false} selected={phase==='deploy'&&a.id===placementId||phase==='adapt'&&a.id===economySelectionId} showRange={phase!=='execute'} onSelect={phase==='adapt'&&!construction?()=>onEconomySelect?.(a.id):undefined}/>) }
+    <Terrain phase={phase} presentationBounds={resolvedPresentationBounds} planningBounds={resolvedPlanningBounds}/><FogOfWar mappedAreas={mappedAreas} observations={liveMapObservations} presentationBounds={resolvedPresentationBounds} friendlyTerritory={resolvedTerritory}/><TerritoryOverlay territory={resolvedTerritory}/><DiscoveredBoundaryLines segments={discoveredBoundaries}/>{phase==='deploy'&&placement?<PlacementHex position={placement.position}/>:null}{construction&&constructionPoint?<ConstructionPlacementGhost kind={construction.kind} position={constructionPoint} valid={construction.isValid(constructionPoint)}/>:null}
+    {phase==='deploy'?<SensorRangeOverlay phase={phase} radar={friendlyRadar} position={playerBase} losRange={0} showLos={false}/>:null}
+    {phase==='plan'&&showMissionPreview&&selected.mission==='base-strike'&&strikeTarget?<StrikeReleasePreview center={strikeTarget.position}/>:null}
+    {displayedPlayerAssets.map(a=>a.kind==='base'||a.kind==='fob'||a.kind==='decoy'?<Runway key={a.id} asset={a} selected={phase==='plan'&&a.id===planningBaseId||phase==='execute'&&a.id===executionBaseId||phase==='adapt'&&a.id===economySelectionId} onSelect={phase==='plan'&&selectingProtectTarget?()=>onPlanningProtectTarget?.(a.id):phase==='plan'&&(a.kind==='base'||a.kind==='fob')?routePlanningEnabled?()=>onPlanningRecoverySelect?.(a.id):()=>onPlanningBaseSelect?.(a.id):phase==='execute'&&(a.kind==='base'||a.kind==='fob')?()=>onExecutionBaseSelect?.(a.id):phase==='adapt'&&!construction&&a.kind!=='decoy'?()=>onEconomySelect?.(a.id):undefined}/>:<Defense key={a.id} asset={a} enemy={false} selected={phase==='deploy'&&a.id===placementId||phase==='adapt'&&a.id===economySelectionId} showRange={phase==='deploy'} onSelect={phase==='plan'&&selectingProtectTarget?()=>onPlanningProtectTarget?.(a.id):phase==='adapt'&&!construction?()=>onEconomySelect?.(a.id):undefined}/>) }
+    {phase==='plan'?formationBaseGroups(squadrons,playerAssets).map(group=><AirfieldFormationPips key={`airfield-pips-${group.base.id}`} base={group.base} formations={group.formationIds.flatMap(id=>squadrons.find(item=>item.id===id)??[])} selectedId={selectedId} plannedFormationIds={plannedFormationIds} selectingProtectTarget={selectingProtectTarget} onSelect={id=>selectingProtectTarget?onPlanningProtectFlight?.(id):onPlanningFormationSelect?.(id)}/>):null}
     {playerAssets.map(a=>{const label=a.kind==='base'||a.kind==='fob'?`${airfieldLabel(a)} · ${baseCounts.get(a.id)??0}`:a.name??a.kind.toUpperCase();return <Text key={`${a.id}-friendly-label`} position={[a.position[0],.25,a.position[1]-.62]} rotation={[-Math.PI/2,0,0]} fontSize={.21} color={a.id===placementId&&phase==='deploy'?'#f4d16f':a.id===planningBaseId&&phase==='plan'?'#b9ffff':friendly}>{label}</Text>})}
-    {displayedEnemyAssets.map(a=>a.kind==='base'&&a.intel!=='unknown'?<Runway key={a.id} asset={a} enemy/>:a.kind==='decoy'&&a.intel!=='unknown'?<Runway key={a.id} asset={a} enemy/>:<Defense key={a.id} asset={a} showRange={phase!=='execute'}/>)}
+    {displayedEnemyAssets.map(a=>a.kind==='base'&&a.intel!=='unknown'?<Runway key={a.id} asset={a} enemy/>:a.kind==='decoy'&&a.intel!=='unknown'?<Runway key={a.id} asset={a} enemy/>:<Defense key={a.id} asset={a} showRange={phase==='deploy'}/>)}
     {displayedEnemyAssets.filter(a=>a.intel!=='unknown').map(a=><Text key={`${a.id}-label`} position={[a.position[0],.27,a.position[1]-.68]} rotation={[-Math.PI/2,0,0]} fontSize={.2} color={a.intel==='confirmed'?hostile:amber}>{observedAssetIds.has(a.id)&&assets.find(x=>x.id===a.id)?.intel==='unknown'?'OBSERVED':a.intel.toUpperCase()} {a.kind.toUpperCase()} · {a.confidence}%</Text>)}
     {activeCoverageAssets.map(({asset})=><ActiveCoverageOverlay key={`${asset.id}-active-coverage`} asset={asset}/>)}
-    {phase==='plan'?squadrons.filter(s=>s.id!==selectedId||!planningRecoveryFieldId).map(s=><ResponsibilityOverlay key={`${s.id}-responsibility`} squadron={s} selected={s.id===selectedId}/>):phase==='execute'&&followId?squadrons.filter(s=>s.id===followId).map(s=><ResponsibilityOverlay key={`${s.id}-responsibility`} squadron={s} selected/>):null}
-    {phase==='plan'&&(planningRecoveryFieldId||routeFobLatch)?(()=>{const field=planningRecoveryFieldId?playerAssets.find(asset=>asset.id===planningRecoveryFieldId):routeFobLatch?.field;return field?<RecoveryLatchCue position={field.position} selected={Boolean(planningRecoveryFieldId)}/>:null})():null}
-    {phase==='plan'?squadrons.map(s=><Route key={s.id} squadron={s} selected={s.id===selectedId} packageReview={packageReview} recoveryLabel={s.id===selectedId&&planningRecoveryFieldId?playerAssets.find(asset=>asset.id===planningRecoveryFieldId)?.name??'HOME BASE':undefined}/>):phase==='execute'&&followId?squadrons.filter(s=>s.id===followId).map(s=><Route key={s.id} squadron={s} selected recoveryLabel={recoveryById.get(s.id)?.plannedFieldId?playerAssets.find(asset=>asset.id===recoveryById.get(s.id)?.plannedFieldId)?.name??'HOME BASE':undefined}/>):null}
-    {squadrons.filter(s=>phase==='execute'?friendlyProjections.has(s.id):s.route.length>=2).map(s=>{const receipt=(executionResult?.radarTrackReceipts??[]).filter(item=>friendlyRadarIds.has(item.radarId)&&item.receiverId===s.id&&item.start<=seconds).at(-1);const radarLinkFade=receipt?clamp01((receipt.end+.8-seconds)/.8):0;const plannedFieldId=recoveryById.get(s.id)?.plannedFieldId;const recoveryLabel=plannedFieldId?playerAssets.find(asset=>asset.id===plannedFieldId)?.name??'HOME BASE':undefined;const frame=friendlyProjections.get(s.id)?.frame;const initialStrength=unitTrackFor(executionResult,s.id)?.frames[0]?.strength;return <Flight key={s.id} squadron={s} route={s.route} frame={frame} active={phase==='execute'} selected={s.id===selectedId} status={friendlyStatusAt(s,frame,initialStrength)} activeEvent={visibleActiveEvent} radarLinkFade={radarLinkFade} recoveryLabel={recoveryLabel}/>}) }
+    {phase==='plan'&&showMissionPreview&&selected.route.length>=2&&!planningRecoveryFieldId&&!selected.protectedTargetId?<ResponsibilityOverlay squadron={selected} protectedPosition={selected.protectedPoint} selected/>:phase==='execute'&&followId&&!followingDogfight?squadrons.filter(s=>s.id===followId).map(s=>{const protectedId=s.protectedTargetId;const protectedPosition=protectedId?friendlyProjections.get(protectedId)?.frame.position:s.protectedPoint;return <ResponsibilityOverlay key={`${s.id}-responsibility`} squadron={s} protectedPosition={protectedPosition} selected/>}):null}
+    {phase==='plan'&&routePlanningEnabled&&!selectingProtectTarget?selected.routeIngress.slice(1,6).map((point,index)=><RouteWaypoint key={`${selected.id}-waypoint-${index}`} position={point} index={index+1} selected={activeWaypoint===index} onSelect={()=>selectWaypoint(index)}/>):null}
+    {phase==='plan'&&showMissionPreview&&(planningRecoveryFieldId||routeFobLatch)?(()=>{const field=planningRecoveryFieldId?playerAssets.find(asset=>asset.id===planningRecoveryFieldId):routeFobLatch?.field;return field?<RecoveryLatchCue position={field.position} selected={Boolean(planningRecoveryFieldId)}/>:null})():null}
+    {phase==='plan'&&(routePlanningEnabled||showMissionPreview)?<Route squadron={selected} selected packageReview={packageReview} showPattern={false} escortCoveragePercent={showMissionPreview?escortPreview?.targetId===selected.id?escortPreview.percent:undefined:undefined} recoveryLabel={showMissionPreview&&planningRecoveryFieldId?playerAssets.find(asset=>asset.id===planningRecoveryFieldId)?.name??'HOME BASE':undefined}/>:phase==='execute'&&followId&&!followingDogfight?squadrons.filter(s=>s.id===followId).map(s=><Route key={s.id} squadron={s} selected recoveryLabel={recoveryById.get(s.id)?.plannedFieldId?playerAssets.find(asset=>asset.id===recoveryById.get(s.id)?.plannedFieldId)?.name??'HOME BASE':undefined}/>):null}
+    {phase==='plan'&&showMissionPreview&&selected.protectedTargetId&&escortPreview?.targetId===selected.protectedTargetId?squadrons.filter(s=>s.id===selected.protectedTargetId).map(s=><Route key={`${s.id}-escort-preview`} squadron={s} selected={false} showPattern={false} escortCoveragePercent={escortPreview.percent}/>):null}
+    {squadrons.filter(s=>phase==='execute'&&friendlyProjections.has(s.id)).map(s=>{const plannedFieldId=recoveryById.get(s.id)?.plannedFieldId;const recoveryLabel=plannedFieldId?playerAssets.find(asset=>asset.id===plannedFieldId)?.name??'HOME BASE':undefined;const frame=friendlyProjections.get(s.id)?.frame;const initialStrength=unitTrackFor(executionResult,s.id)?.frames[0]?.strength;return <Flight key={s.id} squadron={s} route={s.route} frame={frame} active status={friendlyStatusAt(s,frame,initialStrength)} activeEvent={visibleActiveEvent} recoveryLabel={recoveryLabel}/>}) }
     {phase==='execute'?executionResult?.enemyFlights.flatMap(f=>{const projection=hostileProjections.get(f.id);if(!projection)return [];const initialStrength=unitTrackFor(executionResult,f.id)?.frames[0]?.strength;return [<EnemyContact key={f.id} flight={f} projection={projection} status={enemyStatusAt(f,projection.frame,initialStrength)} activeEvent={visibleActiveEvent}/>]}):null}
     {phase==='execute'?executionResult?.reinforcementCalls.map(call=><ReinforcementFlight key={call.id} call={call} progress={progress}/>):null}
     {phase==='execute'?executionResult?.defenseCues?.filter(c=>progress>=c.start&&progress<=c.end).map(c=><DefenseNetworkCue key={c.id} cue={c} radar={playerRadar}/>):null}
-    {phase==='execute'?(executionResult?.combatSequences??[]).filter(seq=>enemyVisibleFor(seq.participantIds)).map(seq=><ActiveSequenceVisual key={seq.id} sequence={seq} seconds={seconds}/>):null}
-    {phase==='execute'?replayWeaponEffects.filter(effect=>enemyVisibleFor([effect.sourceId,effect.targetId])).map(effect=><WeaponEffectVisual key={effect.id} effect={effect} seconds={seconds}/>):null}
+    {phase==='execute'?(executionResult?.combatSequences??[]).filter(seq=>enemyVisibleFor(seq.participantIds)).map(seq=><ActiveSequenceVisual key={seq.id} sequence={seq} seconds={seconds} result={executionResult}/>):null}
+    {phase==='execute'?replayWeaponEffects.filter(effect=>weaponVisibleFor([effect.sourceId,effect.targetId])).map(effect=><WeaponEffectVisual key={effect.id} effect={effect} seconds={seconds}/>):null}
     {phase==='debrief'&&executionResult?<HistoryOverlay result={executionResult}/>:null}
     {visibleActiveEvent?<CombatEffect key={visibleActiveEvent.id} event={visibleActiveEvent}/>:null}
-    <mesh position={[presentationCenter[0],.001,presentationCenter[1]]} rotation={[-Math.PI/2,0,0]} onPointerDown={down} onPointerMove={move} onPointerUp={up} onPointerLeave={()=>{up();setConstructionHover(undefined)}}><planeGeometry args={[boundsWidth(resolvedPresentationBounds),boundsDepth(resolvedPresentationBounds)]}/><meshBasicMaterial transparent opacity={0} depthWrite={false}/></mesh>
+    <mesh position={[presentationCenter[0],.001,presentationCenter[1]]} rotation={[-Math.PI/2,0,0]} onPointerDown={down} onPointerMove={mapMove} onClick={mapClick} onPointerLeave={()=>setConstructionHover(undefined)}><planeGeometry args={[boundsWidth(resolvedPresentationBounds),boundsDepth(resolvedPresentationBounds)]}/><meshBasicMaterial transparent opacity={0} depthWrite={false}/></mesh>
   </>
 }
 const distance2=(a:Point,b:Point)=>Math.hypot(a[0]-b[0],a[1]-b[1])

@@ -22,10 +22,13 @@ export const FIGHTER_SUSTAINED_GUN_HIT_PROBABILITY=.69
 export const FIGHTER_OPENING_MISSILE_HIT_PROBABILITY=.58
 export const FIGHTER_OPENING_MISSILE_DAMAGE=32
 export const FIGHTER_POSITIONAL_HIT_MODIFIERS:Record<FighterPositionalAdvantage,number>={dominant:.18,favorable:.1,neutral:0,disadvantaged:-.12}
+export const FIGHTER_PATROL_ATTACK_DELTA=.1
+export const FIGHTER_PATROL_EXPOSURE_DELTA=.06
+export const FIGHTER_CAP_DEFENSE_DELTA=-.12
 export const FIGHTER_NUMERICAL_THRESHOLDS={overwhelming:1.75,advantaged:1.25,disadvantaged:.8,overmatched:.57}
 export const FIGHTER_NUMERICAL_HIT_MODIFIERS:Record<FighterNumericalAdvantage,number>={overwhelming:.1,advantaged:.05,even:0,disadvantaged:-.05,overmatched:-.1}
 export interface FighterHitProbabilityModifier {
-  source:'position'|'numbers'|'formation-condition'
+  source:'position'|'numbers'|'formation-condition'|'mission'
   key:string
   delta:number
 }

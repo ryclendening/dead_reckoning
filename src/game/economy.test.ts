@@ -139,15 +139,15 @@ describe('logistics economy', () => {
     expect(validateFobPlacement(state, [999, 999])).toMatchObject({ valid: false, reason: 'SITE MUST BE IN RECOVERED TERRITORY' })
 
     const quote = economyQuotesFor(state, { kind: 'campaign', id: 'campaign' }).find(item => item.id === 'build-fob')!
-    expect(quote).toMatchObject({ cost: LOGISTICS_COSTS.fobConstruction, projected: { logistics: 2 }, effect: { kind: 'asset-construction', assetKind: 'fob', capacity: 1 } })
+    expect(quote).toMatchObject({ cost: LOGISTICS_COSTS.fobConstruction, projected: { logistics: 2 }, effect: { kind: 'asset-construction', assetKind: 'fob', capacity: 2 } })
     expect(executeEconomyCommand(state, economyCommandForQuote(state, quote))).toBe(state)
 
     const command = { ...economyCommandForQuote(state, quote), placement }
     const built = executeEconomyCommand(state, command)
     expect(built.logistics).toBe(2)
-    expect(built.playerAssets.at(-1)).toMatchObject({ id: 'p-fob-1', kind: 'fob', name: 'FOB ALPHA', position: placement, operational: true, capacity: 1, basedFormationIds: [] })
+    expect(built.playerAssets.at(-1)).toMatchObject({ id: 'p-fob-1', kind: 'fob', name: 'FOB ALPHA', position: placement, operational: true, capacity: 2, basedFormationIds: [] })
     expect(built.economy.statement.at(-1)).toMatchObject({ direction: 'spend', amount: 8, source: 'build-fob', target: { kind: 'campaign', id: 'campaign' } })
-    expect(normalizeMatch(JSON.parse(JSON.stringify(built))).playerAssets.at(-1)).toMatchObject({ kind: 'fob', capacity: 1, operational: true })
+    expect(normalizeMatch(JSON.parse(JSON.stringify(built))).playerAssets.at(-1)).toMatchObject({ kind: 'fob', capacity: 2, operational: true })
     const fundedBuilt = { ...built, logistics: 10 }
     expect(executeEconomyCommand(fundedBuilt, { actionId: 'build-fob', target: { kind: 'campaign', id: 'campaign' }, placement })).toBe(fundedBuilt)
   })

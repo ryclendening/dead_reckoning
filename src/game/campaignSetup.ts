@@ -1,11 +1,14 @@
 import type { Asset, CampaignSetupState, MatchState, Squadron } from './types'
 
 export const SETUP_FORMATION_COUNT = 3
+export const SETUP_FORMATION_IDS = ['viper', 'falcon', 'raven'] as const
 export const SETUP_OPTIONAL_ASSET_COUNT = 2
 export const SETUP_REQUIRED_ASSET_IDS = ['p-base', 'p-radar'] as const
 export const SETUP_OPTIONAL_ASSET_IDS = ['p-decoy', 'p-sam', 'p-aaa'] as const
 
-export const createCampaignSetupState = (): CampaignSetupState => ({ stage: 'allocate', selectedFormationIds: [], selectedAssetIds: [...SETUP_REQUIRED_ASSET_IDS], placedAssetIds: [] })
+// New campaigns use the fixed opening force. Keep the selected IDs in setup
+// state so older saved deployment drafts can retain their chosen roster.
+export const createCampaignSetupState = (): CampaignSetupState => ({ stage: 'allocate', selectedFormationIds: [...SETUP_FORMATION_IDS], selectedAssetIds: [...SETUP_REQUIRED_ASSET_IDS], placedAssetIds: [] })
 
 export const setupFormationById = (state: MatchState, id: string) => state.squadrons.find(squadron => squadron.id === id)
 export const setupAssetById = (state: MatchState, id: string) => state.playerAssets.find(asset => asset.id === id)

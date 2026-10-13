@@ -1,9 +1,10 @@
 import type { Asset, FormationRecoveryOutcome, MatchState, Point, Squadron } from './types'
 
 export const AIRFIELD_LANDING_RADIUS = .6
+export const FOB_MIN_CAPACITY = 2
 
 export const isAirfield = (asset: Asset): boolean => asset.kind === 'base' || asset.kind === 'fob'
-export const isOperationalAirfield = (asset: Asset): boolean => isAirfield(asset) && (asset.kind === 'base' || asset.operational !== false)
+export const isOperationalAirfield = (asset: Asset): boolean => isAirfield(asset) && asset.health > 0 && (asset.kind === 'base' || asset.operational !== false)
 export const distanceBetween = (a: Point, b: Point) => Math.hypot(a[0] - b[0], a[1] - b[1])
 export const routeDistanceForBasing = (route: Point[]) => route.slice(1).reduce((sum, point, index) => sum + distanceBetween(route[index], point), 0)
 
@@ -24,7 +25,7 @@ export function normalizeFormationBasing(squadrons: Squadron[], assets: Asset[])
   const mainIds = normalized.get(main.id) ?? []
   for (const squadron of squadrons) if (liveIds.has(squadron.id) && !claimed.has(squadron.id)) { claimed.add(squadron.id); mainIds.push(squadron.id) }
   normalized.set(main.id, mainIds)
-  return assets.map(asset => isAirfield(asset) ? { ...asset, operational: asset.kind === 'base' ? true : asset.operational !== false, basedFormationIds: normalized.get(asset.id) ?? [], ...(asset.kind === 'fob' ? { capacity: asset.capacity ?? 1 } : {}) } : asset)
+  return assets.map(asset => isAirfield(asset) ? { ...asset, operational: asset.kind === 'base' ? asset.health > 0 : asset.operational !== false && asset.health > 0, basedFormationIds: normalized.get(asset.id) ?? [], ...(asset.kind === 'fob' ? { capacity: Math.max(FOB_MIN_CAPACITY, asset.capacity ?? FOB_MIN_CAPACITY) } : {}) } : asset)
 }
 
 export function formationField(assets: Asset[], formationId: string): Asset | undefined {
@@ -66,6 +67,23 @@ export function snapRouteToRecoveryField(route: Point[], assets: Asset[]): Point
   return field && route.length ? [...route.slice(0, -1), [...field.position] as Point] : route
 }
 
+/** End the selected formation's drawn ingress at an airfield instead of applying a patrol/search pattern. */
+export function routeToRecoveryField(state: MatchState, formationId: string, fieldId: string, direct = false): Point[] | undefined {
+  const squadron = state.squadrons.find(item => item.id === formationId)
+  const assets = normalizeFormationBasing(state.squadrons, state.playerAssets)
+  const launch = formationField(assets, formationId)
+  const destination = assets.find(asset => asset.id === fieldId && isOperationalAirfield(asset))
+  if (!squadron || !launch || !destination) return undefined
+  const prior = direct ? [] : squadron.routeIngress.slice(1)
+  const last = prior.at(-1)
+  const previousDestination = last && assets.some(asset => isAirfield(asset) && distanceBetween(last, asset.position) <= AIRFIELD_LANDING_RADIUS)
+  const route: Point[] = [[...launch.position], ...(previousDestination ? prior.slice(0, -1) : prior), [...destination.position]]
+  const snapped = snapRouteToRecoveryField(route, assets)
+  if (fieldAtRouteEnd(assets, snapped)?.id === destination.id) return route
+  const directRoute: Point[] = [[...launch.position], [...destination.position]]
+  return fieldAtRouteEnd(assets, snapRouteToRecoveryField(directRoute, assets))?.id === destination.id ? directRoute : undefined
+}
+
 function projectedOccupants(state: MatchState, omitFormationId?: string): Map<string, Set<string>> {
   const assets = normalizeFormationBasing(state.squadrons, state.playerAssets)
   const result = new Map(assets.filter(isAirfield).map(asset => [asset.id, new Set(asset.basedFormationIds ?? [])]))
@@ -81,7 +99,7 @@ function projectedOccupants(state: MatchState, omitFormationId?: string): Map<st
 export function fieldHasCapacity(state: MatchState, field: Asset, formationId: string): boolean {
   if (field.kind === 'base') return true
   const occupants = projectedOccupants(state, formationId).get(field.id) ?? new Set<string>()
-  return occupants.has(formationId) || occupants.size < (field.capacity ?? 1)
+  return occupants.has(formationId) || occupants.size < (field.capacity ?? FOB_MIN_CAPACITY)
 }
 
 export interface RecoveryPlanningView {
@@ -133,7 +151,7 @@ export function nearestReachableAlternate(state: MatchState, formationId: string
     if (distanceBetween(from, field.position) > remainingRange + .001) return false
     if (field.kind === 'base') return true
     const occupants = claims?.get(field.id) ?? projectedOccupants(state, formationId).get(field.id) ?? new Set<string>()
-    return occupants.has(formationId) || occupants.size < (field.capacity ?? 1)
+    return occupants.has(formationId) || occupants.size < (field.capacity ?? FOB_MIN_CAPACITY)
   }).sort((a, b) => distanceBetween(from, a.position) - distanceBetween(from, b.position) || a.id.localeCompare(b.id))[0]
 }
 
@@ -158,14 +176,14 @@ export function deriveRecoveryPlanningView(state: MatchState, formationId: strin
   return { launchField, intendedField, alternateField, normalizedRoute, missionDistance, remainingRange, valid, reason, summary: `RECOVERY: ${intendedField.name ?? (intendedField.kind === 'base' ? 'HOME BASE' : 'FORWARD BASE')} · ALTERNATE: ${alternate}` }
 }
 
-export function validateRecoveryPackage(state: MatchState, maxDistances: Record<Squadron['role'], number>): { valid: boolean; reason?: string } {
-  for (const squadron of state.squadrons.filter(item => item.aircraft > 0 && item.status !== 'trapped')) {
+export function validateRecoveryPackage(state: MatchState, maxDistances: Record<Squadron['role'], number>, formationIds?: ReadonlySet<string>): { valid: boolean; reason?: string } {
+  for (const squadron of state.squadrons.filter(item => item.aircraft > 0 && item.status !== 'trapped' && (!formationIds || formationIds.has(item.id)))) {
     const view = deriveRecoveryPlanningView(state, squadron.id, squadron.route, maxDistances[squadron.role])
     if (!view?.valid) return { valid: false, reason: view?.reason ?? `INVALID RECOVERY FOR ${squadron.callsign}` }
     if (squadron.plannedRecoveryFieldId !== view.intendedField.id) return { valid: false, reason: `${squadron.callsign} RECOVERY IS NOT CONFIRMED` }
   }
   const occupants = projectedOccupants(state)
-  for (const field of state.playerAssets.filter(asset => asset.kind === 'fob')) if ((occupants.get(field.id)?.size ?? 0) > (field.capacity ?? 1)) return { valid: false, reason: `${field.name ?? 'FOB'} IS OVER CAPACITY` }
+  for (const field of state.playerAssets.filter(asset => asset.kind === 'fob')) if ((occupants.get(field.id)?.size ?? 0) > Math.max(FOB_MIN_CAPACITY, field.capacity ?? FOB_MIN_CAPACITY)) return { valid: false, reason: `${field.name ?? 'FOB'} IS OVER CAPACITY` }
   return { valid: true }
 }
 

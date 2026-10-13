@@ -7,9 +7,8 @@ export interface FormationBaseGroup {
 }
 
 /**
- * Project the current basing state into UI groups without inventing a rebasing
- * mechanic. Explicit FOB assignments win; every unassigned formation belongs
- * to the main airfield.
+ * Project the current basing state into UI groups. Explicit FOB assignments
+ * win; every unassigned formation belongs to the main airfield.
  */
 export function formationBaseGroups(squadrons: Squadron[], assets: Asset[]): FormationBaseGroup[] {
   assets = normalizeFormationBasing(squadrons, assets)

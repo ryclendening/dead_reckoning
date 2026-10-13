@@ -1,11 +1,12 @@
 import type { Asset, AssetUpgradeId, ConstructibleAssetKind, EconomyActionId, EconomyActionQuote, EconomyCommand, EconomyEffect, EconomyState, EconomyTarget, LogisticsIncome, LogisticsStatementEntry, MatchState, RoundResult, Squadron } from './types'
 import { MAPPED_RADIUS } from './fog'
-import { formationField, normalizeFormationBasing } from './forwardBasing'
+import { FOB_MIN_CAPACITY, formationField, normalizeFormationBasing } from './forwardBasing'
 import { friendlyTerritoryForAssets, territoryContains } from './territory'
+import { campaignOutcome } from './campaign'
 
 export const LOGISTICS_COSTS = { formationRepair: 2, aircraftReplacement: 4, defenseRepair: 2, fobRepair: 4, upgrade: 12, fobConstruction: 8, decoyConstruction: 4, aaaConstruction: 6, samConstruction: 8 } as const
 export const LOGISTICS_EFFECTS = { formationRepair: 25, defenseRepair: 25, baseIncome: 6, intelRecovery: 2, confirmedEnemyAircraft: 1, supplyDepotIncome: 2 } as const
-export const FOB_INITIAL_CAPACITY = 1
+export const FOB_INITIAL_CAPACITY = FOB_MIN_CAPACITY
 export const FOB_PLACEMENT_SPACING = 1.5
 
 export const createEconomyState = (): EconomyState => ({ statement: [] })
@@ -239,16 +240,21 @@ export function purchaseEconomyAction(state: MatchState, actionId: EconomyAction
   return executeEconomyCommand(state, { actionId, target })
 }
 
-export const openAdaptPhase = (state: MatchState): MatchState => state.phase === 'debrief' ? { ...state, phase: 'adapt' } : state
+export const openAdaptPhase = (state: MatchState): MatchState => {
+  if (state.phase !== 'debrief') return state
+  const outcome = campaignOutcome(state)
+  if (outcome) return { ...state, phase: outcome === 'enemy-base-destroyed' ? 'victory' : 'defeat' }
+  return { ...state, phase: 'adapt' }
+}
 export const beginNextRound = (state: MatchState): MatchState => {
-  if (state.phase !== 'adapt') return state
+  if (state.phase !== 'adapt' || campaignOutcome(state)) return state
   const playerAssets = normalizeFormationBasing(state.squadrons, state.playerAssets)
   const squadrons = state.squadrons.map(squadron => {
     const field = formationField(playerAssets, squadron.id)
-    if (!field || squadron.aircraft <= 0) return { ...squadron, plannedRecoveryFieldId: undefined }
+    if (!field || squadron.aircraft <= 0) return { ...squadron, plannedRecoveryFieldId: undefined, sortieOrdered: undefined }
     const trapped = field.kind === 'fob' && field.operational === false
     const origin = [...field.position] as [number, number]
-    return { ...squadron, plannedRecoveryFieldId: undefined, status: trapped ? 'trapped' as const : 'rtb' as const, route: [origin], routeIngress: [origin] }
+    return { ...squadron, plannedRecoveryFieldId: undefined, sortieOrdered: undefined, status: trapped ? 'trapped' as const : 'rtb' as const, route: [origin], routeIngress: [origin] }
   })
   return { ...state, playerAssets, squadrons, round: state.round + 1, phase: 'plan', lastResult: undefined }
 }

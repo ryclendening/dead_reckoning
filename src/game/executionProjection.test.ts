@@ -28,7 +28,7 @@ function resultWithContacts(): RoundResult {
     friendlyAttrition: [], enemyAttrition: [], friendlyFormationsDestroyed: 0, enemyFormationsDestroyed: 0,
     intelGained: [], baseDamage: 0, enemyBaseDamage: 0, logisticsIncome: { base: 0, intel: 0, enemyAircraft: 0, total: 0 }, command: 0,
     executionRoutes: {}, enemyFlights: [], defenseCues: [], defensiveAwareness: 0, lessons: [], playerAssets: [], reinforcementCalls: [],
-    roundScore: 0, baseExposure: 0, baseExposureDelta: 0, combatSequences: [], weaponEffects: [], contactObservations: [], radarTrackReceipts: [], interceptPlans: [], intelReports: [], mappedAreas: [], discoveredBoundaries: [], recoveryOutcomes: [],
+    roundScore: 0, baseExposure: 0, baseExposureDelta: 0, combatSequences: [], weaponEffects: [], contactObservations: [], interceptPlans: [], intelReports: [], mappedAreas: [], discoveredBoundaries: [], recoveryOutcomes: [],
   }
 }
 

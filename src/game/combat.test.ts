@@ -121,7 +121,7 @@ describe('fighter combat probabilities',()=>{
     if(!sequence||sequence.kind!=='dogfight')throw new Error('Expected fighter duel.')
     const ordinary=sequence.exchanges.filter(exchange=>exchange.phase==='merged'&&exchange.resolution==='probability')
     expect(ordinary.length).toBeGreaterThan(0)
-    expect(ordinary.every(exchange=>exchange.probability?.modifiers[0]?.source==='numbers'&&exchange.numericalAssessment&&exchange.probability.finalHitProbability===Math.max(.1,Math.min(.9,.69+exchange.numericalAssessment.hitProbabilityDelta))&&exchange.hit===((exchange.probability.roll)<exchange.probability.finalHitProbability))).toBe(true)
+    expect(ordinary.every(exchange=>exchange.probability?.modifiers[0]?.source==='numbers'&&exchange.numericalAssessment&&exchange.probability.finalHitProbability===Math.max(.1,Math.min(.9,.69+exchange.probability.modifiers.reduce((sum,modifier)=>sum+modifier.delta,0)))&&exchange.hit===((exchange.probability.roll)<exchange.probability.finalHitProbability))).toBe(true)
     expect(sequence.exchanges.filter(exchange=>exchange.phase==='merged').every(exchange=>exchange.resolution==='probability')).toBe(true)
   })
 
@@ -140,12 +140,26 @@ describe('fighter combat probabilities',()=>{
     const opening=sequence.exchanges.filter(exchange=>exchange.phase==='opening-fire')
     expect(opening).toHaveLength(1)
     expect(opening[0]).toMatchObject({weapon:'air-to-air-missile',resolution:'probability'})
-    expect(opening[0].probability?.modifiers).toHaveLength(1)
     expect(opening[0].probability?.modifiers[0].source).toBe('position')
+    expect(opening[0].probability?.modifiers.some(modifier=>modifier.source==='mission')).toBe(true)
     expect(opening[0].probability!.finalHitProbability).toBeGreaterThanOrEqual(.1)
     expect(opening[0].probability!.finalHitProbability).toBeLessThanOrEqual(.9)
     expect(sequence.engagement.phases.find(phase=>phase.kind==='opening-fire')?.end).toBe(sequence.engagement.phases.find(phase=>phase.kind==='merged')?.start)
     expect(result.weaponEffects.filter(effect=>effect.id.startsWith('weapon-opening-'))).toHaveLength(1)
+  })
+
+  it('records mission attack, exposure, and CAP cover in authoritative shot chances',()=>{
+    const patrol=resolveRound(createScenario('fighter-duel')).combatSequences.find(item=>item.kind==='dogfight')
+    const capState=createScenario('fighter-duel')
+    if(patrol?.kind!=='dogfight')throw new Error('Expected patrol dogfight.')
+    capState.squadrons=capState.squadrons.map(squadron=>squadron.id==='viper'?{...squadron,mission:'defensive-cap',routeIngress:[squadron.route[0],patrol.location]}:squadron)
+    const cap=resolveRound(capState).combatSequences.find(item=>item.kind==='dogfight')
+    if(patrol?.kind!=='dogfight'||cap?.kind!=='dogfight')throw new Error('Expected patrol and CAP dogfights.')
+    const modifiers=(sequence:typeof patrol)=>sequence.exchanges.flatMap(exchange=>exchange.probability?.modifiers??[])
+    expect(modifiers(patrol)).toContainEqual({source:'mission',key:'forward-patrol-attack',delta:.1})
+    expect(modifiers(patrol)).toContainEqual({source:'mission',key:'forward-patrol-exposure',delta:.06})
+    expect(modifiers(cap)).toContainEqual({source:'mission',key:'defensive-cap-cover',delta:-.12})
+    expect(modifiers(cap).some(modifier=>modifier.key==='forward-patrol-exposure')).toBe(false)
   })
 
   it('resolves a lethal opening hit without adding a merged exchange',()=>{
@@ -233,7 +247,7 @@ describe('shared multi-formation fighter engagements',()=>{
     expect(twoVsOne.length).toBeGreaterThan(100)
     expect(winRate(twoVsOne)).toBeGreaterThanOrEqual(winRate(duel)+.1)
     expect(averageDuration(twoVsOne)).toBeGreaterThan(0)
-    expect(Math.max(...twoVsOne.map(result=>result.maximumProbability))).toBeLessThanOrEqual(.8)
+    expect(Math.max(...twoVsOne.map(result=>result.maximumProbability))).toBeLessThanOrEqual(.9)
   })
 
   it('admits the second fighter only after it reaches the active engagement',()=>{
@@ -296,9 +310,9 @@ describe('Issue 11 integration evidence',()=>{
     const cohort=(scenario:'fighter-tail'|'fighter-head-on'|'fighter-reversed')=>Array.from({length:128},(_,offset)=>dogfightFor(scenario,offset+1))
     const tail=cohort('fighter-tail'),headOn=cohort('fighter-head-on'),reversed=cohort('fighter-reversed')
     const hitRate=(items:typeof tail)=>items.filter(item=>item.opening.hit).length/items.length
-    expect(tail.every(item=>item.opening.attackerId==='viper'&&item.opening.probability!.finalHitProbability===.76)).toBe(true)
-    expect(headOn.every(item=>item.opening.probability!.finalHitProbability===.58)).toBe(true)
-    expect(reversed.every(item=>item.opening.attackerId==='red-fighter'&&item.opening.probability!.finalHitProbability===.76)).toBe(true)
+    expect(tail.every(item=>item.opening.attackerId==='viper'&&Math.abs(item.opening.probability!.finalHitProbability-.86)<1e-9)).toBe(true)
+    expect(headOn.every(item=>item.opening.probability!.modifiers[0].delta===0)).toBe(true)
+    expect(reversed.every(item=>item.opening.attackerId==='red-fighter'&&Math.abs(item.opening.probability!.finalHitProbability-.82)<1e-9)).toBe(true)
     expect(hitRate(tail)).toBeGreaterThan(hitRate(headOn)+.08)
     expect(Math.max(...[...tail,...headOn,...reversed].map(item=>item.opening.probability!.finalHitProbability))).toBeLessThanOrEqual(.9)
   })

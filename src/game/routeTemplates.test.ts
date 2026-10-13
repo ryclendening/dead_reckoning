@@ -11,13 +11,19 @@ const missionDistanceFrom=(route:Point[],home:Point)=>route.slice(1).reduce((sum
 
 describe('route templates',()=>{
   it('only exposes role-appropriate movement templates',()=>{
-    expect(templatesForRole('fighter').map(template=>template.id)).toEqual(['defensive-cap','forward-patrol'])
+    expect(templatesForRole('fighter').map(template=>template.id)).toEqual(['base-strike','transit','defensive-cap','forward-patrol'])
     expect(templatesForRole('recon').map(template=>template.id)).toEqual(['search-area'])
   })
 
   it('is deterministic for identical inputs',()=>{
     const input={template:'defensive-cap' as const,ingress:[base,[-3,5]] as Point[],maxDistance:40,bounds:CAMPAIGN_WORLD_BOUNDS}
     expect(generateRouteTemplate(input)).toEqual(generateRouteTemplate(input))
+  })
+
+  it('keeps transit routes direct without adding a patrol pattern',()=>{
+    const ingress:Point[]=[base,[-4,6],[-1,2]]
+    const transit=generateRouteTemplate({template:'transit',ingress,maxDistance:40,bounds:CAMPAIGN_WORLD_BOUNDS})
+    expect(transit.route).toEqual(ingress)
   })
 
   it('creates closed fighter patrol shapes',()=>{

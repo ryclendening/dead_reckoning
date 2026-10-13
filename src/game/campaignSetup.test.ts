@@ -1,16 +1,19 @@
 import { describe, expect, it } from 'vitest'
 import { createMatch } from './data'
-import { confirmCampaignSetup, createCampaignSetupState, SETUP_FORMATION_COUNT, SETUP_OPTIONAL_ASSET_COUNT, toggleSetupAsset, toggleSetupFormation, validateCampaignAllocation, validateCampaignSetup } from './campaignSetup'
+import { confirmCampaignSetup, createCampaignSetupState, SETUP_FORMATION_COUNT, SETUP_FORMATION_IDS, SETUP_OPTIONAL_ASSET_COUNT, toggleSetupAsset, toggleSetupFormation, validateCampaignAllocation, validateCampaignSetup } from './campaignSetup'
 
 const allocated = () => {
   const state = createMatch()
   let setup = createCampaignSetupState()
-  for (const id of ['viper', 'falcon', 'raven']) setup = toggleSetupFormation(setup, id)
   for (const id of ['p-sam', 'p-decoy']) setup = toggleSetupAsset(setup, id)
   return { state, setup }
 }
 
 describe('initial campaign setup rules', () => {
+  it('starts with the fixed VIPER, FALCON, and RAVEN force', () => {
+    expect(createCampaignSetupState().selectedFormationIds).toEqual(SETUP_FORMATION_IDS)
+  })
+
   it('limits opening selections and requires a mixed force', () => {
     const { state, setup } = allocated()
     expect(setup.selectedFormationIds).toHaveLength(SETUP_FORMATION_COUNT)
@@ -22,12 +25,10 @@ describe('initial campaign setup rules', () => {
 
   it('rejects one-role allocations and missing required assets', () => {
     const state = createMatch()
-    let setup = createCampaignSetupState()
-    for (const id of ['viper', 'falcon', 'ghost']) setup = toggleSetupFormation(setup, id)
-    setup = toggleSetupAsset(setup, 'p-sam')
-    setup = toggleSetupAsset(setup, 'p-decoy')
-    expect(validateCampaignAllocation({ ...state, squadrons: state.squadrons.map(squadron => ({ ...squadron, role: 'fighter' as const })) }, setup)).toContain('SELECT AT LEAST ONE RECON')
-    expect(validateCampaignAllocation(state, { ...setup, selectedAssetIds: ['p-sam', 'p-decoy'] })).toContain('AIRFIELD AND RADAR ARE REQUIRED')
+    const setup = { ...createCampaignSetupState(), selectedFormationIds: ['viper', 'falcon', 'ghost'] }
+    const withAssets = toggleSetupAsset(toggleSetupAsset(setup, 'p-sam'), 'p-decoy')
+    expect(validateCampaignAllocation({ ...state, squadrons: state.squadrons.map(squadron => ({ ...squadron, role: 'fighter' as const })) }, withAssets)).toContain('SELECT AT LEAST ONE RECON')
+    expect(validateCampaignAllocation(state, { ...withAssets, selectedAssetIds: ['p-sam', 'p-decoy'] })).toContain('AIRFIELD AND RADAR ARE REQUIRED')
   })
 
   it('requires all selected assets to be placed and an explicit review', () => {
