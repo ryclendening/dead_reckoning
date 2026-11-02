@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { createCampaignDraft, createMatch } from './data'
 import { confirmCampaignSetup } from './campaignSetup'
+import { validateCampaignAllocation } from './campaignSetup'
 import { normalizeMatch } from './persistence'
 import { createScenario, DEBUG_SCENARIOS } from './scenarios'
 import type { MatchState, RoundResult } from './types'
@@ -116,6 +117,22 @@ describe('normalizeMatch', () => {
     const debug = { ...createMatch(18), debugScenario: 'fighter-duel' as const,
       squadrons: createMatch(18).squadrons.slice(0, 1), selectedId: 'viper' }
     expect(normalizeMatch(JSON.parse(JSON.stringify(debug))).squadrons).toHaveLength(1)
+  })
+
+  it('repairs an incomplete saved opening roster to the fixed force so Deploy can continue', () => {
+    const draft = createCampaignDraft(18)
+    const saved = {
+      ...draft,
+      setup: {
+        ...draft.setup!,
+        selectedFormationIds: ['viper', 'falcon'],
+        selectedAssetIds: ['p-base', 'p-radar', 'p-decoy', 'p-sam'],
+      },
+    }
+    const loaded = normalizeMatch(JSON.parse(JSON.stringify(saved)))
+
+    expect(loaded.setup?.selectedFormationIds).toEqual(['viper', 'falcon', 'raven'])
+    expect(validateCampaignAllocation(loaded, loaded.setup!)).toEqual([])
   })
 
   it('round trips every deterministic debug fixture', () => {

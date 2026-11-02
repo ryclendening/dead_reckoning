@@ -38,7 +38,7 @@ The initial data contains four formations, each with four aircraft and 100 maxim
 - `RAVEN 3` — reconnaissance.
 - `GHOST 4` — reconnaissance.
 
-A new normal campaign uses VIPER 1, FALCON 2, and RAVEN 3. GHOST 4 is available only in debug scenarios or older valid saved campaigns. Older saved deployment drafts retain their selected roster rather than being silently replaced. Debug scenarios can bypass setup and use a different active subset.
+A new normal campaign uses VIPER 1, FALCON 2, and RAVEN 3. GHOST 4 is available only in debug scenarios or older valid saved campaigns. Older deployment drafts with a valid three-formation mix retain their selected roster; incomplete or one-role drafts normalize to the fixed opening force so the player can continue setup. Debug scenarios can bypass setup and use a different active subset.
 
 Only two roles are playable:
 
@@ -248,6 +248,7 @@ This log keeps only current net changes. Superseded intermediate states belong i
 
 ### 2026-11-02
 
+- Fixed stale deployment drafts with incomplete or one-role formation selections by normalizing them to the current fixed opening force. Valid saved three-formation mixes remain intact, and regression coverage confirms the setup validator permits placement to continue.
 - Changed Debrief battlefield history to derive friendly traces directly from recorded `UnitTrack` frames and hostile traces from those tracks only during legitimate contact intervals. Hidden gaps remain unconnected, radar and visual contact retain separate styling, and original enemy routes no longer affect debrief history. Added deterministic projection coverage for pursuit interruption, concurrent engagements, contact transitions, and recon RTB during pursuit.
 
 ### 2026-10-12

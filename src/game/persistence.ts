@@ -1,4 +1,5 @@
 import { createCampaignDraft, createMatch } from './data'
+import { SETUP_FORMATION_IDS } from './campaignSetup'
 import { campaignOutcome } from './campaign'
 import { createEconomyState } from './economy'
 import { normalizeFormationBasing } from './forwardBasing'
@@ -193,12 +194,18 @@ export function normalizeMatch(input: unknown): MatchState {
 
   const debugScenario = (input.debugScenario ?? 'campaign') as DebugScenario
   const setup = input.setup
+  let normalizedSetup = setup as CampaignSetupState | undefined
   if (setup !== undefined) {
     const ids = new Set(squadrons.map(squadron => squadron.id))
     const assetIds = new Set(playerAssets.map(asset => asset.id))
     if (debugScenario !== 'campaign' || input.phase !== 'deploy' || squadrons.length !== fresh.squadrons.length
         || !validSetup(setup, ids, assetIds)
         || setup.stage === 'review' && setup.selectedAssetIds.some(id => !setup.placedAssetIds.includes(id))) return fallback(input)
+    const selectedFormations = setup.selectedFormationIds.map(id => squadrons.find(squadron => squadron.id === id)!)
+    const hasPlayableOpeningForce = selectedFormations.length === SETUP_FORMATION_IDS.length
+      && selectedFormations.some(squadron => squadron.role === 'fighter')
+      && selectedFormations.some(squadron => squadron.role === 'recon')
+    if (!hasPlayableOpeningForce) normalizedSetup = { ...setup, selectedFormationIds: [...SETUP_FORMATION_IDS] }
   } else if (input.phase === 'deploy') return fallback(input)
   else if (debugScenario === 'campaign' && squadrons.length !== 3 && squadrons.length !== fresh.squadrons.length) return fallback(input)
   else if (debugScenario === 'campaign' && (!squadrons.some(s => s.role === 'fighter') || !squadrons.some(s => s.role === 'recon'))) return fallback(input)
@@ -251,7 +258,7 @@ export function normalizeMatch(input: unknown): MatchState {
     enemyBaseHealth: enemyBase.health,
     economy: (input.economy as EconomyState | undefined) ?? createEconomyState(),
     debugScenario,
-    setup: setup as CampaignSetupState | undefined,
+    setup: normalizedSetup,
     lastResult: input.phase === 'execute' ? undefined : input.lastResult as RoundResult | undefined,
   } as MatchState
 }
