@@ -30,6 +30,11 @@ export interface VisibleTrackSegment {
   frames: UnitFrame[]
 }
 
+export interface DebriefHistory {
+  friendly: UnitTrack[]
+  hostile: Array<{ unitId: string; segments: VisibleTrackSegment[] }>
+}
+
 const lerp = (from: number, to: number, amount: number) => from + (to - from) * amount
 const copyFrame = (frame: UnitFrame): UnitFrame => ({
   ...frame,
@@ -185,4 +190,16 @@ export function visibleTrackSegments(result: RoundResult, targetId: string): Vis
     const frames = times.map(time => sampleUnitTrack(track, time)).filter((frame): frame is UnitFrame => !!frame)
     return frames.length ? [{ visibility: span.visibility, identityKnown: span.identityKnown, frames }] : []
   })
+}
+
+/** Builds debrief traces exclusively from recorded tracks and legitimate contact intervals. */
+export function debriefHistoryFor(result: RoundResult): DebriefHistory {
+  const friendlyIds = new Set(result.squadrons.map(squadron => squadron.id))
+  return {
+    friendly: result.unitTracks.filter(track => friendlyIds.has(track.unitId) && track.frames.length > 1),
+    hostile: result.enemyFlights.flatMap(flight => {
+      const segments = visibleTrackSegments(result, flight.id)
+      return segments.length ? [{ unitId: flight.id, segments }] : []
+    }),
+  }
 }

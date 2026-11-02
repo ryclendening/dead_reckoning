@@ -4,7 +4,7 @@ import { Billboard, Html, Line, MapControls, Text, useGLTF, useTexture } from '@
 import * as THREE from 'three'
 import type { MapControls as MapControlsImpl } from 'three-stdlib'
 import { EXECUTION_SECONDS, RADAR_RANGE } from '../game/engine'
-import { projectFriendlyUnitAt, projectHostileUnitAt, sampleUnitTrack, sampleUnitTrackForRender, unitTrackFor, type HostileUnitProjection } from '../game/executionProjection'
+import { debriefHistoryFor, projectFriendlyUnitAt, projectHostileUnitAt, sampleUnitTrack, sampleUnitTrackForRender, unitTrackFor, type HostileUnitProjection } from '../game/executionProjection'
 import { axialToPoint, HEX_RADIUS, snapToHex } from '../game/hex'
 import { deriveFogMaskSize, MAPPED_RADIUS, updateLiveFogMask, updatePersistentFogMask } from '../game/fog'
 import { deriveDiscoveredBoundaryLines } from '../game/knownWorld'
@@ -611,17 +611,11 @@ function ActiveDogfightVisual({engagement}:{engagement:ActiveDogfightPresentatio
   return <group><EngagementOrbit location={engagement.location} kind="dogfight" opacity={1}/><Billboard position={[engagement.location[0],3.6,engagement.location[1]]} follow lockZ={false}><EngagementCueBackdrop meshRef={backdrop}/><Text ref={labelText} position={[0,.04,0]} fontSize={.2} color="#f4e7b1" anchorX="center" outlineWidth={.014} outlineColor="#080806" renderOrder={55}>{label}</Text><Text ref={contextText} position={[0,-.22,0]} fontSize={.14} color="#f1c65b" anchorX="center" outlineWidth={.01} outlineColor="#080806" renderOrder={55}>{context}</Text></Billboard></group>
 }
 
-function historyPoint(route:Point[],progress:number):Point{
-  if(route.length<2)return route[0]??[0,0]
-  const lengths=route.slice(1).map((p,i)=>distance2(route[i],p));const total=lengths.reduce((sum,n)=>sum+n,0);let remaining=Math.max(0,Math.min(1,progress))*total
-  for(let i=0;i<lengths.length;i++){if(remaining<=lengths[i]){const f=lengths[i]===0?0:remaining/lengths[i];return [route[i][0]+(route[i+1][0]-route[i][0])*f,route[i][1]+(route[i+1][1]-route[i][1])*f]}remaining-=lengths[i]}
-  return route.at(-1)!
-}
-
 function HistoryOverlay({result}:{result:RoundResult}){
+  const history=debriefHistoryFor(result)
   return <group>
-    {Object.entries(result.executionRoutes).map(([id,route])=>route.length>1?<Line key={id} points={route.map(p=>to3(p,.24))} color={friendly} opacity={.34} transparent dashed dashSize={.2} gapSize={.12} lineWidth={1.2}/>:null)}
-    {result.enemyFlights.flatMap(f=>f.detectionWindows.map((w,i)=>{const points=Array.from({length:9},(_,j)=>to3(historyPoint(f.route,w.start+(w.end-w.start)*j/8),.26));return <Line key={`${f.id}-${i}`} points={points} color={w.source==='visual'?hostile:amber} opacity={.58} transparent dashed lineWidth={1.4}/>}))}
+    {history.friendly.map(track=><Line key={track.unitId} points={track.frames.map(frame=>to3(frame.position,.24))} color={friendly} opacity={.34} transparent dashed dashSize={.2} gapSize={.12} lineWidth={1.2}/>)}
+    {history.hostile.flatMap(({unitId,segments})=>segments.map((segment,index)=><Line key={`${unitId}-${index}`} points={segment.frames.map(frame=>to3(frame.position,.26))} color={segment.visibility==='visual'?hostile:amber} opacity={.58} transparent dashed lineWidth={1.4}/>))}
     {result.events.filter(e=>e.position).map((e,i)=><group key={e.id} position={to3(e.position!,.31)}><mesh rotation={[-Math.PI/2,0,0]}><ringGeometry args={[.12,.2,12]}/><meshBasicMaterial color={e.tone==='danger'?hostile:e.tone==='warning'?amber:friendly}/></mesh><Text position={[0,.16,0]} fontSize={.18} color="#f0eedc">{i+1}</Text></group>)}
   </group>
 }
