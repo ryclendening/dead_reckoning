@@ -258,3 +258,32 @@
   .mission-step .mission-effect{margin-top:5px}
   .mission-step .shelf-route button{min-height:38px}
 }
+
+/* One fixed planning frame: aircraft navigation, task content, actions, status. */
+.command-shelf .command-sheet{display:grid;grid-template-rows:32px minmax(0,1fr) 28px 24px;gap:4px;overflow:hidden;touch-action:none;user-select:none}
+.planning-aircraft-nav{display:grid;grid-template-columns:32px minmax(0,1fr) 32px 50px;gap:4px;align-items:stretch;min-width:0}
+.planning-aircraft-nav button{display:flex;align-items:center;justify-content:center;min-width:0;padding:0;border:1px solid var(--line);background:#19221b;color:#d8e6d8;font:700 9px 'Barlow Condensed';letter-spacing:.5px;cursor:pointer}
+.planning-aircraft-nav .planning-aircraft-arrow{border-color:#4d7772;background:#16302c;color:var(--cyan)}
+.planning-aircraft-arrow svg{width:22px;height:22px;pointer-events:none}
+.planning-aircraft-nav button:disabled{opacity:.35;cursor:default}
+.planning-aircraft-identity{display:flex;flex-direction:column;justify-content:center;align-items:center;min-width:0;line-height:1.1}
+.planning-aircraft-identity b{max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:#e1eee3;font:800 13px 'Barlow Condensed';letter-spacing:.8px}
+.planning-aircraft-identity small{color:#93b5a5;font:700 8px 'Barlow Condensed';letter-spacing:.65px}
+.planning-pane-content{display:flex;flex-direction:column;justify-content:center;gap:4px;min-width:0;min-height:0}
+.command-sheet .planning-title{margin:0;font-size:15px;line-height:18px}
+.command-sheet .planning-help{margin:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:9px;line-height:12px}
+.command-sheet .planning-protect-target{display:grid;grid-template-columns:1fr 1fr;gap:6px;margin:0}
+.command-sheet .planning-protect-target>button,.command-sheet .planning-protect-target>select{min-width:0;height:28px;min-height:28px;box-sizing:border-box;padding:0 7px;border:1px solid var(--line);background:#192b23;color:#d0e8d3;font:700 9px 'Barlow Condensed';letter-spacing:.5px;text-align:center;cursor:pointer}
+.command-sheet .strike-target-summary{display:flex;align-items:center;gap:8px;height:28px;margin:0;color:#edcc7c;font:700 9px 'Barlow Condensed';letter-spacing:.4px}
+.command-sheet .strike-target-summary span{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.command-sheet .strike-target-summary button{flex:none;height:28px;margin:0;padding:0 8px;border:1px solid var(--line);background:#19221b;color:#b9c8ba;font:700 9px 'Barlow Condensed'}
+.command-sheet .shelf-route{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:5px;margin:0;overflow:visible}
+.command-sheet .shelf-route button{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;min-width:0;min-height:42px;max-width:none;padding:2px;white-space:normal;text-align:center}
+.command-sheet .shelf-route button svg{width:12px;height:12px;flex:none}
+.command-sheet .shelf-route button b{font-size:8.5px;line-height:10px}
+.command-sheet .planning-route-actions{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:6px;margin:0}
+.command-sheet .planning-route-actions button{min-width:0;min-height:28px;height:28px;padding:0 3px;font-size:8.5px;white-space:nowrap}
+.command-sheet .mission-effect{align-self:center;width:100%;margin:0;padding:0;border:0;background:none;overflow:hidden;color:#b6c8b9;font:600 9px/12px Inter,sans-serif}
+.command-sheet .shelf-range{align-self:center;max-height:24px;margin:0;overflow:hidden;font-size:9px;line-height:12px;overflow-wrap:anywhere}
+.planning-aircraft-nav button:focus-visible,.command-sheet button:focus-visible,.command-sheet select:focus-visible{outline:2px solid var(--cyan);outline-offset:-2px}
+.command-shelf.expanded{z-index:26}
