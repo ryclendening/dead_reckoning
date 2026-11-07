@@ -655,7 +655,7 @@ function BattlefieldScene({squadrons,assets,playerAssets,mappedAreas,discoveredB
     if(phase==='plan'&&routePlanningEnabled&&airfield){if(selected.mission!=='base-strike')onPlanningRecoverySelect?.(asset.id);return}
     if(phase==='plan'&&airfield)onPlanningBaseSelect?.(asset.id)
     if(phase==='execute'&&airfield)onExecutionBaseSelect?.(asset.id)
-    if(phase==='adapt'&&!construction)onEconomySelect?.(asset.id)
+    if(phase==='adapt'){if(!construction)onEconomySelect?.(asset.id);return}
     if(phase!=='deploy'&&!construction)onAssetInspect?.(asset.id)
   }
   const selectEnemyAsset=(asset:Asset)=>{
@@ -688,7 +688,7 @@ function BattlefieldScene({squadrons,assets,playerAssets,mappedAreas,discoveredB
     onRoute(draft.current)
   }
   const mapMove=(e:ThreeEvent<PointerEvent>)=>{if(phase==='adapt'&&construction){const hit=e.ray.intersectPlane(groundPlane,new THREE.Vector3());setConstructionHover(snapToHex(hit?[hit.x,hit.z]:[e.point.x,e.point.z]))}}
-  const constructionPoint=constructionHover??construction?.placement
+  const constructionPoint=construction?.placement??constructionHover
   return <>
     <CameraRig phase={phase} friendlyTerritory={resolvedTerritory} planningBounds={resolvedPlanningBounds} presentationBounds={resolvedPresentationBounds} focusPoint={cameraFocus} followKey={followId}/>
     <color attach="background" args={['#11140f']}/><fog attach="fog" args={['#11140f',34,60]}/>
