@@ -30,7 +30,7 @@ const withRoute=(squadron:Squadron,route:Point[],overrides:Partial<Squadron>={})
 const grounded=(squadron:Squadron):Squadron=>({...squadron,aircraft:0,strength:0})
 
 export function createScenario(scenario:DebugScenario):MatchState{
-  const match=createMatch()
+  const match=createMatch(7301,'medium',false)
   match.debugScenario=scenario
   if(scenario==='campaign')return match
   if(scenario==='recon-loss')match.seed=2

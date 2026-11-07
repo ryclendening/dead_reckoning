@@ -5,6 +5,8 @@ import { createEconomyState } from './economy'
 import { normalizeFormationBasing } from './forwardBasing'
 import type { Asset, CampaignSetupState, DebugScenario, EconomyState, MatchState, MissionId, Point, RoundResult, Squadron } from './types'
 import { DEBUG_SCENARIOS } from './scenarios'
+import { createCpuState, prepareCpuRound } from './cpu/planner'
+import { validCpuReport, validCpuState } from './cpu/persistence'
 
 const phases = new Set(['deploy', 'plan', 'execute', 'debrief', 'adapt', 'victory', 'defeat'])
 const roles = new Set(['fighter', 'recon'])
@@ -40,6 +42,7 @@ function validWorld(value: unknown): boolean {
   const presentation = value.presentationBounds
   const territory = value.friendlyTerritory
   return finite(value.seed) && text(value.startRegionId)
+    && (value.layoutVersion === undefined || value.layoutVersion === 1)
     && [bounds.minX, bounds.maxX, bounds.minZ, bounds.maxZ, presentation.minX, presentation.maxX, presentation.minZ, presentation.maxZ].every(finite)
     && finite(bounds.minX) && finite(bounds.maxX) && finite(bounds.minZ) && finite(bounds.maxZ)
     && bounds.minX < bounds.maxX && bounds.minZ < bounds.maxZ
@@ -216,6 +219,8 @@ export function normalizeMatch(input: unknown): MatchState {
   else if (debugScenario === 'campaign' && squadrons.length !== 3 && squadrons.length !== fresh.squadrons.length) return fallback(input)
   else if (debugScenario === 'campaign' && (!squadrons.some(s => s.role === 'fighter') || !squadrons.some(s => s.role === 'recon'))) return fallback(input)
 
+  if (input.cpu !== undefined && !validCpuState(input.cpu, validSquadron, input.round as number)) return fallback(input)
+  if (input.lastResult && record(input.lastResult) && input.lastResult.cpuReport !== undefined && !validCpuReport(input.lastResult.cpuReport)) return fallback(input)
   if (input.economy !== undefined && !validEconomy(input.economy)) return fallback(input)
   if (input.lastResult !== undefined && !validResult(input.lastResult)) return fallback(input)
   if (input.phase === 'debrief' || input.lastResult !== undefined) {
@@ -250,7 +255,8 @@ export function normalizeMatch(input: unknown): MatchState {
     ? { ...asset, operational: savedBase.operational ?? asset.health > 0 }
     : asset)
   const phase = input.phase === 'execute' ? 'plan' : input.phase
-  return {
+  const cpu = input.cpu as MatchState['cpu'] ?? createCpuState(enemyBase.position, 'medium', input.seed as number)
+  const normalized: MatchState = {
     ...fresh,
     ...input,
     world: input.world as MatchState['world'],
@@ -263,8 +269,10 @@ export function normalizeMatch(input: unknown): MatchState {
     playerBaseHealth: synchronizedAssets.find(asset => asset.kind === 'base')!.health,
     enemyBaseHealth: enemyBase.health,
     economy: (input.economy as EconomyState | undefined) ?? createEconomyState(),
+    cpu,
     debugScenario,
     setup: normalizedSetup,
     lastResult: input.phase === 'execute' ? undefined : input.lastResult as RoundResult | undefined,
   } as MatchState
+  return prepareCpuRound(normalized)
 }

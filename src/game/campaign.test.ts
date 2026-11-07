@@ -67,7 +67,7 @@ describe('campaign outcomes',()=>{
   })
 
   it('queues one deterministic missile and applies health only after impact',()=>{
-    const original=createMatch(7302),target=original.enemyAssets.find(asset=>asset.id==='e-base')!
+    const original={...createMatch(7302),cpu:undefined},target=original.enemyAssets.find(asset=>asset.id==='e-base')!
     const confirmed={...original,enemyAssets:original.enemyAssets.map(asset=>asset.id===target.id?{...asset,intel:'confirmed' as const,confidence:100,hidden:false}:asset)}
     const fighter=confirmed.squadrons.find(squadron=>squadron.id==='viper')!,route=buildGroundStrikeRoute(confirmed,fighter.id,'e-base')!
     const state={...confirmed,squadrons:confirmed.squadrons.map(squadron=>squadron.id===fighter.id?{...squadron,mission:'base-strike' as const,strikeTargetId:'e-base',route,routeIngress:route,plannedRecoveryFieldId:'p-base'}:{...squadron,aircraft:0,strength:0})}
@@ -108,7 +108,7 @@ describe('campaign outcomes',()=>{
   })
 
   it('only raises exposure for recovered enemy recon that observes the real base',()=>{
-    const initial=createMatch(),state={...initial,squadrons:initial.squadrons.map(squadron=>squadron.role==='fighter'?{...squadron,aircraft:0,strength:0,status:'destroyed' as const}:squadron),playerAssets:initial.playerAssets.map(asset=>asset.kind==='radar'?{...asset,health:0}:asset)},result=resolveRound(state)
+    const initial={...createMatch(),cpu:undefined},state={...initial,squadrons:initial.squadrons.map(squadron=>squadron.role==='fighter'?{...squadron,aircraft:0,strength:0,status:'destroyed' as const}:squadron),playerAssets:initial.playerAssets.map(asset=>asset.kind==='radar'?{...asset,health:0}:asset)},result=resolveRound(state)
     expect(result.enemyFlights.find(flight=>flight.id==='red-recon')?.route[1]).toEqual(state.world.friendlyTerritory.center)
     expect(result.baseExposureDelta).toBe(40)
     const base=state.playerAssets.find(asset=>asset.kind==='base')!
@@ -117,7 +117,7 @@ describe('campaign outcomes',()=>{
   })
 
   it('reduces only the current report when any live decoy is also observed',()=>{
-    const initial=createMatch(),base=initial.world.friendlyTerritory.center,first=initial.playerAssets.find(asset=>asset.kind==='decoy')!
+    const initial={...createMatch(),cpu:undefined},base=initial.world.friendlyTerritory.center,first=initial.playerAssets.find(asset=>asset.kind==='decoy')!
     const state={...initial,squadrons:initial.squadrons.map(squadron=>squadron.role==='fighter'?{...squadron,aircraft:0,strength:0,status:'destroyed' as const}:squadron),playerAssets:initial.playerAssets.map(asset=>asset.kind==='radar'?{...asset,health:0}:asset)}
     const withRemoteFirst={...state,playerAssets:state.playerAssets.map(asset=>asset.id===first.id?{...asset,position:[base[0]+12,base[1]+12] as [number,number]}:asset)}
     const second={...first,id:'p-decoy-2',position:[base[0]+1,base[1]] as [number,number]}
@@ -126,7 +126,7 @@ describe('campaign outcomes',()=>{
   })
 
   it('uses the prior round exposure threshold and never plots lost unknown coordinates',()=>{
-    const base=createMatch(),below=resolveRound({...base,baseExposure:59}),atThreshold=resolveRound({...base,baseExposure:60})
+    const base={...createMatch(),cpu:undefined},below=resolveRound({...base,baseExposure:59}),atThreshold=resolveRound({...base,baseExposure:60})
     expect(below.enemyFlights.find(flight=>flight.id==='red-fighter')?.route).toHaveLength(7)
     expect(atThreshold.enemyFlights.find(flight=>flight.id==='red-fighter')?.target).toBe('base')
     const lost=resolveRound(createScenario('recon-loss'))

@@ -1,5 +1,15 @@
 # Repository Agent Instructions
 
+## Branch and Worktree Isolation
+
+- Read `DEVELOPMENT_WORKFLOW.md` before starting implementation. Inspect `pwd`, `git status --short --branch`, and `git worktree list` before editing.
+- `main` is the shared integration baseline. Perform feature work in a dedicated branch and worktree created from current `main`; keep CPU and core-loop work in separate directories.
+- Use the worktree assigned to the task. Never switch branches in another chat's worktree, edit another lane's files through its checkout, or merge another lane just to publish a feature.
+- Preserve uncommitted work. If a requested baseline update encounters a dirty worktree, identify its owner and carry or checkpoint those edits only with authorization. Do not stash, reset, clean, or discard them automatically.
+- Treat `src/game/engine.ts`, shared types, `src/App.tsx`, and `GAMEPLAY_STATE.md` as shared integration points. Separate worktrees isolate files, but changes to the same code may still require merge conflict resolution.
+- Integrate finished feature commits into `main`, then merge updated `main` into other active feature branches. Keep unfinished checkpoint commits on their feature branch.
+- Deploy the requested integrated state from `main` by default. Deploying an isolated feature branch requires an explicit request identifying that scope. Existing `cpu-publish` and `cpu-play-plan` branches are historical; do not use them as the baseline for new work.
+
 ## Current Gameplay Source of Truth
 
 Before planning or changing gameplay, combat, balance, doctrine, aircraft roles, intelligence, routing, phase flow, or battlefield presentation, read [`GAMEPLAY_STATE.md`](./GAMEPLAY_STATE.md) in full.

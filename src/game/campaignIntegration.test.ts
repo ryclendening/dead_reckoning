@@ -11,7 +11,8 @@ import { normalizeMatch } from './persistence'
 import type { MatchState, Point, Squadron } from './types'
 
 function openingPackage(seed: number): MatchState {
-  const draft = createCampaignDraft(seed)
+  // Keep the original resolver fixture deterministic; adaptive campaign coverage lives in cpu/cpu.test.ts.
+  const draft = { ...createCampaignDraft(seed), cpu: undefined }
   const selectedFormationIds = ['viper', 'falcon', 'raven']
   const selectedAssetIds = ['p-base', 'p-radar', 'p-sam', 'p-aaa']
   const setup = {
@@ -105,7 +106,7 @@ function service(state: MatchState): MatchState {
   return next
 }
 
-describe('legal campaign integration', () => {
+describe('scripted legal campaign integration', () => {
   it('discovers the base through recovered recon and wins with legal fighter strikes', () => {
     let state = openingPackage(7301)
     expect(state.setup).toBeUndefined()
@@ -130,7 +131,7 @@ describe('legal campaign integration', () => {
         break
       }
       expect(afterDebrief.phase, JSON.stringify({ round, outcome: campaignOutcome(afterDebrief), home: afterDebrief.playerBaseHealth, enemy: afterDebrief.enemyBaseHealth, exposure: afterDebrief.baseExposure, losses: state.lastResult?.friendlyAttrition, enemyEvents: state.lastResult?.events.filter(event => event.title.includes('BASE')) })).toBe('plan')
-      state = normalizeMatch(JSON.parse(JSON.stringify(afterDebrief)))
+      state = { ...normalizeMatch(JSON.parse(JSON.stringify(afterDebrief))), cpu: undefined }
       expect(state.round).toBe(round + 1)
       expect(state.phase).toBe('plan')
     }

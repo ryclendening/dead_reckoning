@@ -4,9 +4,10 @@ import { FOB_MIN_CAPACITY, formationField, normalizeFormationBasing } from './fo
 import { friendlyPlacementRegions, friendlyTerritoryForAssets, placementAreaContains, territoryContains } from './territory'
 import { FOB_PLACEMENT_MAX_GAP, FOB_PLACEMENT_MAX_HEX_STEPS } from './campaignPlacement'
 import { campaignOutcome } from './campaign'
+import { LOGISTICS_COSTS, LOGISTICS_EFFECTS } from './economyRules'
+import { maintainCpu, planNextCpuRound } from './cpu/settlement'
+export { LOGISTICS_COSTS, LOGISTICS_EFFECTS } from './economyRules'
 
-export const LOGISTICS_COSTS = { formationRepair: 2, aircraftReplacement: 4, defenseRepair: 2, fobRepair: 4, upgrade: 12, fobConstruction: 8, decoyConstruction: 4, aaaConstruction: 6, samConstruction: 8 } as const
-export const LOGISTICS_EFFECTS = { formationRepair: 25, defenseRepair: 25, baseIncome: 6, intelRecovery: 2, confirmedEnemyAircraft: 1, supplyDepotIncome: 2 } as const
 export const FOB_INITIAL_CAPACITY = FOB_MIN_CAPACITY
 export const FOB_PLACEMENT_SPACING = 1.5
 
@@ -253,7 +254,7 @@ export const openAdaptPhase = (state: MatchState): MatchState => {
   if (state.phase !== 'debrief') return state
   const outcome = campaignOutcome(state)
   if (outcome) return { ...state, phase: outcome === 'enemy-base-destroyed' ? 'victory' : 'defeat' }
-  return { ...state, phase: 'adapt' }
+  return maintainCpu({ ...state, phase: 'adapt' })
 }
 export const beginNextRound = (state: MatchState): MatchState => {
   if (state.phase !== 'adapt' || campaignOutcome(state)) return state
@@ -265,5 +266,6 @@ export const beginNextRound = (state: MatchState): MatchState => {
     const origin = [...field.position] as [number, number]
     return { ...squadron, plannedRecoveryFieldId: undefined, sortieOrdered: undefined, status: trapped ? 'trapped' as const : 'rtb' as const, route: [origin], routeIngress: [origin] }
   })
-  return { ...state, playerAssets, squadrons, round: state.round + 1, phase: 'plan', lastResult: undefined }
+  const maintained = maintainCpu(state)
+  return planNextCpuRound({ ...maintained, playerAssets, squadrons, round: state.round + 1, phase: 'plan', lastResult: undefined })
 }

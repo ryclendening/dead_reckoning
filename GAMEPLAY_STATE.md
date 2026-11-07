@@ -1,12 +1,12 @@
 # Dead Reckoning: Current Gameplay State
 
-Last verified against the implementation and tests: 2026-11-07
+Last updated against the implementation: 2026-11-07
 
 This is the source of truth for behavior implemented in the current build. It records the net gameplay state, not the sequence of designs that led to it. Use git history for superseded mechanics and earlier implementation notes.
 
 ## Core Loop
 
-1. **Deploy** — A new campaign starts with a fixed force of two fighters (VIPER 1 and FALCON 2), one recon formation (RAVEN 3), and four assets: main airfield, radar, SAM, and AAA. There is no force or asset selection step. Select an asset card and tap a highlighted valid hex to place it. Select a placed asset and tap another valid hex to reposition it; the package remains editable through review. **Begin Planning** locks the full package. Decoys can be built later during Adapt.
+1. **Menu / Deploy** — The title menu offers a new campaign with Easy, Medium, or Hard CPU difficulty, plus Continue when a save exists. A new campaign starts with a fixed force of two fighters (VIPER 1 and FALCON 2), one recon formation (RAVEN 3), and four assets: main airfield, radar, SAM, and AAA. There is no force or asset selection step. Select an asset card and tap a highlighted valid hex to place it. Select a placed asset and tap another valid hex to reposition it; the package remains editable through review. **Begin Planning** locks the full package. Decoys can be built later during Adapt.
 2. **Plan** — Flat aircraft pips hover above their home airfields, marked with callsign and role. Select a fighter task to open route building; Ground Strike first requires selecting a confirmed enemy site. Selecting another formation saves a valid route automatically. Closing a valid route also saves it. **Commit Round** appears after at least one order is ready and starts execution. Confirmed pips show a green check. Only confirmed formations fly that round.
 3. **Execute / Observe** — The deterministic simulation advances at 20 Hz and can be viewed at 1× or 2×. The only live player command is an irreversible recon `ORDER RTB`, applied on the next simulation tick. RTB sends recon to the home base if it has enough remaining range, otherwise to its planned recovery field. There is no skip-to-debrief control.
 4. **Debrief** — Review friendly losses, confirmed enemy losses, and one page for each newly recovered fixed-asset report.
@@ -20,7 +20,7 @@ This is the source of truth for behavior implemented in the current build. It re
 - Strikes are deterministic hits once launched. Damage occurs at impact, 0.6 simulated seconds after launch; an already-launched missile survives destruction of its launcher. Multiple impacts cannot reduce target health below zero.
 - Strike fighters do not voluntarily intercept air contacts. Direct fighter combat still interrupts them, so fighter allocation and route choice affect whether they reach launch range.
 - Enemy recon observes the real base and decoy through its executed movement within 3.8 map units. Only successful recovery preserves those observations. A recovered base observation adds 40 targeting pressure; observing a live decoy on that sortie subtracts 20 from the base-observation gain. Pressure is bounded from 0 to 100.
-- At 60 targeting pressure at the start of a round, the enemy fighter can execute a physical base strike. Intelligence recovered this round cannot authorize an attack retroactively in the same round.
+- At 60 targeting pressure at the start of a round, a recovered confirmed base report can authorize an enemy fighter base strike. This requirement is shared across difficulties. The CPU may instead choose defense, escort, patrol, or a confirmed support-site strike. Intelligence recovered this round cannot authorize an attack retroactively in the same round.
 - Enemy base destruction wins; home base destruction loses, including mutual destruction. If neither base is destroyed by the end of round six, the deadline is a defeat. Losing all formations with no reserve aircraft also ends the campaign.
 - Debrief precedes the end screen and explains base damage and targeting-pressure changes. Debug tactical fixtures do not use enemy campaign pressure progression or the round deadline; explicit friendly Ground Strike orders use the same targeting rules.
 - These values are initial tuning parameters, not a completed balance pass.
@@ -47,12 +47,26 @@ Only two roles are playable:
 
 ### Enemy flights
 
-An ordinary round generates two deterministic enemy formations:
+A new ordinary campaign starts with two deterministic enemy formations:
 
 - `BOGEY 1` — four-aircraft MiG-23 fighter formation.
 - `SPECTER` — two-aircraft recon formation.
 
-Enemy air formations are generated for the current round; their attrition is reported but does not persist as a campaign force inventory. Debug scenarios may disable or replace these flights.
+Aircraft counts, strength, and morale now persist as a CPU campaign inventory. Surviving aircraft must recover; a failed recovery loses the ordered formation. Grounded formations retain their condition. Paid maintenance can repair damage and replace aircraft using finite reserves. Aircraft counts are derived proportionally from formation strength and maximum aircraft: a two-aircraft recon at 50 strength has one aircraft, while a four-aircraft formation at 50 has two. Debug scenarios retain their scripted enemy flights and do not run campaign CPU progression.
+
+### Basic CPU strategy
+
+- The CPU stores a difficulty profile, its two formations, Logistics and reserves, recovered fixed-site reports, recent visual traffic witnessed by recovered flights, search progress, a mission plan, and settlement/maintenance markers. It begins with 10 Logistics and three reserve aircraft.
+- The strategic planner receives its own forces, own-base position/health, recovered reports, public rules, round, and targeting pressure. It does not receive player asset placements, player orders, player resources, or hidden world bounds. Search uses nine public geographic sectors across the central deployment area, skips sectors within 10 units of its own home, and prioritizes sectors near an 18-unit distance from its own base. It does not read the actual placed home-base coordinates or reconstruct the opposing layout from the seed.
+- Every round, the fighter chooses Protect home, Forward Patrol, feasible recon escort, or Ground Strike against a recovered confirmed site. Damage to the CPU base increases defense value. Recent witnessed air traffic influences patrol/escort value. After a recon loss, Medium and Hard shorten the next search mission to a 36-unit budget and consider escort; otherwise recon can use its normal 48-unit allowance. Escort still requires useful predicted coverage and feasible fighter recovery.
+- Routes compare a bounded set of direct/flank ingress alternatives, generated mission patterns, return fuel, and exposure to known SAMs, AAA, and radar. Easy considers a direct approach and seeded near-best choices. Medium compares three ingress alternatives and weighs known threats more strongly. Hard compares five alternatives, additional strike release directions, and stronger threat/escort preferences. There is no campaign lookahead, general graph-search pathfinder, or learned model in this first slice.
+- All difficulties share combat odds, sensors, costs, force sizes, fuel, and the 60-point base-targeting gate. Higher difficulty changes decisions, not aircraft strength or secret knowledge. Difficulty is selected for a new campaign and persists through reload.
+- CPU orders are stored before the player edits that round's orders. New campaign orders are created independently of player deployment; subsequent plans are generated on entry to the next Plan phase. Reopening a save preserves the stored plan. Private CPU radar/visual receipts support the same mission responsibility, pursuit, escort, and fighter posture rules without adding enemy sensor receipts to the player's contact list.
+- CPU recon observes fixed assets along executed movement and commits site reports only after recovery. Destroyed or unrecovered recon loses its provisional reports. Recovered flights also retain recent visually identified aircraft traffic; radar-only contacts do not reveal aircraft role. The planner uses those past observations rather than hidden current traffic or site health.
+- CPU Ground Strike can select the base, SAM, AAA, radar, or FOB from recovered reports. It physically reaches its stored release point within six units of that site, launches one strength-scaled payload, and uses the shared delayed-impact resolver. It does not voluntarily intercept air contacts or silently retarget. Player support sites, including FOBs, can now be damaged in ordinary campaigns, with the existing recovery/diversion/trapping rules applying.
+- Medium and Hard recon order irreversible recovery on visual fighter contact after collecting a site report or falling below 65 strength. Every tier orders recovery below 40 strength. The decision remains effective during an existing pursuit. Friendly recon still relies on the player's RTB command.
+- CPU round settlement and Adapt maintenance are each applied once. Income is currently +6 per completed round and +2 per newly recovered site report. This basic slice does not award CPU confirmed-kill income. Maintenance spends the shared prices in fixed fighter-then-recon order: replacement aircraft cost 4 Logistics and one reserve, formation repair costs 2 for up to 25 strength within aircraft capacity, and radar/SAM/AAA repair costs 2 for up to 25 health. A replacement restores the strength share of one aircraft, including 50 for two-aircraft recon. Remaining Logistics are saved.
+- New CPU defense construction, upgrade purchasing, FOB construction/staging, decoy purchasing, generalized recovered terrain/boundary knowledge, and deeper purchase/mission search remain planned. Existing enemy fixed assets remain the starting defense network. The larger design and staged expansion remain in `CPU_PLAY_PLAN.md`.
 
 ### Fixed assets
 
@@ -158,7 +172,9 @@ Direct fighter combat interrupts a fighter's recon pursuit. When combat or pursu
 
 ## Reconnaissance, Sensors, and Fog of War
 
-- The deterministic world is `28 × 36` map units. The player starts in one of four seeded central regions. A six-unit generic terrain apron hides the true boundary from the initial camera and terrain presentation.
+- The deterministic world is `28 × 36` map units. New campaigns sample the friendly territory center from legal hexes across a central area spanning x ±7.5 and z ±9. The enemy base is independently sampled from legal hexes 18–21 units from that territory center, with 4.5 units of world-edge clearance. This keeps the two opening regions separated and a direct fighter base strike within the 40-unit allowance even after legal player-base placement. A six-unit generic terrain apron hides the true boundary from the initial camera and terrain presentation.
+- Enemy AAA, SAM, radar, and decoy sites use seeded individual placements around their base, with at least 1.15 units between sites and at least .5 units of world-edge clearance. AAA lies 1.2–1.9 units from its base, SAM 1.8–3.2, radar 2–4, and decoy 2.5–4, so the starting weapons can cover the base without using identical offsets every game. Player asset sites remain manually selected during Deploy.
+- Layout generation is deterministic for a stored seed. New Campaign and campaign Reboot obtain fresh random seeds. Compatible saves keep their existing world, deployed sites, and committed CPU orders; loading does not reroll them. Tactical debug fixtures retain their legacy deterministic positions.
 - Planning and camera limits derive from recovered knowledge plus an exploration margin, not from hidden world bounds.
 - Friendly territory is initially known. Most other terrain is obscured by a continuous, feathered haze, while generic terrain remains faintly visible.
 - During execution, living friendly formations reveal terrain around their rendered positions; recon's live terrain reveal is larger than a fighter's. Recon mapping is accumulated from its executed route, not revealed at Commit.
@@ -216,6 +232,8 @@ Campaign score is displayed and accumulates from selected combat/intelligence ev
 
 - Ground Strike retains the internal `base-strike` mission ID for saved-game compatibility and adds `strikeTargetId`. Legacy strike orders without an explicit target remain loadable but must be retasked before launch. SAM ammunition derives from current-round launch history and resets without persisting a depleted rack into the next round.
 - Local storage key: `dead-reckoning-mvp-v27`. Listed older save keys are cleared by Reboot rather than migrated.
+- The menu starts before mounting the battlefield canvas. Continue resumes the current campaign; MENU pauses live execution in memory and returns to the title screen. Starting a new campaign chooses a fresh stored seed and replaces the current save only when Start is selected. Merely opening the menu or changing its difficulty choice does not change the existing campaign.
+- CPU state, difficulty, committed orders, recovered intelligence, maintenance, and finite reserves persist in the campaign save. Older compatible saves without CPU state receive a one-time fresh Medium CPU inventory and no inferred historical reports/losses; later reloads preserve that inventory. Invalid CPU records fall back through the existing invalid-save path.
 - A compatible save made during Execute restarts at Plan because an in-progress simulation is not serialized.
 - Save normalization accepts a structurally valid campaign roster, including the fixed three formations in new campaigns and older valid selected rosters. Round, intelligence, base damage, targeting pressure, economy, and campaign conclusion persist through reload. Invalid saves fall back to a fresh deployment draft.
 - Selecting a deterministic debug scenario immediately resets into that fixture. Reboot rebuilds the selected fixture or starts a fresh campaign draft.
@@ -247,8 +265,7 @@ Available fixtures:
 - Flight remains a fixed-speed planar tactical model with no lift, energy, altitude, or turn-radius simulation. Rendered banking and combat-local aircraft maneuvers are cosmetic; tactical translation and route-distance accumulation still pause during dogfights.
 - There are no dedicated strike aircraft, bombers, or UAVs. Existing fighters perform the Ground Strike mission against explicitly selected confirmed fixed assets.
 - Defense-cue fields do not change in the current resolver.
-- Enemy recon targeting pressure is a compact campaign model, not a general enemy intelligence database or dynamic targeting AI.
-- Friendly assets other than the main base cannot be attacked in ordinary campaign play; FOB disablement is exercised only by deterministic fixtures.
+- CPU planning is a bounded heuristic policy over recovered reports. General search, campaign lookahead, enemy construction/upgrades/FOB operations, and complete economy parity remain incomplete as described above. Difficulty ordering has deterministic scenario coverage but has not received a broad campaign balance pass or browser playtest.
 - Reinforcement, legacy service, rearm, readiness-restoration, runway-repair, and separate defense-repair helpers exist in code or tests but are not connected to the current UI flow. The Adapt actions listed above are authoritative.
 - Multiplayer start-placement utilities exist, but multiplayer is not enabled.
 - The README contains older and aspirational mechanics. This document takes precedence for current gameplay.
@@ -258,6 +275,14 @@ Available fixtures:
 This log keeps only current net changes. Superseded intermediate states belong in git history.
 
 ### 2026-11-07
+
+- Reconciled the CPU campaign build with the hosted placement flow for publication: deployment assets remain selectable and movable through package review, Adapt previews can be repositioned, and **Begin Planning** locks deployment. The publish branch preserves the CPU menu and difficulty selection alongside those placement changes.
+
+- Randomized new-campaign territory centers, independently sampled enemy bases, and individually placed enemy defenses/decoys. Enforced opening separation, edge clearance, site spacing, and direct base-strike reach. Broadened the CPU search prior using only its own position and public sectors. New Campaign and campaign Reboot now use fresh random seeds; existing saves and fixed debug layouts retain their positions.
+
+- Added a title menu with New Campaign, Easy/Medium/Hard selection, Continue, and an in-game MENU action that pauses execution. New campaigns use a fresh saved seed; difficulty and campaign progress persist. Corrected the prior deployment description and default placement help: the existing App already placed assets directly on legal taps, with review of the full package afterward.
+- Replaced ordinary scripted enemy flights with persistent CPU formations and stored round orders. Added recovered site/traffic memory, own-base defense, patrol, feasible recon escort, threat-scored direct/flank routes, intelligence-gated strikes on support sites and the base, and irreversible CPU recon RTB including during pursuit. Shared tactical sensing, fighter posture/responsibility, launch/impact, and fuel rules with CPU formations while keeping their receipts out of player contact projection. Fixed aircraft-count conversion for two-aircraft formations. Debug fixtures retain their explicit scripted behavior.
+- Added once-per-round CPU settlement and finite-budget Adapt maintenance at shared prices, plus save migration/default Medium behavior and validation. Added deterministic checks for knowledge isolation, adaptation, support strikes, private radar, recon loss/RTB, finite reserves, save/reload, menu markup, and recon-to-strike campaigns at all three difficulties. Construction, upgrades, FOB operations, and deeper lookahead remain incomplete.
 
 - Tightened Adapt into a content-sized dock with a map that fills the remaining height. Consolidated clicked-site status, health, defense details, based formations, and purchases into one selection surface instead of also opening a floating inspector. Main-airfield selection exposes available upgrades and identifies installed upgrades. Renamed **Need Attention** to **Repairs & Replacements** to reflect its repair/replacement-only queue, and removed the default airfield upgrade drawer until the player selects that field.
 
