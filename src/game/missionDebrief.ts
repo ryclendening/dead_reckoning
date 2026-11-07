@@ -42,6 +42,12 @@ export function missionOrderDebrief(match:MatchState,result:RoundResult):Mission
       const recovery=result.recoveryOutcomes.find(item=>item.formationId===squadron.id)
       outcome=recovery?.outcome==='recovered'||recovery?.outcome==='diverted'?'RECOVERED':recovery?.outcome==='trapped'?'COULD NOT LAUNCH':recovery?.outcome==='lost'?'LOST':'RECOVERY UNRESOLVED'
     }
+    if(squadron.role==='fighter'){
+      const reports=result.intelReports.filter(report=>report.observerId===squadron.id)
+      const recovered=reports.filter(report=>report.recovered).length,lost=reports.length-recovered
+      if(recovered)outcome+=` · ${recovered} INTEL REPORT${recovered===1?'':'S'} RECOVERED`
+      else if(lost)outcome+=` · ${lost} OBSERVATION${lost===1?'':'S'} LOST`
+    }
     const attrition=result.friendlyAttrition.find(item=>item.id===squadron.id)
     if(attrition?.destroyed)outcome=`FORMATION LOST · ${outcome}`
     return {id:squadron.id,callsign:squadron.callsign,purpose,result:outcome}

@@ -70,7 +70,7 @@ describe('CPU campaign planning', () => {
     for (const difficulty of ['easy', 'medium', 'hard'] as const) for (let seed = 1; seed <= 12; seed++) {
       const initial = cpuPlanningView(createMatch(seed, difficulty))!
       for (const health of [100, 30]) for (const order of planCpu({ ...initial, homeHealth: health }).orders) {
-        expect(missionDistance(order.route, initial.home)).toBeLessThanOrEqual(order.role === 'fighter' ? 40.001 : 48.001)
+        expect(missionDistance(order.route, initial.home)).toBeLessThanOrEqual(order.role === 'fighter' ? 40.001 : 64.001)
       }
     }
   })
@@ -86,6 +86,20 @@ describe('CPU campaign planning', () => {
 })
 
 describe('CPU execution and persistence', () => {
+  it('commits a recovered fighter sighting to CPU site knowledge and base exposure', () => {
+    const initial=createMatch(7301,'hard'),home=initial.enemyAssets.find(asset=>asset.kind==='base')!.position
+    const playerBase=initial.playerAssets.find(asset=>asset.kind==='base')!
+    const position:[number,number]=[home[0]+(home[0]>=0?-6:6),home[1]]
+    const route:[number,number][]=[home,position,home]
+    const orders=initial.cpu!.plan!.orders.map(order=>order.role==='fighter'?{...order,mission:'transit' as const,route,routeIngress:route,sortieOrdered:true}:{...order,sortieOrdered:false})
+    const state={...initial,baseExposure:26,playerAssets:[{...playerBase,position}],squadrons:initial.squadrons.map(squadron=>({...squadron,sortieOrdered:false})),cpu:{...initial.cpu!,plan:{...initial.cpu!.plan!,orders}}}
+    const result=resolveRound(state),settled=applyRound(state,result)
+    expect(result.baseDamage).toBe(0)
+    expect(result.baseExposureDelta).toBe(40)
+    expect(result.cpuReport?.recoveredIds).toContain('red-fighter')
+    expect(result.cpuReport?.sites).toContainEqual(expect.objectContaining({id:playerBase.id,position}))
+    expect(settled.cpu?.sites).toContainEqual(expect.objectContaining({id:playerBase.id,position}))
+  })
   it('commits site reports only from surviving recon and preserves losses through settlement and reload', () => {
     const initial = createMatch(), result = resolveRound(initial), next = applyRound(initial, result)
     expect(result.cpuReport).toBeDefined()

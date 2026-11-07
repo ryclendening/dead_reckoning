@@ -1,5 +1,5 @@
 import { BASE_STRIKE_RANGE, ENEMY_TARGETING_THRESHOLD, isCampaign } from '../campaign'
-import { EXECUTION_SECONDS, MAX_FLIGHT_DISTANCE, missionDistance, routeDistance } from '../flightRules'
+import { FLIGHT_SPEED, MAX_FLIGHT_DISTANCE, missionDistance, routeDistance } from '../flightRules'
 import { estimateEscortCoverage } from '../missionResponsibility'
 import { generateRouteTemplate } from '../routeTemplates'
 import type { Asset, MatchState, Point, Squadron } from '../types'
@@ -46,7 +46,7 @@ export function cpuRouteRisk(route: Point[], role: Squadron['role'], sites: CpuS
         if (distance(p, site.position) <= radius) inside += length / samples
       }
     }
-    const seconds = inside / (MAX_FLIGHT_DISTANCE[role] / EXECUTION_SECONDS)
+    const seconds = inside / FLIGHT_SPEED[role]
     risk += site.kind === 'sam' ? (seconds > 0 ? Math.min(3, Math.ceil(seconds / 3)) * .64 * 38 : 0)
       : site.kind === 'aaa' ? (seconds > 0 ? .52 * 13 : 0) : seconds * 1.5
   }
@@ -97,7 +97,7 @@ export function planCpu(view: CpuPlanningView): CpuPlan {
   const search = knownBase && view.exposure < ENEMY_TARGETING_THRESHOLD ? knownBase.position : sectors[cpu.searchIndex % sectors.length]
   const recentTraffic = cpu.traffic.filter(contact => round - contact.observedRound <= 2)
   const wantsEscort = cpu.difficulty !== 'easy' && (cpu.lastReconLost || recentTraffic.some(contact => contact.role === 'fighter'))
-  const reconOrder = bestOrder(view, recon, 'search-area', search, wantsEscort ? 36 : 48)
+  const reconOrder = bestOrder(view, recon, 'search-area', search, wantsEscort ? 36 : MAX_FLIGHT_DISTANCE.recon)
   const homeThreat = recentTraffic.filter(contact => distance(contact.position, home) < 9).length
   const defend = bestOrder(view, fighter, 'defensive-cap', home)
   const toward: Point = [home[0] * .5, home[1] * .5]
@@ -107,7 +107,7 @@ export function planCpu(view: CpuPlanningView): CpuPlan {
     { objective: 'patrol', score: 34 + recentTraffic.length * 3, reason: recentTraffic.length ? 'Patrol an approach witnessed on a recovered sortie.' : 'Patrol the central approach while recon searches.', order: patrol },
   ]
   if (reconOrder.sortieOrdered && fighter.aircraft > 0) {
-    const coverage = estimateEscortCoverage({ escortRoute: [home], protectedRoute: [...reconOrder.route, home], escortSpeed: 40 / 22, protectedSpeed: 48 / 22, recoveryPoint: home, maxDistance: 40 })
+    const coverage = estimateEscortCoverage({ escortRoute: [home], protectedRoute: [...reconOrder.route, home], escortSpeed: FLIGHT_SPEED.fighter, protectedSpeed: FLIGHT_SPEED.recon, recoveryPoint: home, maxDistance: MAX_FLIGHT_DISTANCE.fighter })
     if (coverage.recoveryFeasible && coverage.percent >= 30) candidates.push({ objective: 'escort', score: profile.escortValue + (cpu.lastReconLost ? 25 : 0) + (recentTraffic.some(contact => contact.role === 'fighter') ? 15 : 0),
       reason: cpu.lastReconLost ? 'Previous recon failed to return; cover the next collection attempt.' : 'Keep fighter cover near the collection flight.',
       order: { ...fighter, mission: 'defensive-cap', route: reconOrder.route, routeIngress: reconOrder.routeIngress, protectedTargetId: recon.id, protectedPoint: undefined, strikeTargetId: undefined, plannedRecoveryFieldId: 'e-base', sortieOrdered: true } })

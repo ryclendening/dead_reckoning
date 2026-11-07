@@ -30,7 +30,7 @@ Keep the current six-round campaign and starting forces as the initial balance b
 | Area | Current behavior at the baseline | Required change |
 | --- | --- | --- |
 | Enemy forces | `engine.ts:enemyFlights` regenerates full formations each round. | Persist the CPU roster, strength, aircraft, reserves, and operating fields. |
-| Intelligence | Enemy recon observes friendly assets, but only recovered base/decoy observations affect persistent targeting pressure. | Maintain the CPU's own recovered mapping, site reports, uncertainty, and observed traffic history. |
+| Intelligence | Enemy recon and fighters observe friendly fixed assets; recovered base/decoy observations affect persistent targeting pressure. | Maintain the CPU's own recovered mapping, site reports, uncertainty, and observed traffic history. |
 | Missions and sensors | Enemy routes are scripted. Voluntary target selection, ground-radar receipts, escort, and several fuel/recovery checks are friendly-specific. | Share gameplay rules by side while retaining separate player visibility projections. |
 | Ground strike | The enemy can launch only against the home base when exposure reaches 60. | Give CPU strike orders an explicit confirmed target and release point, including defense and FOB targets. |
 | Spending | Economy commands and placement validators operate on the player's campaign state. | Expose the same quotes and validation against an explicit owning side; add a CPU ledger and settlement. |
@@ -85,7 +85,7 @@ Save migration must initialize an absent CPU record once from a documented legac
 Give the planner a sanitized `CpuPlanningView` containing its own state, public rules, authorized observations, and derived beliefs. It must not receive unrestricted `MatchState`, player orders, selected targets, purchase intent, hidden current positions, hidden site health, the player's resource ledger, or unrecovered map bounds.
 
 - Start with a search distribution over scenario-permitted opposing regions. Do not read the real placed base coordinates or reverse world generation from its seed. The planner seed is for reproducible choices only.
-- Recon collects site positions/types provisionally along its actual flight path. Recovery commits those reports for next-round targeting. A lost recon does not reveal the sites or exact location/cause of its loss to the campaign planner.
+- Recon and fighters collect site positions/types provisionally along their actual flight paths. Recovery commits those reports for next-round targeting. A lost flight does not reveal the sites or exact location/cause of its loss to the campaign planner.
 - A missing flight is known to be missing. Its assigned corridor can become a coarse uncertainty/risk clue; the planner cannot use its hidden death position to locate a SAM.
 - Current visual and radar contacts authorize tactical reactions. Radar-only contacts retain unknown role. Contact loss stops exact live tracking; old traffic becomes a distribution over sectors, not an intercept coordinate.
 - An observed weapon launch can inform a local threat alert or uncertain threat region. It does not independently create a permanently confirmed strike target under the current reconnaissance rules.
@@ -121,7 +121,7 @@ Use a bounded graph search over sampled hex centers for ingress alternatives, th
 
 Fuel, aircraft availability, launch-field operability, recovery capacity, intelligence authorization, waypoint limits, and mission rules are hard feasibility checks. Threat exposure and mission payoff are scored tradeoffs. A* or bounded alternative-route search should keep distance and accumulated risk costs nonnegative; discard routes that fail the canonical route/recovery validator.
 
-Respect the current fighter/recon mission allowances of 40/48, fixed speeds, mission patterns, five optional ingress waypoints, and explicit recovery reserve. Simplifying a searched path must recheck threat exposure and feasibility. Use the CPU's known planning envelope; execution still encounters unknown real world edges normally.
+Respect the current fighter/recon mission allowances of 40/64, fixed speeds, mission patterns, five optional ingress waypoints, and explicit recovery reserve. Simplifying a searched path must recheck threat exposure and feasibility. Use the CPU's known planning envelope; execution still encounters unknown real world edges normally.
 
 Estimate known SAM risk using range, expected time in range, three missiles, three-second cooldown, and observed ammunition uncertainty. Estimate AAA with its one attack per formation per round. Treat radar as detection/interception risk rather than direct damage. Use observed fighter traffic as uncertain future coverage, never as access to a hidden route.
 

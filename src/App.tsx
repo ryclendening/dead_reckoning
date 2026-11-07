@@ -14,7 +14,7 @@ import { freshCampaignSeed } from './game/campaignLayout'
 import { campaignOutcome, confirmedStrikeTarget, groundStrikeTargets, isCampaign } from './game/campaign'
 import { placeInitialAsset, validateInitialPlacement } from './game/campaignPlacement'
 import { confirmCampaignSetup, validateCampaignAllocation, SETUP_REQUIRED_ASSET_IDS } from './game/campaignSetup'
-import { applyRound, createRoundSimulation, EXECUTION_SECONDS, MAX_FLIGHT_DISTANCE, missionDistance, resolveRound, TICK_SECONDS, type RoundSimulationController } from './game/engine'
+import { applyRound, createRoundSimulation, EXECUTION_SECONDS, FLIGHT_SPEED, MAX_FLIGHT_DISTANCE, missionDistance, resolveRound, TICK_SECONDS, type RoundSimulationController } from './game/engine'
 import { beginNextRound, economyCommandForQuote, economyQuotesFor, executeEconomyCommand, openAdaptPhase, PROCUREMENT_CATALOG, validateAssetPlacement } from './game/economy'
 import { snapToHex } from './game/hex'
 import { deriveKnownWorldModel } from './game/knownWorld'
@@ -227,7 +227,7 @@ export default function App(){
     const targetRecovery=state.playerAssets.find(asset=>asset.id===target.plannedRecoveryFieldId)??targetLaunch
     if(!launch||!escortRecovery||!targetLaunch||!targetRecovery)return {percent:0,fullyCovered:false,recoveryFeasible:false}
     const targetRoute=target.route.at(-1)&&Math.hypot(target.route.at(-1)![0]-targetRecovery.position[0],target.route.at(-1)![1]-targetRecovery.position[1])<.03?target.route:[...target.route,[...targetRecovery.position] as Point]
-    return estimateEscortCoverage({escortRoute:[launch.position],protectedRoute:targetRoute,escortSpeed:MAX_FLIGHT_DISTANCE.fighter/EXECUTION_SECONDS,protectedSpeed:MAX_FLIGHT_DISTANCE[target.role]/EXECUTION_SECONDS,recoveryPoint:escortRecovery.position,maxDistance:MAX_FLIGHT_DISTANCE.fighter})
+    return estimateEscortCoverage({escortRoute:[launch.position],protectedRoute:targetRoute,escortSpeed:FLIGHT_SPEED.fighter,protectedSpeed:FLIGHT_SPEED[target.role],recoveryPoint:escortRecovery.position,maxDistance:MAX_FLIGHT_DISTANCE.fighter})
   }
   const confirmPlanningOrder=(squadron:Squadron,state:MatchState=match):boolean=>{
     const view=deriveRecoveryPlanningView(state,squadron.id,squadron.route,MAX_FLIGHT_DISTANCE[squadron.role])
