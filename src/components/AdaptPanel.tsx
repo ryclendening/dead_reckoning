@@ -67,7 +67,7 @@ export function AdaptPanel({ match, selectedTarget, onSelectTarget, onCloseTarge
     </div> : null}
     {procurementMode === 'placing' ? <div className="adapt-drawer adapt-placement-drawer" aria-label={`Place ${procurementKind ?? 'asset'}`}>
       <header className="adapt-build-heading"><b><MapPin/> BUILD {procurementKind?.toUpperCase() ?? 'ASSET'} · {procurementQuote?.cost ?? 0} L</b><button type="button" aria-label="Cancel placement" onClick={() => onProcurementMode('closed')}><X/></button></header>
-      <p className="procure-instruction">{hasPlacementPreview ? 'Confirm this hex to purchase and place the asset.' : 'Tap a highlighted hex to preview its site.'}</p>
+      <p className="procure-instruction">{hasPlacementPreview ? 'Tap another highlighted hex to move this site, or confirm the build.' : 'Tap a highlighted hex to choose a site. You can move it before confirming.'}</p>
       {hasPlacementPreview ? <div className="campaign-placement-confirm"><button type="button" onClick={onCancelPlacement}><X/> CANCEL</button><button type="button" className="confirm" onClick={onConfirmPlacement}><Check/> CONFIRM BUILD</button></div> : null}
     </div> : null}
 
