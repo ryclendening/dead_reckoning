@@ -63,7 +63,7 @@ describe('mission planning shelf', () => {
       step="mission" onClose={noop} reviewedIds={new Set()} reviewedCount={0} totalCount={4}
     />)
 
-    expect(markup).toContain('CHOOSE YOUR TASK')
+    expect(markup).toContain('CHOOSE TASK')
     expect(markup).not.toContain('BUILD ROUTE')
     expect(markup).toContain('FORWARD PATROL')
     expect(markup).not.toContain('CLEAR ROUTE')
@@ -81,10 +81,11 @@ describe('mission planning shelf', () => {
       onRosterMode={noop} onMission={noop} onPickProtectTarget={noop} onProtectFlight={noop} onClear={noop} onCommit={noop}
       step="route" onClose={noop} reviewedIds={new Set([match.squadrons.find(item=>item.role==='recon')!.id])} reviewedCount={1} totalCount={4} selectingProtectTarget
     />)
-    expect(markup).toContain('Tap a friendly site or map point once to confirm area defense. A checked flight pip selects an escort and shows its route.')
-    expect(markup).toContain('DEFEND SITE OR POINT')
-    expect(markup).toContain('ESCORT A FLIGHT')
-    expect(markup).toContain('RAVEN 3 · ORDER READY')
+    expect(markup).toContain('Tap a friendly site or map point.')
+    expect(markup).toContain('DEFEND AREA')
+    expect(markup).toContain('ESCORT FLIGHT')
+    expect(markup).toContain('RAVEN 3')
+    expect(markup).not.toContain('GHOST 4')
     expect(markup).not.toContain('NEXT AIRCRAFT')
     expect(markup).not.toContain('class="shelf-primary"')
     expect(markup).not.toContain('AREA SIZE')
@@ -116,9 +117,9 @@ describe('mission planning shelf', () => {
     />)
 
     expect(markup).toContain('SEARCH AREA')
-    expect(markup).toContain('BUILD YOUR ROUTE')
+    expect(markup).toContain('BUILD ROUTE')
     expect(markup).not.toContain('NEXT AIRCRAFT')
-    expect(markup).not.toContain('CHOOSE YOUR TASK')
+    expect(markup).not.toContain('CHOOSE TASK')
     expect(markup).not.toContain('DEEP PROBE')
     expect(markup).not.toContain('CUSTOM RECON')
   })

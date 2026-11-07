@@ -3,7 +3,7 @@ import { validateAssetPlacement } from '../sideEconomy'
 import { formationField, isOperationalAirfield } from '../forwardBasing'
 import type { ConstructibleAssetKind, Point } from '../types'
 import type { CpuPlanningView } from './planningView'
-import { distance } from './routes'
+import { distance, cpuRouteRisk } from './routes'
 
 export function observedThreat(view: CpuPlanningView): number {
   const recent=view.cpu.traffic.filter(t=>view.round-t.observedRound<=2&&distance(t.position,view.home)<12)
@@ -37,12 +37,14 @@ export function defenseCoverage(view: CpuPlanningView, point: Point, kind: 'sam'
 export function legalPlacements(view: CpuPlanningView, kind: ConstructibleAssetKind): Point[] {
   // Sample only known regions. Bounds of the actual world are deliberately unavailable.
   const centers=[view.home,...(view.cpu.mappedAreas??[]),...view.assets.filter(a=>a.kind==='fob'&&isOperationalAirfield(a)).map(a=>a.position)]
-  const candidates=new Map<string,Point>()
+  const candidates=new Map<string,Point>(),visited=new Set<string>()
   for(const center of centers) {
     const row=Math.round(center[1]/1.17), col=Math.round(center[0]/(Math.sqrt(3)*.78)-row/2)
     for(let q=col-4;q<=col+4;q++)for(let r=row-4;r<=row+4;r++) {
       const p=axialToPoint(q,r),key=p.join(',')
-      if(!candidates.has(key)&&validateAssetPlacement(view.context,kind,p).valid)candidates.set(key,p)
+      if(visited.has(key))continue
+      visited.add(key)
+      if(validateAssetPlacement(view.context,kind,p).valid)candidates.set(key,p)
     }
   }
   return [...candidates.values()].sort((a,b)=>a[0]-b[0]||a[1]-b[1])
@@ -52,12 +54,15 @@ export function forwardValue(view: CpuPlanningView, point: Point): { gain: numbe
   if(view.round>=5)return undefined // Adapt r4 -> transit r5 -> operation r6 is last useful build.
   const fighter=view.cpu.formations.find(f=>f.role==='fighter')!, field=formationField(view.assets,fighter.id)
   if(!field||!isOperationalAirfield(field)||fighter.aircraft<=0||distance(field.position,point)>40||distance(view.home,point)>40)return undefined
-  const targets=view.cpu.sites.filter(s=>s.health>0&&s.kind==='base').map(s=>({position:s.position,name:s.id}))
+  const targets=view.cpu.sites.filter(s=>s.health>0&&s.kind==='base').map(s=>({position:s.position,name:s.id,health:s.health}))
   if(!targets.length)return undefined // No infrastructure justified by an unnamed hypothetical target.
   let best:ReturnType<typeof forwardValue>
   for(const target of targets) {
     const current=Math.max(0,distance(field.position,target.position)-5.9)*2, next=Math.max(0,distance(point,target.position)-5.9)*2
-    const gain=current>40&&next<=40?1:current<=40&&next<current-8?Math.min(.7,(current-next)/40):0
+    const release=(from:Point):Point=>{const d=Math.max(.001,distance(from,target.position)),t=Math.max(0,d-5.9)/d;return [from[0]+(target.position[0]-from[0])*t,from[1]+(target.position[1]-from[1])*t]}
+    const riskBefore=cpuRouteRisk([field.position,release(field.position),field.position],'fighter',view.cpu.sites),riskAfter=cpuRouteRisk([point,release(point),point],'fighter',view.cpu.sites)
+    const effect=Math.min(1,60*(fighter.strength??100)/100/Math.max(1,target.health))
+    const gain=current>40&&next<=40?effect:next<=40&&riskBefore-riskAfter>20?effect*(riskBefore-riskAfter)/100:0
     if(gain>0&&(!best||gain>best.gain))best={gain,target:target.position,name:target.name}
   }
   return best

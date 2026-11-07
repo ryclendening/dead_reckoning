@@ -87,6 +87,7 @@ describe('CPU v2 behavioral acceptance',()=>{
   })
   it('builds, transits and uses a FOB to enable a previously unreachable strike',()=>{
     let s=setup([0,0],[33,0]);s.round=1;s.cpu!.mappedAreas=[[9,0],[10,0]]
+    expect(planCpu(cpuPlanningView(s)!).orders[0].strikeTargetId).toBeUndefined()
     s=maintainCpu(s)
     const fob=s.enemyAssets.find(a=>a.kind==='fob')
     expect(fob).toBeDefined()
@@ -99,5 +100,48 @@ describe('CPU v2 behavioral acceptance',()=>{
     expect(s.cpu!.plan!.orders[0].route[0]).toEqual(fob!.position)
     expect(s.cpu!.plan!.orders[0].strikeTargetId).toBe('p-base')
     expect(resolveRound(s).baseDamage).toBe(60)
+  })
+})
+
+describe('commitment and economic isolation',()=>{
+  it('retains close feasible intent and switches for a substantial achievable improvement',async()=>{
+    const {choosePackage}=await import('./strategy'),{emptyEffects}=await import('./actions')
+    const v=cpuPlanningView(setup())!;v.cpu.intent='protect-base';v.cpu.sites=[]
+    const save={id:'save',summary:'Save',orders:[],purchases:[],predicted:emptyEffects(),checks:[]}
+    const defend={...save,id:'defend',summary:'Protect home',predicted:{...emptyEffects(),ownBaseRiskReduced:.49}}
+    const attack={...save,id:'attack',summary:'Strike base',predicted:{...emptyEffects(),baseDamage:.5}}
+    expect(choosePackage(v,[save,defend,attack],[],0).intent).toBe('protect-base')
+    attack.predicted.baseDamage=.9
+    const switched=choosePackage(v,[save,defend,attack],[],0)
+    expect(switched.intent).toBe('strike-base')
+    expect(switched.trace.scoreDelta).toBeGreaterThan(.3)
+    expect(choosePackage(v,[save,attack],[],0).intent).toBe('strike-base')
+  })
+  it('evaluation never spends resources or mutates the supplied inventory',async()=>{
+    const {planPurchases}=await import('./purchases'),s=setup(),v=cpuPlanningView(s)!,before=structuredClone(v)
+    const a=planPurchases(v),b=planPurchases(v)
+    expect(v).toEqual(before)
+    expect(a).toEqual(b)
+    expect(s.cpu!.logistics).toBe(16)
+    expect(s.cpu!.spending).toEqual([])
+  })
+})
+
+describe('capability and evidence boundaries',()=>{
+  it('does not treat a distant fighter sector as evidence of a home-base approach',()=>{
+    const s=setup();s.cpu!.sites=[]
+    s.cpu!.traffic=[{position:[24,0],role:'fighter',observedRound:2,source:'visual',bearing:0,sector:0}]
+    expect(maintainCpu(s).cpu!.spending).toEqual([])
+  })
+  it('repairs a disabled owned FOB when doing so restores an executable strike',()=>{
+    const s=setup(),position:Point=[8,0]
+    s.enemyAssets.push({...s.enemyAssets[0],id:'e-fob-1',kind:'fob',position,health:0,operational:false,capacity:2,basedFormationIds:['red-fighter']})
+    s.cpu!.formations[0].status='trapped'
+    const adapted=maintainCpu(s)
+    expect(adapted.enemyAssets.find(a=>a.id==='e-fob-1')!.operational).toBe(true)
+    expect(adapted.cpu!.spending.some(p=>p.action==='repair-fob')).toBe(true)
+    const next=beginNextRound(adapted)
+    expect(next.cpu!.plan!.orders[0].route[0]).toEqual(position)
+    expect(next.cpu!.plan!.orders[0].strikeTargetId).toBe('p-base')
   })
 })

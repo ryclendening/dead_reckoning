@@ -238,3 +238,18 @@ describe('CPU execution and persistence', () => {
     expect(state.cpu!.sites.some(site => site.id === 'p-base')).toBe(true)
   })
 })
+
+describe('CPU v1 save migration',()=>{
+  it('preserves an existing committed v1 order and upgrades only at the next planning boundary',async()=>{
+    const legacy=await import('../../../Evaluation/CpuPlannerV2/baseline/legacyPlanner.fixture')
+    const initial=createMatch(),home=initial.enemyAssets.find(a=>a.kind==='base')!.position
+    const state={...initial,squadrons:initial.squadrons.map(s=>({...s,sortieOrdered:false})),cpu:legacy.createCpuState(home,'hard',7301)}
+    state.cpu.plan=legacy.planCpu(legacy.cpuPlanningView(state)!)
+    const loaded=normalizeMatch(JSON.parse(JSON.stringify(state)))
+    expect(loaded.cpu!.version).toBe(1)
+    expect(loaded.cpu!.plan).toEqual(state.cpu.plan)
+    const next=beginNextRound(openAdaptPhase(applyRound(loaded,resolveRound(loaded))))
+    expect(next.cpu!.version).toBe(2)
+    expect(next.cpu!.plan!.round).toBe(2)
+  })
+})

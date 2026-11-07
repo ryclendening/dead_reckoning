@@ -1,12 +1,14 @@
 import { describe, it, expect } from 'vitest'
 import { writeFileSync } from 'node:fs'
-import { createMatch } from '../../src/game/data'
+import { createCampaignDraft } from '../../src/game/data'
 import { applyRound, resolveRound } from '../../src/game/engine'
 import { applyRound as applyV1, resolveRound as resolveV1 } from './baseline/legacyEngine.fixture'
 import { planCpu as planV1, cpuPlanningView as viewV1 } from './baseline/legacyPlanner.fixture'
 import { maintainCpu as maintainV1 } from './baseline/legacySettlement.fixture'
 import { planCpu, cpuPlanningView } from '../../src/game/cpu/planner'
+import { defenseCoverage } from '../../src/game/cpu/placement'
 import { maintainCpu } from '../../src/game/cpu/settlement'
+import { confirmCampaignSetup } from '../../src/game/campaignSetup'
 import { campaignOutcome } from '../../src/game/campaign'
 import { deriveRecoveryPlanningView, formationField, normalizeFormationBasing, validateRecoveryPackage } from '../../src/game/forwardBasing'
 import { generateRouteTemplate, validateGroundStrikeOrder } from '../../src/game/routeTemplates'
@@ -70,10 +72,11 @@ function playerAdapt(s:MatchState,policy:Policy):MatchState {
   }
   return s
 }
-interface Row {version:'v1'|'v2';difficulty:CpuDifficulty;seed:number;split:string;policy:Policy;cpuWin:boolean;rounds:number;playerBaseDamage:number;cpuBaseDamage:number;intel:number;sams:number;fobs:number;fobUsed:number;recovered:number;sorties:number;logistics:number;spent:number;illegal:number;expansions:number;decisions:string[]}
+interface Row {version:'v1'|'v2';difficulty:CpuDifficulty;seed:number;split:string;policy:Policy;cpuWin:boolean;rounds:number;playerBaseDamage:number;cpuBaseDamage:number;intel:number;sams:number;fobs:number;fobUsed:number;recovered:number;sorties:number;logistics:number;spent:number;illegal:number;expansions:number;packages:number;samCoverageGain:number;fobStrikeOrders:number;baseSeen:boolean;exposure:number;playerSams:number;playerFobs:number;decisions:string[]}
 export function campaign(version:Row['version'],difficulty:CpuDifficulty,seed:number,policy:Policy):Row {
-  let s=createMatch(seed,difficulty)
-  const row:Row={version,difficulty,seed,split:seed<100?'development':'holdout',policy,cpuWin:false,rounds:0,playerBaseDamage:0,cpuBaseDamage:0,intel:0,sams:0,fobs:0,fobUsed:0,recovered:0,sorties:0,logistics:0,spent:0,illegal:0,expansions:0,decisions:[]}
+  const draft=createCampaignDraft(seed,difficulty)
+  let s=confirmCampaignSetup({...draft,setup:{...draft.setup!,stage:'review',placedAssetIds:[...draft.setup!.selectedAssetIds]}})
+  const row:Row={version,difficulty,seed,split:seed<100?'development':'holdout',policy,cpuWin:false,rounds:0,playerBaseDamage:0,cpuBaseDamage:0,intel:0,sams:0,fobs:0,fobUsed:0,recovered:0,sorties:0,logistics:0,spent:0,illegal:0,expansions:0,packages:0,samCoverageGain:0,fobStrikeOrders:0,baseSeen:false,exposure:6,playerSams:0,playerFobs:0,decisions:[]}
   for(let round=1;round<=6;round++) {
     s={...s,round,phase:'plan',lastResult:undefined,playerAssets:normalizeFormationBasing(s.squadrons,s.playerAssets)}
     const plan=version==='v2'?planCpu(cpuPlanningView(s)!):planV1(viewV1(s)!)
@@ -85,22 +88,29 @@ export function campaign(version:Row['version'],difficulty:CpuDifficulty,seed:nu
     }
     row.decisions.push(plan.intent??plan.objective)
     row.expansions+=plan.trace?.work.routeExpansions??0
+    row.packages+=plan.trace?.work.packages??0
+    row.fobStrikeOrders+=plan.orders.filter(o=>o.sortieOrdered!==false&&o.mission==='base-strike'&&formationField(s.enemyAssets,o.id)?.kind==='fob').length
     const ids=new Set(plan.orders.filter(o=>o.sortieOrdered!==false).map(o=>o.id))
     if(!validateRecoveryPackage({playerAssets:s.enemyAssets,squadrons:plan.orders},MAX_FLIGHT_DISTANCE,ids).valid)row.illegal++
     s=playerOrders(s,policy)
     const result=(version==='v2'?resolveRound:resolveV1)(s)
     row.sorties+=ids.size;row.recovered+=result.cpuReport?.recoveredIds.length??0
     s=(version==='v2'?applyRound:applyV1)(s,result)
-    row.fobUsed+=result.cpuReport?.recoveryOutcomes?.filter(o=>o.actualFieldId?.startsWith('e-fob')).length??0
+    row.fobUsed+=result.cpuReport?.recoveryOutcomes?.filter(o=>o.actualFieldId?.startsWith('e-fob')&&plan.orders.find(f=>f.id===o.formationId)?.sortieOrdered!==false&&['recovered','diverted'].includes(o.outcome)).length??0
     row.rounds=round
     if(campaignOutcome(s))break
     s={...s,phase:'adapt'}
+    const placementView=cpuPlanningView(s)!,priorAssetIds=new Set(s.enemyAssets.map(a=>a.id))
     s=(version==='v2'?maintainCpu:maintainV1)(s)
+    row.packages+=s.cpu!.adaptTrace?.work.packages??0
+    row.expansions+=s.cpu!.adaptTrace?.work.routeExpansions??0
+    for(const a of s.enemyAssets.filter(a=>a.kind==='sam'&&!priorAssetIds.has(a.id))){row.samCoverageGain+=defenseCoverage(placementView,a.position,'sam');placementView.assets.push(a)}
     s=playerAdapt(s,policy)
   }
   row.cpuWin=campaignOutcome(s)!=='enemy-base-destroyed'
   row.playerBaseDamage=100-s.playerBaseHealth;row.cpuBaseDamage=100-s.enemyBaseHealth;row.intel=s.cpu!.sites.length
   row.sams=s.enemyAssets.filter(a=>a.kind==='sam').length-1;row.fobs=s.enemyAssets.filter(a=>a.kind==='fob').length
+  row.baseSeen=s.cpu!.sites.some(a=>a.kind==='base');row.exposure=s.baseExposure;row.playerSams=s.playerAssets.filter(a=>a.kind==='sam').length;row.playerFobs=s.playerAssets.filter(a=>a.kind==='fob').length
   row.logistics=s.cpu!.logistics;row.spent=s.cpu!.spending.reduce((n,e)=>n+e.cost,0)
   expect(row.logistics).toBeGreaterThanOrEqual(0)
   return row
@@ -111,6 +121,8 @@ describe('paired campaign evaluation',()=>{
     const rows:Row[]=[],seeds=full?[3,11,29,47,71,89,103,127,151,173,197,229]:[3,103]
     for(const difficulty of full?['easy','medium','hard'] as const:['medium'] as const)for(const seed of seeds)for(const policy of policies)for(const version of ['v1','v2'] as const)rows.push(campaign(version,difficulty,seed,policy))
     expect(rows.filter(r=>r.version==='v2').every(r=>r.illegal===0)).toBe(true)
+    const replay=campaign('v2','medium',3,'direct-rush')
+    expect(replay).toEqual(rows.find(r=>r.version==='v2'&&r.difficulty==='medium'&&r.seed===3&&r.policy==='direct-rush'))
     if(full)writeFileSync('Evaluation/CpuPlannerV2/results.json',JSON.stringify({baseline:'d8850a0',seeds,rows},null,2)+'\n')
   },600000)
 })

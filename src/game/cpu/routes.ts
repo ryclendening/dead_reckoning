@@ -1,17 +1,17 @@
 import { BASE_STRIKE_RANGE } from '../campaign'
 import { FLIGHT_SPEED, MAX_FLIGHT_DISTANCE, routeDistance } from '../flightRules'
 import { deriveRecoveryPlanningView, formationField, isOperationalAirfield } from '../forwardBasing'
-import { generateRouteTemplate } from '../routeTemplates'
+import { generateRouteTemplate, validateStrikeGeometry } from '../routeTemplates'
 import { axialToPoint, snapToHex } from '../hex'
 import type { Point, Squadron } from '../types'
 import type { CpuPlanningView } from './planningView'
 import type { CpuDifficulty, CpuSiteReport } from './types'
 export const distance = (a: Point, b: Point) => Math.hypot(a[0]-b[0], a[1]-b[1])
 export const CPU_PROFILES = {
-  easy: { offsets: [0, 3], releases: [0], expansions: 0, sectors: 2, purchases: 1, riskWeight: .85 },
-  medium: { offsets: [0, 4, -4], releases: [0, .7, -.7, 1.3, -1.3], expansions: 180, sectors: 4, purchases: 2, riskWeight: 1 },
-  hard: { offsets: [0, 4, -4, 7, -7], releases: [0, .5, -.5, 1, -1, 1.6, -1.6, 2.2, -2.2], expansions: 420, sectors: 6, purchases: 2, riskWeight: 1.1 },
-} satisfies Record<CpuDifficulty, { offsets: number[]; releases: number[]; expansions: number; sectors: number; purchases: number; riskWeight: number }>
+  easy: { offsets: [0, 3], releases: [0], expansions: 0, sectors: 2, purchases: 1 },
+  medium: { offsets: [0, 4, -4], releases: [0, .7, -.7, 1.3, -1.3], expansions: 180, sectors: 4, purchases: 2 },
+  hard: { offsets: [0, 4, -4, 7, -7], releases: [0, .5, -.5, 1, -1, 1.6, -1.6, 2.2, -2.2], expansions: 420, sectors: 6, purchases: 2 },
+} satisfies Record<CpuDifficulty, { offsets: number[]; releases: number[]; expansions: number; sectors: number; purchases: number }>
 /** Expected damage integrated along every segment, including the recovery reserve. */
 export function cpuRouteRisk(route: Point[], role: Squadron['role'], sites: CpuSiteReport[]): number {
   let risk = 0
@@ -93,12 +93,21 @@ export function missionOrders(view: CpuPlanningView, formation: Squadron, missio
 }
 export function orderRisk(view: CpuPlanningView, order: Squadron, sites=view.cpu.sites) {
   const recovery=view.assets.find(a=>a.id===order.plannedRecoveryFieldId)
-  return order.sortieOrdered===false?0:cpuRouteRisk([...order.route,recovery?.position??view.home],order.role,sites)
+  if(order.sortieOrdered===false)return 0
+  const route=[...order.route,recovery?.position??view.home]
+  const sectors=[...new Map(view.cpu.traffic.filter(t=>t.role==='fighter'&&view.round-t.observedRound<=2).map(t=>[t.position.join(','),t])).values()]
+  let airRisk=0
+  for(const sector of sectors) {
+    let inside=0
+    for(let i=1;i<route.length;i++) {const a=route[i-1],b=route[i],n=Math.max(1,Math.ceil(distance(a,b)/.5));for(let j=0;j<n;j++){const t=(j+.5)/n;if(distance([a[0]+(b[0]-a[0])*t,a[1]+(b[1]-a[1])*t],sector.position)<=4.5)inside+=distance(a,b)/n}}
+    airRisk+=Math.min(1,inside/7)*24/(1+view.round-sector.observedRound)
+  }
+  return cpuRouteRisk(route,order.role,sites)+Math.min(40,airRisk)
 }
 export function strikeOrders(view: CpuPlanningView, fighter: Squadron, target: CpuSiteReport, work: RouteWork): Squadron[] {
   const field=formationField(view.assets,fighter.id);if(!field)return []
   const from=field.position, length=distance(from,target.position), angle=Math.atan2(from[1]-target.position[1],from[0]-target.position[0])
   const releases:Point[]=length<BASE_STRIKE_RANGE?[[from[0]+(target.position[0]-from[0])*.02,from[1]+(target.position[1]-from[1])*.02]]:CPU_PROFILES[view.cpu.difficulty].releases.map(a=>[target.position[0]+Math.cos(angle+a)*5.9,target.position[1]+Math.sin(angle+a)*5.9])
   if(length<.01)releases[0]=[from[0]+.05,from[1]]
-  return releases.flatMap(p=>missionOrders(view,fighter,'base-strike',p,work)).map(o=>({...o,strikeTargetId:target.id})).sort((a,b)=>orderRisk(view,a)-orderRisk(view,b)||routeDistance(a.route)-routeDistance(b.route)).slice(0,4)
+  return releases.flatMap(p=>missionOrders(view,fighter,'base-strike',p,work)).map(o=>({...o,strikeTargetId:target.id})).filter(o=>validateStrikeGeometry(o,field,target)===undefined).sort((a,b)=>orderRisk(view,a)-orderRisk(view,b)||routeDistance(a.route)-routeDistance(b.route)).slice(0,4)
 }

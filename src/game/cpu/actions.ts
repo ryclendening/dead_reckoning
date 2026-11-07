@@ -17,14 +17,16 @@ export function generateActions(view: CpuPlanningView, work: RouteWork): Tactica
     return known(a)-known(b)||Math.abs(distance(a,view.home)-18)-Math.abs(distance(b,view.home)-18)
   })
   const rotated=sectors.map((_,i)=>sectors[(i+cpu.searchIndex)%sectors.length])
-  const searches=base&&(view.exposure<ENEMY_TARGETING_THRESHOLD||view.round-base.observedRound>=1)?[base.position,...rotated]:rotated
-  const reconOptions=[hold(view,recon),...searches.slice(0,profile.sectors).flatMap(p=>missionOrders(view,recon,'search-area',p,work,cpu.traffic.some(t=>t.role==='fighter'&&view.round-t.observedRound<=2)?36:cpu.lastReconLost?48:64))]
+  const clusters=cpu.sites.filter(s=>s.health>0&&s.kind!=='base'&&s.kind!=='decoy').flatMap(s=>{const d=Math.max(.01,distance(view.home,s.position));return [s.position,[s.position[0]+(s.position[0]-view.home[0])/d*4,s.position[1]+(s.position[1]-view.home[1])/d*4] as Point]})
+  const searches=base&&(view.exposure<ENEMY_TARGETING_THRESHOLD||view.round-base.observedRound>=1)?[base.position,...rotated]:[...clusters,...rotated]
+  const reconOptions=[hold(view,recon),...searches.slice(0,profile.sectors).flatMap(p=>[...missionOrders(view,recon,'search-area',p,work,cpu.lastReconLost?48:64),...(cpu.traffic.some(t=>t.role==='fighter')?missionOrders(view,recon,'search-area',p,work,36):[])])]
   function information(order:Squadron):number {
     if(order.sortieOrdered===false)return 0
     const traveled=order.route.slice(1), fresh=traveled.filter(p=>!(cpu.mappedAreas??[]).some(m=>distance(m,p)<2.65)).length/Math.max(1,traveled.length)
     const refresh=base&&view.exposure<60&&order.route.some(p=>distance(p,base.position)<3.8)
+    const clusterInterest=!base&&clusters.some(c=>order.route.some(p=>distance(p,c)<3.8))?.25:0
     const covered=SEARCH_SECTORS.filter(p=>!(cpu.mappedAreas??[]).some(m=>distance(m,p)<2.65)&&order.route.some(r=>distance(r,p)<4)).length
-    return (refresh?1:Math.min(1,fresh*.35+covered*.16))*Math.max(0,1-orderRisk(view,order)/120)*Math.min(1,(remaining-1)/2)
+    return (refresh?1:Math.min(1,fresh*.35+covered*.16+clusterInterest))*Math.max(0,1-orderRisk(view,order)/Math.max(25,(order.strength??100)+20))*Math.min(1,(remaining-1)/2)
   }
   const sortedRecon=reconOptions.sort((a,b)=>information(b)-information(a)||orderRisk(view,a)-orderRisk(view,b)||routeDistance(a.route)-routeDistance(b.route)).slice(0,3)
   const usefulRecon=sortedRecon[0]??hold(view,recon)
@@ -32,7 +34,7 @@ export function generateActions(view: CpuPlanningView, work: RouteWork): Tactica
     const orders=[order,reconOrder],ids=new Set(orders.filter(o=>o.sortieOrdered!==false).map(o=>o.id))
     const check=validateRecoveryPackage({playerAssets:view.assets,squadrons:orders},MAX_FLIGHT_DISTANCE,ids)
     if(!check.valid){work.rejected.push(`${id}: ${check.reason}`);return}
-    packages.push({id,summary,orders,purchases:[],predicted:{...emptyEffects(),informationGain:information(reconOrder),expectedAircraftLoss:(orderRisk(view,order)+orderRisk(view,reconOrder))/100,...predicted},checks:['shared recovery / capacity / fuel','recovered targets','one order per formation']})
+    packages.push({id,summary,orders,purchases:[],predicted:{...emptyEffects(),informationGain:information(reconOrder),expectedAircraftLoss:orderRisk(view,order)/Math.max(25,(order.strength??100)+20)+orderRisk(view,reconOrder)/Math.max(25,(reconOrder.strength??100)+20),...predicted},checks:['shared recovery / capacity / fuel','recovered targets','one order per formation']})
   }
   add('save','Hold aircraft and preserve cash.',hold(view,fighter),{},hold(view,recon))
   add('search','Collect actionable reconnaissance.',hold(view,fighter),{})
@@ -60,7 +62,7 @@ export function generateActions(view: CpuPlanningView, work: RouteWork): Tactica
   const bestBaseRisk=baseOrders.length?Math.min(...baseOrders.map(o=>orderRisk(view,o))):0
   for(const site of cpu.sites.filter(s=>s.health>0&&s.kind!=='decoy'&&(s.kind!=='base'||view.exposure>=ENEMY_TARGETING_THRESHOLD))) {
     for(const order of strikeOrders(view,fighter,site,work)) {
-      const risk=orderRisk(view,order), survive=Math.max(.05,1-risk/120),payload=60*(fighter.strength??100)/100
+      const risk=orderRisk(view,order), survive=Math.max(.05,1-risk/Math.max(25,(fighter.strength??100)+20)),payload=60*(fighter.strength??100)/100
       const baseDamage=site.kind==='base'?Math.min(1,payload/site.health)*survive:0
       const suppressionTurns=Math.ceil(site.health/Math.max(1,payload)), payoff=suppressionTurns+1
       const reduction=baseOrders.length?Math.max(0,bestBaseRisk-Math.min(...baseOrders.map(o=>orderRisk(view,o,cpu.sites.filter(s=>s.id!==site.id)))))/100:0
@@ -75,7 +77,7 @@ export function generateActions(view: CpuPlanningView, work: RouteWork): Tactica
     const value=forwardValue(view,field.position)
     // Existing field staging still pays off on r6 after a r5 transit.
     const target=base?.position,current=target?Math.max(0,distance(origin.position,target)-5.9)*2:0,next=target?Math.max(0,distance(field.position,target)-5.9)*2:0
-    const gain=value?.gain??(target&&next<current-8&&next<=40?Math.min(1,(current-next)/40):0)
+    const gain=value?.gain??(target&&current>40&&next<=40?Math.min(1,60*(fighter.strength??100)/100/Math.max(1,base!.health)):0)
     if(gain<=0)continue
     for(const order of missionOrders(view,fighter,'transit',field.position,work))if(order.plannedRecoveryFieldId===field.id)add(`transit:${field.id}`,`Transit to ${field.id} to improve strike access to ${base?.id}.`,order,{futureStrikeAccessGain:gain,roundsUntilPayoff:1})
   }

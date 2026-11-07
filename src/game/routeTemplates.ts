@@ -1,4 +1,4 @@
-import type { MatchState, MissionId, Point, Role, Squadron } from './types'
+import type { Asset, MatchState, MissionId, Point, Role, Squadron } from './types'
 import { missionDistance } from './flightRules'
 import { BASE_STRIKE_RANGE, selectedStrikeTarget } from './campaign'
 import { formationField } from './forwardBasing'
@@ -36,18 +36,20 @@ export function groundStrikeRoute(anchors:Point[],waypoints:Point[],releasePoint
   return anchors.length<2?anchors:[anchors[0],...waypoints.slice(0,5),releasePoint]
 }
 
-export function validateGroundStrikeOrder(state:MatchState,squadron:Squadron):string|undefined{
+/** Shared geometry and payload-role validation; callers supply only authorized target knowledge. */
+export function validateStrikeGeometry(squadron:Squadron,launch:Asset|undefined,target:Pick<Asset,'position'>|undefined):string|undefined {
   if(squadron.mission!=='base-strike')return undefined
-  const target=selectedStrikeTarget(state,squadron.strikeTargetId)
   if(!target)return 'SELECT A CONFIRMED GROUND TARGET'
   if(squadron.role!=='fighter')return 'GROUND STRIKE REQUIRES A FIGHTER'
-  const anchors=buildGroundStrikeRoute(state,squadron.id,target.id)
-  if(!anchors)return 'NO LEGAL STRIKE INGRESS FROM THIS FIELD'
+  if(!launch||launch.health<=0||launch.operational===false||squadron.aircraft<=0)return 'NO LEGAL STRIKE INGRESS FROM THIS FIELD'
   const route=squadron.route
-  if(route.length<2||route.length>7||distance(route[0],anchors[0])>.001)return 'KEEP THE FIXED TAKEOFF POINT'
+  if(route.length<2||route.length>7||distance(route[0],launch.position)>.001)return 'KEEP THE FIXED TAKEOFF POINT'
   if(distance(route.at(-1)!,target.position)>BASE_STRIKE_RANGE+.001)return 'KEEP THE STRIKE POINT INSIDE THE 6-UNIT RELEASE CIRCLE'
-  if(missionDistance(route,anchors[0])>40+.001)return 'GROUND STRIKE ROUTE EXCEEDS AVAILABLE RANGE'
+  if(missionDistance(route,launch.position)>40+.001)return 'GROUND STRIKE ROUTE EXCEEDS AVAILABLE RANGE'
   return undefined
+}
+export function validateGroundStrikeOrder(state:MatchState,squadron:Squadron):string|undefined {
+  return validateStrikeGeometry(squadron,formationField(state.playerAssets,squadron.id),selectedStrikeTarget(state,squadron.strikeTargetId))
 }
 
 const distance=(a:Point,b:Point)=>Math.hypot(a[0]-b[0],a[1]-b[1])

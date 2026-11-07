@@ -20,13 +20,13 @@ export function settleCpuRound(state: MatchState, result: RoundResult): MatchSta
   const recovered = new Set(report.recoveredIds)
   cpu.formations = cpu.formations.map(formation => {
     const flight = result.enemyFlights.find(flight => flight.id === formation.id)
-    const ordered = cpu.plan?.orders.find(order => order.id === formation.id)?.sortieOrdered !== false
+    const ordered = (cpu.plan?.orders.find(order => order.id === formation.id)??flight)?.sortieOrdered !== false
     const outcome = report.recoveryOutcomes?.find(item => item.formationId === formation.id)
-    if (!ordered || outcome?.outcome === 'trapped') return { ...formation, status: outcome?.outcome === 'trapped' ? 'trapped' as const : formation.status }
+    if (!ordered || outcome?.reason === 'not-launched' || outcome?.outcome === 'trapped') return { ...formation, status: outcome?.outcome === 'trapped' ? 'trapped' as const : formation.status }
     return { ...formation, aircraft: recovered.has(formation.id) ? flight?.aircraft ?? 0 : 0,
       strength: recovered.has(formation.id) ? flight?.strength ?? 0 : 0, morale: flight?.morale ?? formation.morale, status: recovered.has(formation.id) ? 'rtb' : 'destroyed' }
   })
-  cpu.lastReconLost = cpu.plan?.orders.some(order => order.role === 'recon' && order.sortieOrdered !== false && !recovered.has(order.id)) ?? false
+  cpu.lastReconLost = cpu.plan?.orders.some(order => order.role === 'recon' && order.sortieOrdered !== false && !recovered.has(order.id) && !report.recoveryOutcomes?.some(o=>o.formationId===order.id&&o.outcome==='trapped')) ?? false
   cpu.outcomes=[...(cpu.outcomes??[]),...(cpu.plan?.orders.filter(o=>o.sortieOrdered!==false).map(o=>({round:result.round,formationId:o.id,mission:o.mission,targetId:o.strikeTargetId,recovered:recovered.has(o.id)}))??[])].slice(-12)
   cpu.searchIndex += 1
   cpu.traffic = [...cpu.traffic.filter(contact => result.round - contact.observedRound < 2), ...report.traffic].slice(-12)

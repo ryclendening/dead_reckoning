@@ -10,6 +10,7 @@ const site = (v: unknown) => record(v) && text(v.id) && ['base', 'fob', 'sam', '
   && point(v.position) && number(v.health) && number(v.maxHealth) && v.maxHealth > 0 && v.health <= v.maxHealth && integer(v.observedRound) && v.observedRound > 0
   && (v.observedAt === undefined || number(v.observedAt)) && (v.estimatedDamage === undefined || number(v.estimatedDamage) && v.estimatedDamage <= v.health)
 const traffic = (v: unknown) => record(v) && point(v.position) && ['fighter', 'recon', 'unknown'].includes(String(v.role)) && integer(v.observedRound)
+  && (v.observedAt === undefined || number(v.observedAt))
   && (v.source === undefined || ['visual','radar'].includes(String(v.source)))
   && (v.bearing === undefined || typeof v.bearing === 'number' && Number.isFinite(v.bearing))
   && (v.sector === undefined || integer(v.sector) && v.sector < 8)
