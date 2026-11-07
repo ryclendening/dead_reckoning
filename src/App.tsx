@@ -130,23 +130,25 @@ export default function App(){
       setSelectingProtectTarget(false)
       setReviewedIds(ids=>{const next=new Set(ids);next.delete(squadron.id);return next})
       setMatch(m=>({...m,squadrons:m.squadrons.map(s=>s.id===squadron.id?{...s,protectedPoint:[...protectedPoint] as Point,protectedTargetId:undefined,route:generated.route,routeIngress:generated.ingress,plannedRecoveryFieldId:undefined}:s)}))
-      return
+      return true
     }
     if(squadron.mission==='base-strike'){
       const anchors=buildGroundStrikeRoute(match,squadron.id,squadron.strikeTargetId)
-      if(!anchors){setRouteNotice('SELECT A CONFIRMED GROUND TARGET');return}
+      if(!anchors){setRouteNotice('SELECT A CONFIRMED GROUND TARGET');return false}
       const releasePoint=withOrigin.length>=2?withOrigin.at(-1)!:anchors.at(-1)!
       const target=match.enemyAssets.find(asset=>asset.id===squadron.strikeTargetId)
-      if(target&&pointDistance(releasePoint,target.position)>BASE_STRIKE_RANGE+.001){setRouteNotice(`KEEP THE STRIKE POINT INSIDE THE ${BASE_STRIKE_RANGE}-UNIT RELEASE CIRCLE`);return}
       const route=groundStrikeRoute(anchors,withOrigin.slice(1,-1),releasePoint)
+      if(target&&pointDistance(releasePoint,target.position)>BASE_STRIKE_RANGE+.001){setRouteNotice(`KEEP THE STRIKE POINT INSIDE THE ${BASE_STRIKE_RANGE}-UNIT RELEASE CIRCLE`);return false}
+      if(missionDistance(route,launch)>MAX_FLIGHT_DISTANCE.fighter+.001){setRouteNotice('WAYPOINT EXCEEDS FUEL RANGE · NOT PLACED');return false}
       setRouteNotice(undefined)
       setReviewedIds(ids=>{const next=new Set(ids);next.delete(squadron.id);return next})
       setMatch(m=>({...m,squadrons:m.squadrons.map(s=>s.id===squadron.id?{...s,route,routeIngress:route,plannedRecoveryFieldId:undefined}:s)}))
-      return
+      return true
     }
     const generated=generateRouteTemplate({template:squadron.mission,ingress:withOrigin,maxDistance:MAX_FLIGHT_DISTANCE[squadron.role],bounds:routeBounds})
     setRouteNotice(routeAdjustmentNotice(generated.adjustment))
     setReviewedIds(ids=>{const next=new Set(ids);next.delete(squadron.id);return next});setMatch(m=>({...m,squadrons:m.squadrons.map(s=>s.id===squadron.id?{...s,route:generated.route,routeIngress:generated.ingress,protectedPoint:s.mission==='defensive-cap'&&!s.protectedTargetId&&generated.ingress.length>1?[...generated.ingress.at(-1)!] as Point:s.protectedPoint,plannedRecoveryFieldId:undefined}:s)}))
+    return true
   },[match,playerBase,selectingProtectTarget])
   const routeToAirfield=useCallback((fieldId:string,direct=false)=>{
     const field=match.playerAssets.find(asset=>asset.id===fieldId&&(asset.kind==='base'||asset.kind==='fob'))
