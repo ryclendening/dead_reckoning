@@ -51,9 +51,10 @@ describe('SAM and ground strike controls',()=>{
     const target={...state.enemyAssets.find(asset=>asset.id==='e-sam')!,name:'SAM ALPHA',intel:'confirmed' as const,hidden:false}
     const props={squadrons:state.squadrons,bases:state.playerAssets,activeBaseId:'p-base',rosterMode:'closed' as const,squadron,routeDistance:12,maxDistance:40,onSelect:noop,onBaseSelect:noop,onRosterMode:noop,onMission:noop,onClear:noop,onCommit:noop,onClose:noop,reviewedIds:new Set<string>(),reviewedCount:0,totalCount:3,groundTargets:[target],onGroundTarget:noop,onChangeGroundTarget:noop}
     const choose=renderToStaticMarkup(<CommandShelf {...props} step="target"/>)
-    expect(choose).toContain('CHOOSE GROUND TARGET')
+    expect(choose).toContain('CLICK A TARGET ON THE MAP')
     expect(choose).toContain('SAM ALPHA')
-    expect(choose).toContain('Select a confirmed site here or on the map.')
+    expect(choose).toContain('Click a highlighted enemy site or its card')
+    expect(choose).toContain('OR CHOOSE FROM LIST')
     const route=renderToStaticMarkup(<CommandShelf {...props} step="route"/>)
     expect(route).toContain('Takeoff and strike points are fixed.')
     expect(route).toContain('CLEAR WAYPOINTS')

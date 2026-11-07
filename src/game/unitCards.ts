@@ -9,6 +9,7 @@ export interface UnitCardData {
   maxHealth:number
   status:string
   detail?:string
+  compact?:{title:string;stat?:string}
 }
 
 const ASSET_LABELS:Record<Asset['kind'],string>={base:'MAIN AIRFIELD',fob:'FORWARD AIRFIELD',decoy:'DECOY AIRFIELD',radar:'RADAR SITE',sam:'SAM SITE',aaa:'AAA SITE'}
@@ -25,6 +26,7 @@ export function assetCardData(asset:Asset,enemy=false,phase:Phase='plan',result?
   const availability=sam?sam.remaining===0?'EMPTY':sam.cooldown>.001?`COOLDOWN ${sam.cooldown.toFixed(1)}s`:'READY':undefined
   return {title:asset.name??ASSET_LABELS[asset.kind],subtitle:`${ASSET_LABELS[asset.kind]} · ${enemy?asset.intel.toUpperCase():'FRIENDLY'}`,health:asset.health,maxHealth:asset.maxHealth,
     status:condition==='DESTROYED'||condition==='OFFLINE'?condition:sam?`${sam.remaining}/${sam.capacity} MSL · ${availability}`:condition,
+    compact:{title:asset.name??(asset.kind==='base'?'BASE':asset.kind.toUpperCase()),stat:asset.health<=0?'LOST':asset.operational===false?'OFF':sam?`${sam.remaining}/${sam.capacity}`:undefined},
     detail:enemy?`${asset.intel.toUpperCase()} INTELLIGENCE · ${asset.confidence}% CONFIDENCE`:undefined}
 }
 
@@ -33,7 +35,7 @@ export function aircraftCardData(flight:Squadron|EnemyFlight,frame:UnitFrame,vis
   if(visibility==='radar')return undefined
   const aircraft=visibility==='friendly'?`${frame.aircraft} / ${'maxAircraft' in flight?flight.maxAircraft:flight.initialAircraft} AC`:`${frame.aircraft} AC`
   const role=visibility==='visual'&&flight.role==='fighter'?'MiG-23':flight.role.toUpperCase()
-  return {title:flight.callsign,subtitle:`${trackId?`${trackId} · `:''}${role} · ${aircraft}`,health:frame.strength,maxHealth:100,status:flightActivityLabel(frame.mode),detail:trackId}
+  return {title:flight.callsign,subtitle:`${trackId?`${trackId} · `:''}${role} · ${aircraft}`,health:frame.strength,maxHealth:100,status:flightActivityLabel(frame.mode),detail:trackId,compact:{title:flight.callsign,stat:`${frame.aircraft} AC`}}
 }
 
 /** Inspect only a friendly frame or a currently visual hostile frame; close details when sight is lost. */
@@ -43,4 +45,9 @@ export function aircraftInspectionAt(result:RoundResult|undefined,unitId:string,
   const hostile=result?.enemyFlights.find(flight=>flight.id===unitId)
   const projection=hostile?projectHostileUnitAt(result,unitId,seconds):undefined
   return hostile&&projection?.visibility==='visual'?{flight:hostile,frame:projection.frame,visibility:'visual' as const,trackId:projection.trackId}:undefined
+}
+
+/** Match phone-sized canvases in portrait and landscape without relying on a device brand. */
+export function usesCompactUnitCards(width:number,height:number):boolean{
+  return width<=640||width<=960&&height<=500
 }

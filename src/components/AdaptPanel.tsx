@@ -53,15 +53,19 @@ export function AdaptPanel({ match, selectedTarget, onSelectTarget, onPurchase, 
     onSelectTarget(attentionTargets[(currentIndex + 1) % attentionTargets.length])
   }
   return <section className="adapt-panel" aria-label="Adapt">
-    <div className={`procure-float mode-${procurementMode}`}>
-      {procurementMode === 'catalog' ? <div className="procure-card" role="dialog" aria-label="Build catalog"><header><span><Plus/> BUILD</span><button aria-label="Close build catalog" onClick={() => onProcurementMode('closed')}><X/></button></header><div className="procure-catalog">{procurementQuotes.map(quote => <button key={quote.id} className="procure-option" disabled={!quote.eligible} onClick={() => quote.eligible && onProcurementAction(quote.id)}><MapPin/><span><b>{quote.effect.kind === 'asset-construction' ? quote.effect.assetKind.toUpperCase() : quote.label}</b><small>{quote.detail}</small>{quote.reason ? <em>{quote.reason}</em> : null}</span><strong>{quote.cost} L</strong></button>)}</div></div> : null}
-      {procurementMode === 'placing' ? <div className="procure-card placing" role="dialog" aria-label={`Place ${procurementKind ?? 'asset'}`}><header><span><MapPin/> BUILD {procurementKind?.toUpperCase() ?? 'ASSET'} · {procurementQuote?.cost ?? 0} L</span><button aria-label="Cancel placement" onClick={() => onProcurementMode('closed')}><X/></button></header><p className="procure-instruction">Tap a valid hex to build. Your balance updates right away.</p></div> : null}
-    </div>
-
     <header className="adapt-heading"><div><small>ROUND {String(match.round).padStart(2, '0')} · ADAPT</small></div><div className="adapt-balance"><Wrench/><b>{match.logistics}</b><small>LOGISTICS · {match.replacements} RESERVE</small></div></header>
     <details className="adapt-income"><summary>+{roundIncome} THIS ROUND</summary><div>{match.economy.statement.map(entry => <span key={entry.id} className={entry.direction}><b>{entry.direction === 'income' ? '+' : '-'}{entry.amount}</b><small>{entry.label}</small></span>)}</div></details>
 
-    {procurementMode !== 'placing' && selectedTarget.kind !== 'campaign' ? <div className="adapt-drawer">
+    {procurementMode === 'catalog' ? <div className="adapt-drawer adapt-build-drawer" aria-label="Build options">
+      <header className="adapt-build-heading"><b>BUILD ASSETS</b><button type="button" aria-label="Close Build" onClick={() => onProcurementMode('closed')}><X/></button></header>
+      <div className="procure-catalog">{procurementQuotes.map(quote => <button key={quote.id} className="procure-option" disabled={!quote.eligible} onClick={() => quote.eligible && onProcurementAction(quote.id)}><MapPin/><span><b>{quote.effect.kind === 'asset-construction' ? quote.effect.assetKind.toUpperCase() : quote.label}</b><small>{quote.detail}</small>{quote.reason ? <em>{quote.reason}</em> : null}</span><strong>{quote.cost} L</strong></button>)}</div>
+    </div> : null}
+    {procurementMode === 'placing' ? <div className="adapt-drawer adapt-placement-drawer" aria-label={`Place ${procurementKind ?? 'asset'}`}>
+      <header className="adapt-build-heading"><b><MapPin/> BUILD {procurementKind?.toUpperCase() ?? 'ASSET'} · {procurementQuote?.cost ?? 0} L</b><button type="button" aria-label="Cancel placement" onClick={() => onProcurementMode('closed')}><X/></button></header>
+      <p className="procure-instruction">Tap a valid hex to build. Your balance updates right away.</p>
+    </div> : null}
+
+    {procurementMode === 'closed' && selectedTarget.kind !== 'campaign' ? <div className="adapt-drawer">
       <div className="adapt-drawer-title"><span>SELECTED</span><b>{targetLabel(match, selectedTarget)}</b>{selectedSquadron ? <small>{selectedSquadron.aircraft}/{selectedSquadron.maxAircraft} AIRCRAFT · {Math.round(selectedSquadron.strength ?? 0)}%</small> : null}</div>
       {selectedAsset?.kind === 'fob' ? <p className="adapt-empty"><b>{selectedAsset.operational ? 'OPERATIONAL' : 'UNUSABLE'}</b> · CAPACITY {selectedAsset.basedFormationIds?.length ?? 0}/{selectedAsset.capacity ?? 1} · {(selectedAsset.basedFormationIds??[]).map(id=>match.squadrons.find(squadron=>squadron.id===id)?.callsign??id).join(', ')||'NO FORMATIONS BASED'}</p> : null}
       {quotes.length ? <div className="adapt-actions">{quotes.map((quote, index) => <button key={quote.id} disabled={!quote.eligible} className={`${selected?.id === quote.id ? 'selected' : ''} ${index === 0 ? 'primary' : ''}`} onClick={() => choose(quote)}><span><b>{quote.label}</b><small>{quote.detail}</small>{!quote.eligible && quote.reason ? <em>{quote.reason}</em> : null}</span><strong>{quote.cost} L{quote.reserveCost ? ` + ${quote.reserveCost} R` : ''}</strong></button>)}</div> : selectedAsset?.kind !== 'fob' ? <p className="adapt-empty">No action required. Select an asset on the map or cycle Needs Attention.</p> : null}
