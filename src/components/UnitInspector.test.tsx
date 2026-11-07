@@ -1,0 +1,42 @@
+import { renderToStaticMarkup } from 'react-dom/server'
+import { describe, expect, it } from 'vitest'
+import { AircraftInspector, AssetInspector } from './UnitInspector'
+import { createMatch } from '../game/data'
+import type { EnemyFlight, UnitFrame } from '../game/types'
+
+const noop=()=>{}
+const frame:UnitFrame={time:2,position:[0,0],facing:[1,0],mode:'recovering',strength:62,morale:70,aircraft:3,traveledDistance:2}
+
+describe('expanded tactical cards',()=>{
+  it('shows the same identity, health, and status layout for a selected ground site',()=>{
+    const asset={...createMatch().playerAssets.find(asset=>asset.kind==='radar')!,name:'WATCH',health:40}
+    const html=renderToStaticMarkup(<AssetInspector asset={asset} phase="adapt" seconds={0} onClose={noop}/>)
+    expect(html).toContain('WATCH')
+    expect(html).toContain('RADAR SITE')
+    expect(html).toContain('40 / 100')
+    expect(html).toContain('DAMAGED')
+    expect(html).toContain('DETECTION RANGE 6.4')
+    expect(html).not.toContain('MISSILES')
+  })
+
+  it('keeps friendly aircraft count, activity, and morale in the selected card',()=>{
+    const flight=createMatch().squadrons[0]
+    const html=renderToStaticMarkup(<AircraftInspector flight={flight} frame={frame} visibility="friendly" onClose={noop}/>)
+    expect(html).toContain(flight.callsign)
+    expect(html).toContain('FIGHTER · 3 / 4 AC')
+    expect(html).toContain('62 / 100')
+    expect(html).toContain('RTB')
+    expect(html).toContain('MORALE')
+  })
+
+  it('does not render a radar-only health card or hidden ground-site details',()=>{
+    const flight:EnemyFlight={id:'red-fighter',callsign:'BOGEY 1',role:'fighter',aircraft:4,initialAircraft:4,route:[[0,0],[1,0]],detectionWindows:[],target:'base'}
+    expect(renderToStaticMarkup(<AircraftInspector flight={flight} frame={frame} visibility="radar" onClose={noop}/>)).toBe('')
+    const visual=renderToStaticMarkup(<AircraftInspector flight={flight} frame={frame} visibility="visual" trackId="TRACK 01" onClose={noop}/>)
+    expect(visual).toContain('TRACK 01 · MiG-23 · 3 AC')
+    expect(visual).toContain('hostile')
+    expect(visual).not.toContain('MORALE')
+    const hidden=createMatch().enemyAssets[0]
+    expect(renderToStaticMarkup(<AssetInspector asset={hidden} enemy phase="execute" seconds={2} onClose={noop}/>)).toBe('')
+  })
+})

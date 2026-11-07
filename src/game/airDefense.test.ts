@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { samStatusAt } from './airDefense'
+import { samStatusAt, samStatusForPhase } from './airDefense'
 import { createRoundSimulation, resolveRound } from './engine'
 import { createScenario } from './scenarios'
 import type { MatchState, Point } from './types'
@@ -42,6 +42,14 @@ describe('finite SAM salvos',()=>{
     expect(simulation.result).toEqual(batch)
     const next=createRoundSimulation({...state,round:state.round+1,lastResult:batch})
     expect(samStatusAt('e-sam',next.result.weaponEffects,0).remaining).toBe(3)
+  })
+
+  it('uses the same replenished ammunition for the map rack and inspector between rounds',()=>{
+    const state=defenseFixture(),result=resolveRound(state)
+    expect(samStatusForPhase('e-sam','debrief',result.weaponEffects,result.duration).remaining).toBe(0)
+    for(const phase of ['adapt','plan'] as const){
+      expect(samStatusForPhase('e-sam',phase,result.weaponEffects,result.duration)).toEqual({capacity:3,remaining:3,cooldown:0})
+    }
   })
 
   it.each([{health:0},{operational:false}])('prevents launches by a destroyed or disabled SAM (%j)',overrides=>{
