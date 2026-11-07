@@ -37,5 +37,5 @@ export const initialPlayerAssets=friendlyAssetsFor(DEFAULT_WORLD)
 export const initialSquadrons=squadronsFor(DEFAULT_WORLD)
 export const initialAssets=enemyAssetsFor(DEFAULT_WORLD)
 
-export const createMatch=(seed=7301):MatchState=>{const world=generateCampaignWorld(seed),knowledge=createStartingKnowledge(world);return {round:1,phase:'plan',logistics:10,command:2,replacements:3,selectedId:'raven',squadrons:squadronsFor(world),enemyAssets:enemyAssetsFor(world),playerAssets:friendlyAssetsFor(world),playerBaseHealth:100,enemyBaseHealth:100,baseExposure:6,campaignScore:0,seed,world,mappedAreas:knowledge.mappedAreas,discoveredBoundaries:knowledge.discoveredBoundaries,economy:createEconomyState()}}
+export const createMatch=(seed=7301):MatchState=>{const world=generateCampaignWorld(seed),knowledge=createStartingKnowledge(world);return {round:1,phase:'plan',logistics:10,command:2,replacements:3,selectedId:'raven',squadrons:squadronsFor(world),enemyAssets:enemyAssetsFor(world),playerAssets:friendlyAssetsFor(world),playerBaseHealth:100,enemyBaseHealth:100,baseExposure:6,campaignScore:0,cpuDifficulty:'medium',seed,world,mappedAreas:knowledge.mappedAreas,discoveredBoundaries:knowledge.discoveredBoundaries,economy:createEconomyState()}}
 export const createCampaignDraft=(seed=7301):MatchState=>({...createMatch(seed),phase:'deploy',setup:createCampaignSetupState()})

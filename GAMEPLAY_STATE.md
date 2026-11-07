@@ -6,7 +6,7 @@ This is the source of truth for behavior implemented in the current build. It re
 
 ## Core Loop
 
-1. **Deploy** — A new campaign starts with a fixed force of two fighters (VIPER 1 and FALCON 2), one recon formation (RAVEN 3), and four assets: main airfield, radar, SAM, and AAA. There is no force or asset selection step. Select each asset card, tap a highlighted valid hex to preview its site, then confirm to lock it in; only legal hexes are outlined. Confirm the package after all four are placed. Decoys can be built later during Adapt.
+1. **Deploy** — Choose Easy, Medium, or Hard CPU strategy, then place a fixed force of two fighters (VIPER 1 and FALCON 2), one recon formation (RAVEN 3), and four assets: main airfield, radar, SAM, and AAA. There is no force or asset selection step. Select an asset card and tap a highlighted valid hex to place it. Select a placed asset and tap another valid hex to reposition it; the package remains editable through review. **Begin Planning** locks the full package. Decoys can be built later during Adapt.
 2. **Plan** — Flat aircraft pips hover above their home airfields, marked with callsign and role. Select a fighter task to open route building; Ground Strike first requires selecting a confirmed enemy site. Selecting another formation saves a valid route automatically. Closing a valid route also saves it. **Commit Round** appears after at least one order is ready and starts execution. Confirmed pips show a green check. Only confirmed formations fly that round.
 3. **Execute / Observe** — The deterministic simulation advances at 20 Hz and can be viewed at 1× or 2×. The only live player command is an irreversible recon `ORDER RTB`, applied on the next simulation tick. RTB sends recon to the home base if it has enough remaining range, otherwise to its planned recovery field. There is no skip-to-debrief control.
 4. **Debrief** — Review friendly losses, confirmed enemy losses, and one page for each newly recovered fixed-asset report.
@@ -20,7 +20,7 @@ This is the source of truth for behavior implemented in the current build. It re
 - Strikes are deterministic hits once launched. Damage occurs at impact, 0.6 simulated seconds after launch; an already-launched missile survives destruction of its launcher. Multiple impacts cannot reduce target health below zero.
 - Strike fighters do not voluntarily intercept air contacts. Direct fighter combat still interrupts them, so fighter allocation and route choice affect whether they reach launch range.
 - Enemy recon observes the real base and decoy through its executed movement within 3.8 map units. Only successful recovery preserves those observations. A recovered base observation adds 40 targeting pressure; observing a live decoy on that sortie subtracts 20 from the base-observation gain. Pressure is bounded from 0 to 100.
-- At 60 targeting pressure at the start of a round, the enemy fighter can execute a physical base strike. Intelligence recovered this round cannot authorize an attack retroactively in the same round.
+- At the selected CPU difficulty's targeting-pressure threshold at the start of a round, the enemy fighter can execute a physical base strike: Easy requires 80, Medium requires 60, and Hard requires 40. Intelligence recovered this round cannot authorize an attack retroactively in the same round. Difficulty changes this decision threshold; it does not grant combat bonuses or hidden information.
 - Enemy base destruction wins; home base destruction loses, including mutual destruction. If neither base is destroyed by the end of round six, the deadline is a defeat. Losing all formations with no reserve aircraft also ends the campaign.
 - Debrief precedes the end screen and explains base damage and targeting-pressure changes. Debug tactical fixtures do not use enemy campaign pressure progression or the round deadline; explicit friendly Ground Strike orders use the same targeting rules.
 - These values are initial tuning parameters, not a completed balance pass.
@@ -205,7 +205,9 @@ Current Adapt actions:
 
 Construction must be inside the current friendly territory union or persistent recovered mapping and at least 1.5 units from every friendly asset. FOB placement uses the intersection of that known area and a 7-unit reach from the edge of current friendly territory. Once built, an operational FOB extends owned territory by its 3-unit influence circle; disabled or destroyed FOBs provide no influence until repaired. Validation intentionally ignores hidden enemy positions and unrecovered world bounds. New SAM and AAA sites immediately participate in air defense. Decoys can reduce enemy targeting progress when observed alongside the real base; enemy attacks do not dynamically target decoys.
 
-During initial deployment and Adapt construction, the map outlines only legal hexes for the selected asset, using the same validation rules that govern placement. The grid appears only while an asset is being placed. In both phases, tapping a valid hex previews the site; the asset moves or is purchased only after explicit confirmation. Invalid taps do not create a candidate or spend Logistics. Adapt shows the asset and cost, then offers a simple confirm/cancel choice for the selected site.
+Initial Deploy offers Easy, Medium, and Hard CPU strategy settings. Medium is the default. The setting persists with the campaign; saves created before this option default to Medium. Current difficulty tuning changes only the enemy's recovered-intelligence threshold for committing a base strike.
+
+During initial deployment and Adapt construction, the map outlines only legal hexes for the selected asset, using the same validation rules that govern placement. The grid appears only while an asset is being placed. During Deploy, a valid tap places or repositions the selected asset immediately; all placements remain editable until **Begin Planning** locks the package. During Adapt, valid taps move the pending build preview, so the player can reposition it before **Confirm Build** spends Logistics. Invalid taps do not spend Logistics.
 
 At round resolution, every ordered, non-trapped friendly formation loses readiness and ammunition (fighter: 12 readiness and 28 ammo; recon: 7 readiness and 8 ammo, with readiness floored at 25). Unordered formations remain grounded and retain both values. The values are displayed state but have no current authoritative effect and cannot be serviced through Adapt.
 
@@ -246,7 +248,7 @@ Available fixtures:
 - Flight remains a fixed-speed planar tactical model with no lift, energy, altitude, or turn-radius simulation. Rendered banking and combat-local aircraft maneuvers are cosmetic; tactical translation and route-distance accumulation still pause during dogfights.
 - There are no dedicated strike aircraft, bombers, or UAVs. Existing fighters perform the Ground Strike mission against explicitly selected confirmed fixed assets.
 - Defense-cue fields do not change in the current resolver.
-- Enemy recon targeting pressure is a compact campaign model, not a general enemy intelligence database or dynamic targeting AI.
+- Enemy recon targeting pressure is a compact campaign model, not a general enemy intelligence database. CPU difficulty currently changes the base-strike decision threshold only; broader adaptive planning and target selection remain incomplete.
 - Friendly assets other than the main base cannot be attacked in ordinary campaign play; FOB disablement is exercised only by deterministic fixtures.
 - Reinforcement, legacy service, rearm, readiness-restoration, runway-repair, and separate defense-repair helpers exist in code or tests but are not connected to the current UI flow. The Adapt actions listed above are authoritative.
 - Multiplayer start-placement utilities exist, but multiplayer is not enabled.
@@ -257,6 +259,8 @@ Available fixtures:
 This log keeps only current net changes. Superseded intermediate states belong in git history.
 
 ### 2026-11-07
+
+- Added campaign CPU difficulty selection during Deploy. Easy, Medium, and Hard require recovered base-targeting pressure of 80, 60, and 40 respectively before the enemy can launch a base strike. Medium preserves the previous 60-point behavior and is the default for new and older saved campaigns. Difficulty does not alter combat rolls or grant hidden information.
 
 - Tightened Adapt into a content-sized dock with a map that fills the remaining height. Consolidated clicked-site status, health, defense details, based formations, and purchases into one selection surface instead of also opening a floating inspector. Main-airfield selection exposes available upgrades and identifies installed upgrades. Renamed **Need Attention** to **Repairs & Replacements** to reflect its repair/replacement-only queue, and removed the default airfield upgrade drawer until the player selects that field.
 
@@ -272,7 +276,7 @@ This log keeps only current net changes. Superseded intermediate states belong i
 
 - During Adapt construction, show outlined placement hexes only where the active asset's existing placement validator allows a build. The grid appears only while placing and uses a distinct cyan cue; the existing validator remains authoritative, and purchase waits for explicit site confirmation.
 
-- Added explicit site confirmation in both initial Deploy and Adapt construction. Tapping a valid hex stages a visible candidate; Confirm commits the move or purchase, while Cancel keeps the asset at its prior location and preserves Logistics.
+- Updated the placement commitment flow. Deploy taps place or reposition the selected asset without per-asset confirmation; the whole opening package stays editable until **Begin Planning**. In Adapt, repeated valid taps move the pending build preview, and **Confirm Build** purchases the asset at its final site.
 
 - Simplified Adapt by removing the unclear **Force Turnaround** title and duplicate construction list from the default campaign drawer. FOB, decoy, AAA, and SAM purchases remain available in the separate Build catalog, with placement completed on a valid map tap.
 

@@ -6,7 +6,7 @@ import { CampaignSetupPanel } from './CampaignSetupPanel'
 describe('campaign setup panel', () => {
   it('shows the fixed force and fixed asset placement package', () => {
     const match = createCampaignDraft()
-    const markup = renderToStaticMarkup(<CampaignSetupPanel match={match} onContinue={() => {}} />)
+    const markup = renderToStaticMarkup(<CampaignSetupPanel match={match} onContinue={() => {}} onDifficultyChange={() => {}} />)
 
     expect(markup).toContain('VIPER 1 FIGHTER')
     expect(markup).toContain('FALCON 2 FIGHTER')
@@ -23,7 +23,7 @@ describe('campaign setup panel', () => {
     const match = createCampaignDraft()
     const setup = { ...match.setup!, selectedFormationIds: ['viper', 'raven', 'ghost'] }
     const legacyDraft = { ...match, setup }
-    const markup = renderToStaticMarkup(<CampaignSetupPanel match={legacyDraft} onContinue={() => {}} />)
+    const markup = renderToStaticMarkup(<CampaignSetupPanel match={legacyDraft} onContinue={() => {}} onDifficultyChange={() => {}} />)
 
     expect(markup).toContain('SAVED FORCE')
     expect(markup).toContain('VIPER 1 FIGHTER · RAVEN 3 RECON · GHOST 4 RECON')

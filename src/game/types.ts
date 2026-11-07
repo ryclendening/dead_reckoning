@@ -5,6 +5,7 @@ export type IntelLevel = 'unknown' | 'suspected' | 'probable' | 'confirmed'
 export type Point = [number, number]
 export type ReinforcementType = 'alert-cap' | 'replacement-flight'
 export type WorldEdge = 'north' | 'east' | 'south' | 'west'
+export type CpuDifficulty = 'easy' | 'medium' | 'hard'
 
 export interface WorldBounds { minX:number; maxX:number; minZ:number; maxZ:number }
 export interface BoundarySegment { edge:WorldEdge; coordinate:number; from:number; to:number }
@@ -214,6 +215,8 @@ export interface MatchState {
   mappedAreas: Point[]
   discoveredBoundaries: BoundarySegment[]
   economy: EconomyState
+  /** Campaign enemy decision profile. Older saves default to Medium. */
+  cpuDifficulty?: CpuDifficulty
   setup?: CampaignSetupState
   debugScenario?: DebugScenario
 }

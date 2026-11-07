@@ -7,9 +7,10 @@ import { deriveLogisticsIncome, settleLogisticsIncome } from './economy'
 import { applyRecoveryOutcomesToBasing, formationField, isOperationalAirfield, nearestReachableAlternate, normalizeFormationBasing, setAirfieldOperational } from './forwardBasing'
 import { fighterIsResponsibleFor, mayContinueMissionPursuit, nearestResponsibleContact, preferredObjectiveThreat } from './missionResponsibility'
 import { decideReaction } from './reactionLifecycle'
-import { BASE_STRIKE_DAMAGE, BASE_STRIKE_RANGE, ENEMY_TARGETING_THRESHOLD, selectedStrikeTarget, isCampaign } from './campaign'
+import { BASE_STRIKE_DAMAGE, BASE_STRIKE_RANGE, selectedStrikeTarget, isCampaign } from './campaign'
 import { validateGroundStrikeOrder } from './routeTemplates'
 import { facingAfterMove } from './heading'
+import { shouldCpuStrikeBase } from './cpuStrategy'
 
 export const SENSOR_RANGE: Record<Squadron['role'], number>={fighter:4.2,recon:4.9}
 export const RADAR_RANGE=6.4
@@ -74,7 +75,7 @@ function closestRouteProgress(route:Point[],point:Point){let best={distance:Infi
 function closestPointOnSegment(from:Point,to:Point,target:Point):Point{const dx=to[0]-from[0],dz=to[1]-from[1],lengthSquared=dx*dx+dz*dz;const progress=lengthSquared<1e-9?0:Math.max(0,Math.min(1,((target[0]-from[0])*dx+(target[1]-from[1])*dz)/lengthSquared));return [from[0]+dx*progress,from[1]+dz*progress]}
 function closestSegmentDistance(from:Point,to:Point,target:Point){return distance(closestPointOnSegment(from,to,target),target)}
 function playerBase(state:MatchState):Point{return state.playerAssets.find(a=>a.kind==='base')?.position??[-7.8,11.2]}
-function enemyFlights(state:MatchState):EnemyFlight[]{const fighterRecon=state.debugScenario==='fighter-recon',fobScenario=state.debugScenario?.startsWith('fob-')??false,reconFixture=state.debugScenario?.startsWith('recon-')??false,isolatedTwoVsOne=state.debugScenario==='fighter-2v1',enemyBase=enemyBaseFor(state.world),friendlyBase=playerBase(state);const pressure=isCampaign(state)&&state.baseExposure>=ENEMY_TARGETING_THRESHOLD;const toward=(factor:number):Point=>[enemyBase[0]+(friendlyBase[0]-enemyBase[0])*factor,enemyBase[1]+(friendlyBase[1]-enemyBase[1])*factor];const fighterTurn=toward(.56),reconTurn=toward(.7);const vector:Point=[enemyBase[0]-friendlyBase[0],enemyBase[1]-friendlyBase[1]],length=Math.max(.001,Math.hypot(vector[0],vector[1])),forward:Point=[vector[0]/length,vector[1]/length],side:Point=[-forward[1],forward[0]];const offset=(ahead:number,lateral=0):Point=>[friendlyBase[0]+forward[0]*ahead+side[0]*lateral,friendlyBase[1]+forward[1]*ahead+side[1]*lateral]
+function enemyFlights(state:MatchState):EnemyFlight[]{const fighterRecon=state.debugScenario==='fighter-recon',fobScenario=state.debugScenario?.startsWith('fob-')??false,reconFixture=state.debugScenario?.startsWith('recon-')??false,isolatedTwoVsOne=state.debugScenario==='fighter-2v1',enemyBase=enemyBaseFor(state.world),friendlyBase=playerBase(state);const pressure=isCampaign(state)&&shouldCpuStrikeBase(state.cpuDifficulty,state.baseExposure);const toward=(factor:number):Point=>[enemyBase[0]+(friendlyBase[0]-enemyBase[0])*factor,enemyBase[1]+(friendlyBase[1]-enemyBase[1])*factor];const fighterTurn=toward(.56),reconTurn=toward(.7);const vector:Point=[enemyBase[0]-friendlyBase[0],enemyBase[1]-friendlyBase[1]],length=Math.max(.001,Math.hypot(vector[0],vector[1])),forward:Point=[vector[0]/length,vector[1]/length],side:Point=[-forward[1],forward[0]];const offset=(ahead:number,lateral=0):Point=>[friendlyBase[0]+forward[0]*ahead+side[0]*lateral,friendlyBase[1]+forward[1]*ahead+side[1]*lateral]
   if(state.debugScenario==='reaction-interrupt')return [
     {id:'red-fighter',callsign:'BOGEY 1',role:'fighter',aircraft:4,initialAircraft:4,strength:100,morale:74,status:'enroute',target:'decoy',route:[offset(5),friendlyBase],detectionWindows:[]},
     {id:'red-recon',callsign:'SPECTER',role:'recon',aircraft:2,initialAircraft:2,strength:100,morale:70,status:'enroute',target:'base',route:[offset(1),offset(16)],detectionWindows:[]},
@@ -491,7 +492,7 @@ function* simulateRoundTicks(state:MatchState):Generator<RoundResult,RoundResult
       if(terminal(unit)||unit.mode!=='following-route'||unit.role!=='fighter'||unit.strikeLaunched||engagedUnitIds().has(unit.id))continue
       const previous=strikeLegs.get(unit.id),followingLeg=previous?.following?previous.position:unit.position
       if(unit.friendly){const order=unit.source as Squadron,target=assets.find(asset=>asset.id===order.strikeTargetId),release=order.route.at(-1);if(order.mission==='base-strike'&&target&&target.health>0&&release&&unit.waypoint>=order.route.length&&closestSegmentDistance(followingLeg,unit.position,release)<=.03)launchStrike(unit,target,'air-to-ground-missile',release)}
-      else if(isCampaign(state)&&state.baseExposure>=ENEMY_TARGETING_THRESHOLD&&closestSegmentDistance(followingLeg,unit.position,base)<=BASE_STRIKE_RANGE+.001){const home=playerAssets.find(asset=>asset.kind==='base');if(home&&home.health>0)launchStrike(unit,home,'air-to-ground-missile',closestPointOnSegment(followingLeg,unit.position,base))}
+      else if(isCampaign(state)&&shouldCpuStrikeBase(state.cpuDifficulty,state.baseExposure)&&closestSegmentDistance(followingLeg,unit.position,base)<=BASE_STRIKE_RANGE+.001){const home=playerAssets.find(asset=>asset.kind==='base');if(home&&home.health>0)launchStrike(unit,home,'air-to-ground-missile',closestPointOnSegment(followingLeg,unit.position,base))}
     }
     // 6-7: tick-level defense launches; damage resolves through queued impacts.
     for(const asset of [...assets,...playerAssets].filter((a):a is Asset&{kind:'sam'|'aaa'}=>(a.kind==='sam'||a.kind==='aaa')&&a.health>0&&a.operational!==false))for(const target of units.filter(u=>!terminal(u)&&u.friendly===assets.includes(asset)).sort((a,b)=>distance(asset.position,a.position)-distance(asset.position,b.position)||a.id.localeCompare(b.id))){

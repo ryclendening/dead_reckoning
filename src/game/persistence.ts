@@ -250,6 +250,9 @@ export function normalizeMatch(input: unknown): MatchState {
     ? { ...asset, operational: savedBase.operational ?? asset.health > 0 }
     : asset)
   const phase = input.phase === 'execute' ? 'plan' : input.phase
+  const cpuDifficulty = input.cpuDifficulty === 'easy' || input.cpuDifficulty === 'hard' || input.cpuDifficulty === 'medium'
+    ? input.cpuDifficulty
+    : 'medium'
   return {
     ...fresh,
     ...input,
@@ -263,6 +266,7 @@ export function normalizeMatch(input: unknown): MatchState {
     playerBaseHealth: synchronizedAssets.find(asset => asset.kind === 'base')!.health,
     enemyBaseHealth: enemyBase.health,
     economy: (input.economy as EconomyState | undefined) ?? createEconomyState(),
+    cpuDifficulty,
     debugScenario,
     setup: normalizedSetup,
     lastResult: input.phase === 'execute' ? undefined : input.lastResult as RoundResult | undefined,
