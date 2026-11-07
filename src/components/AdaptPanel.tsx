@@ -15,6 +15,9 @@ interface AdaptPanelProps {
   procurementActionId?: EconomyActionId
   onProcurementMode: (mode: ProcurementMode) => void
   onProcurementAction: (actionId: EconomyActionId) => void
+  hasPlacementPreview: boolean
+  onConfirmPlacement: () => void
+  onCancelPlacement: () => void
 }
 
 const targetLabel = (match: MatchState, target: EconomyTarget) => target.kind === 'campaign' ? 'CAMPAIGN' : target.kind === 'squadron'
@@ -24,7 +27,7 @@ const targetLabel = (match: MatchState, target: EconomyTarget) => target.kind ==
 const targetKey = (target: EconomyTarget) => `${target.kind}:${target.id}`
 const isRoutineRepair = (quote: EconomyActionQuote) => quote.id === 'repair-formation' || quote.id === 'repair-defense' || quote.id === 'repair-fob'
 
-export function AdaptPanel({ match, selectedTarget, onSelectTarget, onPurchase, onNextRound, procurementMode, procurementActionId, onProcurementMode, onProcurementAction }: AdaptPanelProps) {
+export function AdaptPanel({ match, selectedTarget, onSelectTarget, onPurchase, onNextRound, procurementMode, procurementActionId, onProcurementMode, onProcurementAction, hasPlacementPreview, onConfirmPlacement, onCancelPlacement }: AdaptPanelProps) {
   const [pending, setPending] = useState<EconomyActionQuote>()
   const quotes = [...economyQuotesFor(match, selectedTarget)].sort((left, right) => Number(right.id === 'replace-aircraft') - Number(left.id === 'replace-aircraft'))
   const attentionTargets = useMemo(() => economyAttentionTargets(match), [match])
@@ -62,7 +65,8 @@ export function AdaptPanel({ match, selectedTarget, onSelectTarget, onPurchase, 
     </div> : null}
     {procurementMode === 'placing' ? <div className="adapt-drawer adapt-placement-drawer" aria-label={`Place ${procurementKind ?? 'asset'}`}>
       <header className="adapt-build-heading"><b><MapPin/> BUILD {procurementKind?.toUpperCase() ?? 'ASSET'} · {procurementQuote?.cost ?? 0} L</b><button type="button" aria-label="Cancel placement" onClick={() => onProcurementMode('closed')}><X/></button></header>
-      <p className="procure-instruction">Tap a valid hex to build. Your balance updates right away.</p>
+      <p className="procure-instruction">{hasPlacementPreview ? 'Confirm this hex to purchase and place the asset.' : 'Tap a highlighted hex to preview its site.'}</p>
+      {hasPlacementPreview ? <div className="campaign-placement-confirm"><button type="button" onClick={onCancelPlacement}><X/> CANCEL</button><button type="button" className="confirm" onClick={onConfirmPlacement}><Check/> CONFIRM BUILD</button></div> : null}
     </div> : null}
 
     {procurementMode === 'closed' && selectedTarget.kind !== 'campaign' ? <div className="adapt-drawer">
