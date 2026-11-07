@@ -1,5 +1,5 @@
 import type { MatchState, MissionId, Point, Role, Squadron } from './types'
-import { missionDistance } from './engine'
+import { missionDistance } from './flightRules'
 import { BASE_STRIKE_RANGE, selectedStrikeTarget } from './campaign'
 import { formationField } from './forwardBasing'
 

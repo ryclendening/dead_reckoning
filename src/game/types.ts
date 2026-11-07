@@ -1,3 +1,4 @@
+import type { CpuRoundReport, CpuState } from './cpu/types'
 export type Phase = 'deploy' | 'plan' | 'execute' | 'debrief' | 'adapt' | 'victory' | 'defeat'
 export type Role = 'fighter' | 'recon'
 export type MissionId = 'defensive-cap' | 'forward-patrol' | 'transit' | 'search-area' | 'base-strike'
@@ -38,6 +39,8 @@ export interface EnemyFlight {
   id: string; callsign: string; role: Role; aircraft: number; initialAircraft: number
   strength?: number; morale?: number; status?: ExecutionStatus
   route: Point[]; detectionWindows: DetectionWindow[]; identityLearnedAt?: number; target: 'base' | 'decoy'
+  mission?: MissionId; routeIngress?: Point[]; maxAircraft?: number; sortieOrdered?: boolean
+  strikeTargetId?: string; protectedPoint?: Point; protectedTargetId?: string
 }
 export type AssetKind = 'base' | 'fob' | 'decoy' | 'radar' | 'sam' | 'aaa'
 export type ConstructibleAssetKind = 'fob' | 'decoy' | 'sam' | 'aaa'
@@ -193,6 +196,7 @@ export interface ReinforcementCall {
   route: Point[]; targetSquadronId?: string
 }
 export interface RoundResult {
+  cpuReport?: CpuRoundReport
   round: number; duration: number; tickSeconds: number; unitTracks: UnitTrack[]; contactIntervals: ContactInterval[]; behaviorIntervals: BehaviorInterval[]
   events: CombatEvent[]; squadrons: Squadron[]; assets: Asset[]; enemyLosses: number; friendlyLosses: number
   friendlyAttrition: FormationAttrition[]; enemyAttrition: FormationAttrition[]; friendlyFormationsDestroyed: number; enemyFormationsDestroyed: number
@@ -208,6 +212,7 @@ export interface RoundResult {
   threatAlerts?: ThreatAlert[]
 }
 export interface MatchState {
+  cpu?: CpuState
   round: number; phase: Phase; logistics: number; command: number; replacements: number; selectedId: string
   squadrons: Squadron[]; enemyAssets: Asset[]; playerAssets: Asset[]; playerBaseHealth: number; enemyBaseHealth: number
   baseExposure: number; campaignScore: number; lastResult?: RoundResult; seed: number; world: CampaignWorld

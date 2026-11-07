@@ -1,6 +1,12 @@
 # CPU play plan
 
-Status: first-pass design proposal, 2026-11-07. The systems below are planned, not implemented. [GAMEPLAY_STATE.md](./GAMEPLAY_STATE.md) remains the source of truth for shipped mechanics.
+Status: staged design with an initial basic CPU implementation, 2026-11-07. [GAMEPLAY_STATE.md](./GAMEPLAY_STATE.md) is the source of truth for implemented behavior; the broader systems below remain the design target.
+
+## Basic implementation checkpoint
+
+The current branch implements a campaign entry menu with saved Easy/Medium/Hard selection, persistent CPU forces and finite repair/replacement spending, recovery-gated site and traffic memory, stored mission orders, defense/patrol/escort/strike selection, bounded direct/flank route alternatives, support-site strikes, private sensing, and CPU recon RTB. Checks cover deterministic adaptation, information isolation, save/load, and complete recon-to-strike sequences on all tiers.
+
+This is a basic subset of the milestones below. CPU construction, upgrades, FOB staging, terrain/boundary recovery, confirmed-kill income, graph-search routing, and Hard campaign lookahead remain future work. The fixed maintenance priority is a baseline heuristic rather than the proposed joint mission/purchase evaluator. No browser testing has been performed.
 
 ## Goal and first-pass scope
 
