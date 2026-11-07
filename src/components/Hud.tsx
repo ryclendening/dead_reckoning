@@ -1,8 +1,9 @@
-import { useState } from 'react'
+import { useRef, useState, type TouchEvent } from 'react'
 import { AlertTriangle, CheckCircle2, ChevronDown, ChevronLeft, ChevronRight, ChevronUp, Crosshair, Eye, List, LocateFixed, Map, Radar, RotateCcw, Shield, Sword, Trophy, Wrench, Zap } from 'lucide-react'
 import { formationStatus, recoveryReasonLabel } from '../game/formationStatus'
 import { contactTracksAt } from '../game/contactTracks'
 import { airfieldLabel, formationBaseGroups } from '../game/formationBasing'
+import { viablePlanningFormationIds } from '../game/planningQueue'
 import { projectFriendlyUnitAt } from '../game/executionProjection'
 import { templateFor, templatesForRole } from '../game/routeTemplates'
 import {DEBUG_SCENARIOS,DEBUG_SCENARIO_LABELS} from '../game/scenarios'
@@ -56,6 +57,7 @@ export function PlanningChitRail({squadrons,bases,activeBaseId,selectedId,review
 
 export function CommandShelf({squadrons,bases,activeBaseId,rosterMode,squadron,routeDistance,maxDistance,routeNotice,protectSummary,recoverySummary,onSelect,onBaseSelect,onRosterMode,onMission,onPickProtectTarget,onProtectFlight,onRecoverHome,onClear,onBack,onCommit,step,onClose,reviewedIds,reviewedCount,totalCount,groundTargets=[],onChangeGroundTarget,strikeUnlocked=false,strikeDisabledReason='RECOVER BASE INTELLIGENCE TO UNLOCK',selectingProtectTarget=false}:{squadrons:Squadron[];bases:Asset[];activeBaseId:string;rosterMode:PlanningRosterMode;squadron:Squadron;routeDistance:number;maxDistance:number;routeNotice?:string;protectSummary?:string;recoverySummary?:string;onSelect:(id:string)=>void;onBaseSelect:(id:string)=>void;onRosterMode:(mode:PlanningRosterMode)=>void;onMission:(mission:MissionId)=>void;onPickProtectTarget?:()=>void;onProtectFlight?:(id:string)=>void;onRecoverHome?:()=>void;onClear:()=>void;onBack?:()=>void;onCommit:()=>void;step:PlanningStep;onClose:()=>void;reviewedIds:Set<string>;reviewedCount:number;totalCount:number;campaign?:boolean;groundTargets?:Asset[];onChangeGroundTarget?:()=>void;strikeUnlocked?:boolean;strikeDisabledReason?:string;selectingProtectTarget?:boolean}){
   const force=formationStatus(squadron)
+  const swipeStart=useRef<{x:number;y:number}|undefined>(undefined)
   const ready=reviewedCount>0
   const expanded=step!=='idle'
   const missionLabel=templateFor(squadron.mission).label.toUpperCase()
@@ -68,8 +70,10 @@ export function CommandShelf({squadrons,bases,activeBaseId,rosterMode,squadron,r
   const primaryLabel='COMMIT ROUND'
   const primaryDisabled=!ready
   const primaryAction=ready?onCommit:undefined
+  const handleTouchStart=(event:TouchEvent<HTMLDivElement>)=>{if(step!=='route'||event.touches.length!==1)return;const touch=event.touches[0];swipeStart.current={x:touch.clientX,y:touch.clientY}}
+  const handleTouchEnd=(event:TouchEvent<HTMLDivElement>)=>{const start=swipeStart.current;swipeStart.current=undefined;if(step!=='route'||!start||event.changedTouches.length!==1)return;const touch=event.changedTouches[0],dx=touch.clientX-start.x,dy=touch.clientY-start.y;if(Math.abs(dx)<54||Math.abs(dx)<Math.abs(dy)*1.25)return;const available=viablePlanningFormationIds(squadrons);if(available.length<2)return;const index=available.indexOf(squadron.id);if(index<0)return;const next=(index+(dx<0?1:-1)+available.length)%available.length;onSelect(available[next])}
   return <section className={`command-shelf ${expanded?'expanded':''}`} aria-label="Planning command shelf">
-    {expanded?<div className={`command-sheet ${step}-step`}>
+    {expanded?<div className={`command-sheet ${step}-step`} onTouchStart={handleTouchStart} onTouchEnd={handleTouchEnd}>
       {step==='route'?<>
         <div className="sheet-heading"><span>ORDERS {reviewedCount} / {totalCount}</span><b>{squadron.callsign}</b><button onClick={onClose}>CLOSE</button></div>
         <h2 className="planning-title">BUILD ROUTE</h2>
