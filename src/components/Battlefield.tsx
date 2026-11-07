@@ -655,7 +655,7 @@ function BattlefieldScene({squadrons,assets,playerAssets,mappedAreas,discoveredB
     if(phase==='plan'&&routePlanningEnabled&&airfield){if(selected.mission!=='base-strike')onPlanningRecoverySelect?.(asset.id);return}
     if(phase==='plan'&&airfield)onPlanningBaseSelect?.(asset.id)
     if(phase==='execute'&&airfield)onExecutionBaseSelect?.(asset.id)
-    if(phase==='adapt'&&!construction)onEconomySelect?.(asset.id)
+    if(phase==='adapt'){if(!construction)onEconomySelect?.(asset.id);return}
     if(phase!=='deploy'&&!construction)onAssetInspect?.(asset.id)
   }
   const selectEnemyAsset=(asset:Asset)=>{
