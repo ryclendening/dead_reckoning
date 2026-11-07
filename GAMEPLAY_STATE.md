@@ -1,6 +1,6 @@
 # Dead Reckoning: Current Gameplay State
 
-Last verified against the implementation and tests: 2026-11-07
+Last updated against the implementation: 2026-11-07
 
 This is the source of truth for behavior implemented in the current build. It records the net gameplay state, not the sequence of designs that led to it. Use git history for superseded mechanics and earlier implementation notes.
 
@@ -57,7 +57,7 @@ Aircraft counts, strength, and morale now persist as a CPU campaign inventory. S
 ### Basic CPU strategy
 
 - The CPU stores a difficulty profile, its two formations, Logistics and reserves, recovered fixed-site reports, recent visual traffic witnessed by recovered flights, search progress, a mission plan, and settlement/maintenance markers. It begins with 10 Logistics and three reserve aircraft.
-- The strategic planner receives its own forces, own-base position/health, recovered reports, public rules, round, and targeting pressure. It does not receive player asset placements, player orders, player resources, or hidden world bounds. Initial search uses a fixed central-sector prior, followed by the four general starting sectors; it does not read the actual placed home-base coordinates.
+- The strategic planner receives its own forces, own-base position/health, recovered reports, public rules, round, and targeting pressure. It does not receive player asset placements, player orders, player resources, or hidden world bounds. Search uses nine public geographic sectors across the central deployment area, skips sectors within 10 units of its own home, and prioritizes sectors near an 18-unit distance from its own base. It does not read the actual placed home-base coordinates or reconstruct the opposing layout from the seed.
 - Every round, the fighter chooses Protect home, Forward Patrol, feasible recon escort, or Ground Strike against a recovered confirmed site. Damage to the CPU base increases defense value. Recent witnessed air traffic influences patrol/escort value. After a recon loss, Medium and Hard shorten the next search mission to a 36-unit budget and consider escort; otherwise recon can use its normal 48-unit allowance. Escort still requires useful predicted coverage and feasible fighter recovery.
 - Routes compare a bounded set of direct/flank ingress alternatives, generated mission patterns, return fuel, and exposure to known SAMs, AAA, and radar. Easy considers a direct approach and seeded near-best choices. Medium compares three ingress alternatives and weighs known threats more strongly. Hard compares five alternatives, additional strike release directions, and stronger threat/escort preferences. There is no campaign lookahead, general graph-search pathfinder, or learned model in this first slice.
 - All difficulties share combat odds, sensors, costs, force sizes, fuel, and the 60-point base-targeting gate. Higher difficulty changes decisions, not aircraft strength or secret knowledge. Difficulty is selected for a new campaign and persists through reload.
@@ -171,7 +171,9 @@ Direct fighter combat interrupts a fighter's recon pursuit. When combat or pursu
 
 ## Reconnaissance, Sensors, and Fog of War
 
-- The deterministic world is `28 × 36` map units. The player starts in one of four seeded central regions. A six-unit generic terrain apron hides the true boundary from the initial camera and terrain presentation.
+- The deterministic world is `28 × 36` map units. New campaigns sample the friendly territory center from legal hexes across a central area spanning x ±7.5 and z ±9. The enemy base is independently sampled from legal hexes 18–21 units from that territory center, with 4.5 units of world-edge clearance. This keeps the two opening regions separated and a direct fighter base strike within the 40-unit allowance even after legal player-base placement. A six-unit generic terrain apron hides the true boundary from the initial camera and terrain presentation.
+- Enemy AAA, SAM, radar, and decoy sites use seeded individual placements around their base, with at least 1.15 units between sites and at least .5 units of world-edge clearance. AAA lies 1.2–1.9 units from its base, SAM 1.8–3.2, radar 2–4, and decoy 2.5–4, so the starting weapons can cover the base without using identical offsets every game. Player asset sites remain manually selected during Deploy.
+- Layout generation is deterministic for a stored seed. New Campaign and campaign Reboot obtain fresh random seeds. Compatible saves keep their existing world, deployed sites, and committed CPU orders; loading does not reroll them. Tactical debug fixtures retain their legacy deterministic positions.
 - Planning and camera limits derive from recovered knowledge plus an exploration margin, not from hidden world bounds.
 - Friendly territory is initially known. Most other terrain is obscured by a continuous, feathered haze, while generic terrain remains faintly visible.
 - During execution, living friendly formations reveal terrain around their rendered positions; recon's live terrain reveal is larger than a fighter's. Recon mapping is accumulated from its executed route, not revealed at Commit.
@@ -274,6 +276,8 @@ This log keeps only current net changes. Superseded intermediate states belong i
 ### 2026-11-07
 
 - Reconciled the CPU campaign build with the hosted placement flow for publication: deployment assets remain selectable and movable through package review, Adapt previews can be repositioned, and **Begin Planning** locks deployment. The publish branch preserves the CPU menu and difficulty selection alongside those placement changes.
+
+- Randomized new-campaign territory centers, independently sampled enemy bases, and individually placed enemy defenses/decoys. Enforced opening separation, edge clearance, site spacing, and direct base-strike reach. Broadened the CPU search prior using only its own position and public sectors. New Campaign and campaign Reboot now use fresh random seeds; existing saves and fixed debug layouts retain their positions.
 
 - Added a title menu with New Campaign, Easy/Medium/Hard selection, Continue, and an in-game MENU action that pauses execution. New campaigns use a fresh saved seed; difficulty and campaign progress persist. Corrected the prior deployment description and default placement help: the existing App already placed assets directly on legal taps, with review of the full package afterward.
 - Replaced ordinary scripted enemy flights with persistent CPU formations and stored round orders. Added recovered site/traffic memory, own-base defense, patrol, feasible recon escort, threat-scored direct/flank routes, intelligence-gated strikes on support sites and the base, and irreversible CPU recon RTB including during pursuit. Shared tactical sensing, fighter posture/responsibility, launch/impact, and fuel rules with CPU formations while keeping their receipts out of player contact projection. Fixed aircraft-count conversion for two-aircraft formations. Debug fixtures retain their explicit scripted behavior.

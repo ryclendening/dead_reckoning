@@ -42,6 +42,7 @@ function validWorld(value: unknown): boolean {
   const presentation = value.presentationBounds
   const territory = value.friendlyTerritory
   return finite(value.seed) && text(value.startRegionId)
+    && (value.layoutVersion === undefined || value.layoutVersion === 1)
     && [bounds.minX, bounds.maxX, bounds.minZ, bounds.maxZ, presentation.minX, presentation.maxX, presentation.minZ, presentation.maxZ].every(finite)
     && finite(bounds.minX) && finite(bounds.maxX) && finite(bounds.minZ) && finite(bounds.maxZ)
     && bounds.minX < bounds.maxX && bounds.minZ < bounds.maxZ
