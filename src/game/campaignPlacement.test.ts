@@ -16,6 +16,13 @@ describe('initial campaign placement', () => {
     expect(placed.setup?.placedAssetIds).toEqual(['p-base'])
   })
 
+  it('checks spacing against placed assets only', () => {
+    const initial = createMatch()
+    const setup = { ...createCampaignSetupState(), placedAssetIds: ['p-base'] }
+    const samPosition = initial.playerAssets.find(asset => asset.id === 'p-sam')!.position
+    expect(validateInitialPlacement({ ...initial, setup }, 'p-aaa', samPosition)).toEqual([])
+  })
+
   it('rejects unknown, outside, edge-margin, and overlapping placements', () => {
     const state = createMatch()
     const center = state.world.friendlyTerritory.center

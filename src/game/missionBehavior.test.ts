@@ -12,8 +12,8 @@ describe('mission-based aircraft behavior',()=>{
 
     const result=resolveRound(state)
 
-    expect(result.events.filter(event=>event.title==='BASE STRIKE FAILED')).toHaveLength(1)
-    expect(result.events.find(event=>event.title==='BASE STRIKE FAILED')?.detail).toContain('CONFIRM THE ENEMY BASE BEFORE STRIKING')
+    expect(result.events.filter(event=>event.title==='GROUND STRIKE FAILED')).toHaveLength(1)
+    expect(result.events.find(event=>event.title==='GROUND STRIKE FAILED')?.detail).toContain('SELECT A CONFIRMED GROUND TARGET')
   })
 
   it('distributes a radar track without a receiver-distance gate',()=>{

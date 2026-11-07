@@ -5,7 +5,7 @@ import { confirmCampaignSetup, validateCampaignSetup } from './campaignSetup'
 import { createCampaignDraft } from './data'
 import { deriveRecoveryPlanningView, validateRecoveryPackage } from './forwardBasing'
 import { deriveKnownEnvelope, derivePlanningEnvelope } from './world'
-import { buildBaseStrikeRoute, generateRouteTemplate, validateBaseStrikeOrder } from './routeTemplates'
+import { buildGroundStrikeRoute, generateRouteTemplate, validateGroundStrikeOrder } from './routeTemplates'
 import { campaignOutcome, confirmedStrikeTarget } from './campaign'
 import { normalizeMatch } from './persistence'
 import type { MatchState, Point, Squadron } from './types'
@@ -13,7 +13,7 @@ import type { MatchState, Point, Squadron } from './types'
 function openingPackage(seed: number): MatchState {
   const draft = createCampaignDraft(seed)
   const selectedFormationIds = ['viper', 'falcon', 'raven']
-  const selectedAssetIds = ['p-base', 'p-radar', 'p-decoy', 'p-sam']
+  const selectedAssetIds = ['p-base', 'p-radar', 'p-sam', 'p-aaa']
   const setup = {
     stage: 'review' as const,
     selectedFormationIds,
@@ -36,13 +36,17 @@ function planRound(input: MatchState): MatchState {
   const state = { ...input, squadrons: input.squadrons.map(squadron => ({ ...squadron })) }
   const bounds = derivePlanningEnvelope(deriveKnownEnvelope(state.world, state.mappedAreas, state.discoveredBoundaries, state.world.friendlyTerritory))
   const target = confirmedStrikeTarget(state)
-  const strikeFormationId = state.squadrons.filter(squadron => squadron.role === 'fighter' && squadron.aircraft > 0 && squadron.status !== 'trapped').sort((a, b) => (b.strength ?? 100) - (a.strength ?? 100) || b.aircraft - a.aircraft || a.id.localeCompare(b.id))[0]?.id
   const frontier = searchFrontier(state)
   state.squadrons = state.squadrons.map(squadron => {
     if (squadron.aircraft <= 0 || squadron.status === 'trapped') return squadron
-    if (target && squadron.role === 'fighter' && squadron.id === strikeFormationId) {
-      const route = buildBaseStrikeRoute(state, squadron.id)
-      if (route) return { ...squadron, mission: 'base-strike', route, routeIngress: route, plannedRecoveryFieldId: undefined }
+    // Once coordinates are recovered, keep recon grounded instead of repeatedly crossing a live SAM.
+    if (target && squadron.role === 'recon') return { ...squadron, sortieOrdered: false, plannedRecoveryFieldId: undefined }
+    squadron.sortieOrdered = true
+    if (target && squadron.role === 'fighter') {
+      const anchors = buildGroundStrikeRoute(state, squadron.id, target.id)
+      // Use an optional flank waypoint to keep the strike ingress out of the central fighter lane.
+      const route = anchors && (()=>{const [launch,release]=anchors,dx=release[0]-launch[0],dz=release[1]-launch[1],length=Math.hypot(dx,dz);return [launch,[(launch[0]+release[0])/2-dz/length*6,(launch[1]+release[1])/2+dx/length*6] as Point,release]})()
+      if (route) return { ...squadron, mission: 'base-strike', strikeTargetId: target.id, route, routeIngress: route, plannedRecoveryFieldId: undefined }
     }
 
     const origin = state.playerAssets.find(asset => asset.kind === 'base')!.position
@@ -64,16 +68,16 @@ function planRound(input: MatchState): MatchState {
     }
   })
 
-  for (const squadron of state.squadrons.filter(item => item.aircraft > 0 && item.status !== 'trapped')) {
+  for (const squadron of state.squadrons.filter(item => item.aircraft > 0 && item.status !== 'trapped' && item.sortieOrdered !== false)) {
     const view = deriveRecoveryPlanningView(state, squadron.id, squadron.route, MAX_FLIGHT_DISTANCE[squadron.role])
     expect(view?.valid, `${squadron.callsign} route should preserve legal recovery`).toBe(true)
     if (view) {
       squadron.route = view.normalizedRoute
       squadron.plannedRecoveryFieldId = view.intendedField.id
-      if (squadron.mission === 'base-strike') expect(validateBaseStrikeOrder(state, squadron)).toBeUndefined()
+      if (squadron.mission === 'base-strike') expect(validateGroundStrikeOrder(state, squadron)).toBeUndefined()
     }
   }
-  expect(validateRecoveryPackage(state, MAX_FLIGHT_DISTANCE)).toEqual({ valid: true })
+  expect(validateRecoveryPackage(state, MAX_FLIGHT_DISTANCE, new Set(state.squadrons.filter(item => item.sortieOrdered !== false).map(item => item.id)))).toEqual({ valid: true })
   return state
 }
 
@@ -115,7 +119,9 @@ describe('legal campaign integration', () => {
       state = applyRound(state, result)
       expect(state.phase).toBe('debrief')
 
+      const reconOrdered=state.squadrons.find(squadron=>squadron.id==='raven')?.sortieOrdered!==false
       expect(result.recoveryOutcomes.find(outcome => outcome.formationId === 'raven')?.outcome).toBe('recovered')
+      if(!reconOrdered)expect(result.unitTracks.find(track=>track.unitId==='raven')?.frames.every(frame=>frame.mode==='grounded')).toBe(true)
 
       const afterDebrief = recoverAtAdapt(state)
       if (afterDebrief.phase === 'victory') {
@@ -130,7 +136,7 @@ describe('legal campaign integration', () => {
     }
 
     expect(victoryRound).toBeDefined()
-    expect(victoryRound).toBe(6)
+    expect(victoryRound).toBe(3)
     expect(victoryRound).toBeLessThanOrEqual(6)
     expect(campaignOutcome(state)).toBe('enemy-base-destroyed')
     expect(state.enemyBaseHealth).toBe(0)

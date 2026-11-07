@@ -1,4 +1,4 @@
-import type { ContactInterval, RoundResult, UnitFrame, UnitTrack } from './types'
+import type { Asset, ContactInterval, RoundResult, UnitFrame, UnitTrack } from './types'
 import { headingAngle, shortestAngleLerp } from './heading'
 
 export type ContactLevel = 'radar' | 'visual'
@@ -218,4 +218,13 @@ export function debriefHistoryFor(result: RoundResult): DebriefHistory {
       return segments.length ? [{ unitId: flight.id, segments }] : []
     }),
   }
+}
+
+/** Project fixed-target health from resolved impacts, never from a future final asset snapshot. */
+export function projectGroundAssetAt(asset:Asset,result:RoundResult|undefined,seconds:number):Asset{
+  if(!result)return asset
+  const damage=result.combatSequences.filter(sequence=>sequence.kind==='strike').flatMap(sequence=>sequence.exchanges)
+    .filter(exchange=>exchange.defenderId===asset.id&&exchange.time<=seconds+.000001)
+    .reduce((sum,exchange)=>sum+exchange.damage,0)
+  return damage>0?{...asset,health:Math.max(0,asset.health-damage),struck:true}:asset
 }

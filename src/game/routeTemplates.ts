@@ -1,7 +1,7 @@
 import type { MatchState, MissionId, Point, Role, Squadron } from './types'
 import { missionDistance } from './engine'
-import { BASE_STRIKE_RANGE, confirmedStrikeTarget } from './campaign'
-import { formationField, snapRouteToRecoveryField } from './forwardBasing'
+import { BASE_STRIKE_RANGE, selectedStrikeTarget } from './campaign'
+import { formationField } from './forwardBasing'
 
 export interface RouteBounds { minX:number; maxX:number; minZ:number; maxZ:number }
 export interface RouteTemplateDefinition { id:MissionId; label:string; shortLabel:string; description:string; roles:Role[]; requiresTarget:boolean }
@@ -9,7 +9,7 @@ export type RouteAdjustment = 'none' | 'pattern-shrunk' | 'ingress-shortened' | 
 export interface RouteGenerationResult { route:Point[]; ingress:Point[]; requestedIngress:Point[]; adjustment:RouteAdjustment }
 
 export const ROUTE_TEMPLATES:RouteTemplateDefinition[]=[
-  {id:'base-strike',label:'Base Strike',shortLabel:'BASE STRIKE',description:'Approach a confirmed enemy base and release one air-to-ground missile inside 6 units.',roles:['fighter'],requiresTarget:true},
+  {id:'base-strike',label:'Ground Strike',shortLabel:'GROUND STRIKE',description:'Choose a confirmed ground target, then edit the ingress between fixed takeoff and strike points. Avoid voluntary air combat.',roles:['fighter'],requiresTarget:true},
   {id:'transit',label:'Transit',shortLabel:'TRANSIT',description:'Fly to a friendly airfield without diverting to intercept contacts.',roles:['fighter'],requiresTarget:true},
   {id:'defensive-cap',label:'Protect',shortLabel:'PROTECT',description:'Choose a friendly site, flight, or map point. Intercept threats inside the moving or fixed cover circle; break off at its marked edge.',roles:['fighter'],requiresTarget:true},
   {id:'forward-patrol',label:'Forward Patrol',shortLabel:'FORWARD PATROL',description:'Hunt inside the corridor around the patrol route, then break pursuit at its marked edge. Shots +10 points; incoming hits +6 points.',roles:['fighter'],requiresTarget:true},
@@ -19,45 +19,33 @@ export const ROUTE_TEMPLATES:RouteTemplateDefinition[]=[
 export const templatesForRole=(role:Role)=>ROUTE_TEMPLATES.filter(template=>template.roles.includes(role))
 export const templateFor=(id:MissionId)=>ROUTE_TEMPLATES.find(template=>template.id===id)??ROUTE_TEMPLATES[0]
 
-export function buildBaseStrikeRoute(state:MatchState,squadronId:string):Point[]|undefined{
-  const squadron=state.squadrons.find(item=>item.id===squadronId),target=confirmedStrikeTarget(state)
+export function buildGroundStrikeRoute(state:MatchState,squadronId:string,targetId?:string):Point[]|undefined{
+  const squadron=state.squadrons.find(item=>item.id===squadronId),target=selectedStrikeTarget(state,targetId)
   if(!squadron||squadron.role!=='fighter'||squadron.aircraft<=0||!target)return undefined
   const launch=formationField(state.playerAssets,squadron.id)
-  if(!launch||!launch.health||launch.health<=0||(launch.kind==='fob'&&launch.operational===false))return undefined
+  if(!launch||launch.health<=0||launch.operational===false)return undefined
   const origin=launch.position,d=distance(origin,target.position)
-  if(d<=BASE_STRIKE_RANGE){
-    const waypoint:Point=d>.001?[origin[0]+(target.position[0]-origin[0])*Math.min(.25,d)/d,origin[1]+(target.position[1]-origin[1])*Math.min(.25,d)/d]:[origin[0]+.05,origin[1]]
-    return [origin,waypoint]
-  }
-  const approachDistance=Math.min(BASE_STRIKE_RANGE-.1,d)
-  const approach:Point=[target.position[0]+(origin[0]-target.position[0])*approachDistance/d,target.position[1]+(origin[1]-target.position[1])*approachDistance/d]
-  const route=snapRouteToRecoveryField([origin,approach],state.playerAssets)
-  if(missionDistance(route,origin)>40+.001||distance(route.at(-1)!,target.position)>BASE_STRIKE_RANGE+.001)return undefined
-  return route
+  const travel=d<=BASE_STRIKE_RANGE?Math.min(.25,d):d-(BASE_STRIKE_RANGE-.1)
+  const release:Point=d>.001?[origin[0]+(target.position[0]-origin[0])*travel/d,origin[1]+(target.position[1]-origin[1])*travel/d]:[origin[0]+.05,origin[1]]
+  const route:Point[]=[[...origin],release]
+  return missionDistance(route,origin)<=40+.001?route:undefined
 }
 
-function closestRouteDistance(route:Point[],target:Point):number{
-  if(!route.length)return Infinity
-  if(route.length===1)return distance(route[0],target)
-  let closest=Infinity
-  for(let index=1;index<route.length;index++){
-    const from=route[index-1],to=route[index],dx=to[0]-from[0],dz=to[1]-from[1],lengthSquared=dx*dx+dz*dz
-    const progress=lengthSquared<1e-9?0:clamp(((target[0]-from[0])*dx+(target[1]-from[1])*dz)/lengthSquared,0,1)
-    closest=Math.min(closest,distance(target,[from[0]+dx*progress,from[1]+dz*progress]))
-  }
-  return closest
+/** Preserve both mission anchors while replacing only optional ingress waypoints. */
+export function groundStrikeRoute(anchors:Point[],waypoints:Point[]):Point[]{
+  return anchors.length<2?anchors:[anchors[0],...waypoints.slice(0,5),anchors.at(-1)!]
 }
 
-export function validateBaseStrikeOrder(state:MatchState,squadron:Squadron):string|undefined{
+export function validateGroundStrikeOrder(state:MatchState,squadron:Squadron):string|undefined{
   if(squadron.mission!=='base-strike')return undefined
-  const target=confirmedStrikeTarget(state)
-  if(!target)return 'CONFIRM THE ENEMY BASE BEFORE STRIKING'
-  if(squadron.role!=='fighter')return 'BASE STRIKE REQUIRES A FIGHTER'
-  const launch=formationField(state.playerAssets,squadron.id)
-  if(!launch)return 'NO OPERATIONAL LAUNCH FIELD'
-  const route=snapRouteToRecoveryField([[...launch.position],...squadron.route.slice(1)],state.playerAssets)
-  if(route.length<2||missionDistance(route,launch.position)>40+.001)return 'BASE STRIKE ROUTE EXCEEDS AVAILABLE RANGE'
-  if(closestRouteDistance(route,target.position)>BASE_STRIKE_RANGE+.001)return 'ROUTE MUST APPROACH WITHIN 6 UNITS OF THE ENEMY BASE'
+  const target=selectedStrikeTarget(state,squadron.strikeTargetId)
+  if(!target)return 'SELECT A CONFIRMED GROUND TARGET'
+  if(squadron.role!=='fighter')return 'GROUND STRIKE REQUIRES A FIGHTER'
+  const anchors=buildGroundStrikeRoute(state,squadron.id,target.id)
+  if(!anchors)return 'NO LEGAL STRIKE INGRESS FROM THIS FIELD'
+  const route=squadron.route
+  if(route.length<2||route.length>7||distance(route[0],anchors[0])>.001||distance(route.at(-1)!,anchors[1])>.001)return 'KEEP THE FIXED TAKEOFF AND STRIKE POINTS'
+  if(missionDistance(route,anchors[0])>40+.001)return 'GROUND STRIKE ROUTE EXCEEDS AVAILABLE RANGE'
   return undefined
 }
 

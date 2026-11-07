@@ -18,11 +18,11 @@ describe('mission order debrief',()=>{
     const [fighter]=match.squadrons
     const squadron={...fighter,mission:'base-strike' as const,sortieOrdered:true}
     const result=blankResult([squadron])
-    result.events=[{id:'1',time:22,tone:'warning',title:'BASE STRIKE FAILED',detail:`${fighter.callsign}: CONFIRM THE ENEMY BASE BEFORE STRIKING.`}]
+    result.events=[{id:'1',time:22,tone:'warning',title:'GROUND STRIKE FAILED',detail:`${fighter.callsign}: SELECT A CONFIRMED GROUND TARGET.`}]
     match.squadrons=[squadron]
 
     expect(missionOrderDebrief(match,result)).toEqual([{
-      id:fighter.id,callsign:fighter.callsign,purpose:'STRIKE CONFIRMED ENEMY BASE',result:'CONFIRM THE ENEMY BASE BEFORE STRIKING',
+      id:fighter.id,callsign:fighter.callsign,purpose:'STRIKE UNSELECTED GROUND TARGET',result:'SELECT A CONFIRMED GROUND TARGET',
     }])
   })
 

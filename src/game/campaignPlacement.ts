@@ -15,7 +15,7 @@ export function validateInitialPlacement(state: MatchState, assetId: string, poi
   if (!finitePoint(point)) return ['SELECT A MAP LOCATION']
   const edgeMargin = asset.kind === 'base' ? INITIAL_PLACEMENT_EDGE_MARGIN : .35
   if (!territoryContains(point!,state.world.friendlyTerritory,edgeMargin)) return ['PLACE INSIDE FRIENDLY TERRITORY']
-  const selectedIds = state.setup?.selectedAssetIds ?? state.playerAssets.map(item => item.id)
+  const selectedIds = state.setup ? state.setup.placedAssetIds : state.playerAssets.map(item => item.id)
   const tooClose = state.playerAssets.some(other => other.id !== assetId && selectedIds.includes(other.id) && distance(point!, other.position) < INITIAL_PLACEMENT_SPACING)
   if (tooClose) return ['TOO CLOSE TO ANOTHER FRIENDLY ASSET']
   return []

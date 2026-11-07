@@ -24,6 +24,8 @@ export interface Squadron {
   strength?: number; morale?: number; status?: ExecutionStatus; plannedRecoveryFieldId?: string; sortieOrdered?: boolean
   /** Optional site, map point, or friendly flight assigned to a Protect order. */
   protectedTargetId?: string; protectedPoint?: Point
+  /** Explicit recovered enemy ground target; base-strike is the legacy Ground Strike mission ID. */
+  strikeTargetId?: string
 }
 export interface DetectionWindow {
   start: number; end: number; source: 'radar' | 'visual'; observer?: string

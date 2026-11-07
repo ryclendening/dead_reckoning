@@ -1,5 +1,5 @@
 import { createCampaignDraft, createMatch } from './data'
-import { SETUP_FORMATION_IDS } from './campaignSetup'
+import { SETUP_FORMATION_IDS, SETUP_REQUIRED_ASSET_IDS } from './campaignSetup'
 import { campaignOutcome } from './campaign'
 import { createEconomyState } from './economy'
 import { normalizeFormationBasing } from './forwardBasing'
@@ -60,6 +60,7 @@ function validSquadron(value: unknown): value is Squadron {
   if (value.morale !== undefined && (!finite(value.morale) || value.morale < 0 || value.morale > 100)) return false
   if (value.status !== undefined && !new Set(['enroute', 'dogfight', 'disengaging', 'rtb', 'trapped', 'destroyed']).has(String(value.status))) return false
   if (value.plannedRecoveryFieldId !== undefined && !text(value.plannedRecoveryFieldId)) return false
+  if (value.strikeTargetId !== undefined && !text(value.strikeTargetId)) return false
   if (value.sortieOrdered !== undefined && typeof value.sortieOrdered !== 'boolean') return false
   return value.role === 'fighter' ? value.mission !== 'search-area' : value.mission === 'search-area'
 }
@@ -206,6 +207,11 @@ export function normalizeMatch(input: unknown): MatchState {
       && selectedFormations.some(squadron => squadron.role === 'fighter')
       && selectedFormations.some(squadron => squadron.role === 'recon')
     if (!hasPlayableOpeningForce) normalizedSetup = { ...setup, selectedFormationIds: [...SETUP_FORMATION_IDS] }
+    if (SETUP_REQUIRED_ASSET_IDS.every(id => assetIds.has(id))) {
+      const placedAssetIds = setup.placedAssetIds.filter(id => SETUP_REQUIRED_ASSET_IDS.includes(id as typeof SETUP_REQUIRED_ASSET_IDS[number]))
+      const allPlaced = placedAssetIds.length === SETUP_REQUIRED_ASSET_IDS.length
+      normalizedSetup = { ...(normalizedSetup ?? setup), selectedAssetIds: [...SETUP_REQUIRED_ASSET_IDS], placedAssetIds, stage: allPlaced ? 'review' : 'place' }
+    }
   } else if (input.phase === 'deploy') return fallback(input)
   else if (debugScenario === 'campaign' && squadrons.length !== 3 && squadrons.length !== fresh.squadrons.length) return fallback(input)
   else if (debugScenario === 'campaign' && (!squadrons.some(s => s.role === 'fighter') || !squadrons.some(s => s.role === 'recon'))) return fallback(input)

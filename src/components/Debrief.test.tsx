@@ -13,7 +13,7 @@ describe('mission debrief surface',()=>{
     const markup=renderToStaticMarkup(<Debrief match={view} onFocus={()=>{}} onAdapt={()=>{}}/>)
 
     expect(markup).toContain('ORDERS &amp; RESULTS')
-    expect(markup).toContain('STRIKE CONFIRMED ENEMY BASE')
-    expect(markup).toContain('CONFIRM THE ENEMY BASE BEFORE STRIKING')
+    expect(markup).toContain('STRIKE UNSELECTED GROUND TARGET')
+    expect(markup).toContain('SELECT A CONFIRMED GROUND TARGET')
   })
 })

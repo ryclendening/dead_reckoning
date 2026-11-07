@@ -10,7 +10,7 @@ function confirmedThreeFormationCampaign(): MatchState {
   const draft = createCampaignDraft(9234)
   const base = draft.playerAssets.find(asset => asset.kind === 'base')!
   const selectedIds = ['viper', 'raven', 'ghost']
-  const selectedAssetIds = ['p-base', 'p-radar', 'p-decoy', 'p-sam']
+    const selectedAssetIds = ['p-base', 'p-radar', 'p-sam', 'p-aaa']
   const confirmed = confirmCampaignSetup({
     ...draft,
     setup: { stage: 'review', selectedFormationIds: selectedIds, selectedAssetIds, placedAssetIds: selectedAssetIds },
@@ -126,13 +126,24 @@ describe('normalizeMatch', () => {
       setup: {
         ...draft.setup!,
         selectedFormationIds: ['viper', 'falcon'],
-        selectedAssetIds: ['p-base', 'p-radar', 'p-decoy', 'p-sam'],
+        selectedAssetIds: ['p-base', 'p-radar', 'p-sam', 'p-aaa'],
       },
     }
     const loaded = normalizeMatch(JSON.parse(JSON.stringify(saved)))
 
     expect(loaded.setup?.selectedFormationIds).toEqual(['viper', 'falcon', 'raven'])
     expect(validateCampaignAllocation(loaded, loaded.setup!)).toEqual([])
+  })
+
+  it('migrates legacy support selections to the fixed placement package', () => {
+    const draft = createCampaignDraft(18)
+    const legacy = { ...draft, setup: { ...draft.setup!, stage: 'review' as const,
+      selectedAssetIds: ['p-base', 'p-radar', 'p-decoy', 'p-sam'],
+      placedAssetIds: ['p-base', 'p-radar', 'p-decoy', 'p-sam'] } }
+    const loaded = normalizeMatch(JSON.parse(JSON.stringify(legacy)))
+    expect(loaded.setup?.selectedAssetIds).toEqual(['p-base', 'p-radar', 'p-sam', 'p-aaa'])
+    expect(loaded.setup?.placedAssetIds).toEqual(['p-base', 'p-radar', 'p-sam'])
+    expect(loaded.setup?.stage).toBe('place')
   })
 
   it('round trips every deterministic debug fixture', () => {

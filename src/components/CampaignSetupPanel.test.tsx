@@ -4,14 +4,17 @@ import { createCampaignDraft } from '../game/data'
 import { CampaignSetupPanel } from './CampaignSetupPanel'
 
 describe('campaign setup panel', () => {
-  it('shows the fixed force and only asks the player to choose support assets', () => {
+  it('shows the fixed force and fixed asset placement package', () => {
     const match = createCampaignDraft()
-    const markup = renderToStaticMarkup(<CampaignSetupPanel match={match} onChange={() => {}} onContinue={() => {}} />)
+    const markup = renderToStaticMarkup(<CampaignSetupPanel match={match} onContinue={() => {}} />)
 
     expect(markup).toContain('VIPER 1 FIGHTER')
     expect(markup).toContain('FALCON 2 FIGHTER')
     expect(markup).toContain('RAVEN 3 RECON')
-    expect(markup).toContain('SUPPORT · CHOOSE 2')
+    expect(markup).toContain('MAIN AIRFIELD')
+    expect(markup).toContain('<b>SAM</b>')
+    expect(markup).toContain('<b>AAA</b>')
+    expect(markup).not.toContain('DECOY')
     expect(markup).not.toContain('GHOST')
     expect(markup).not.toContain('FORMATIONS</b>')
   })
@@ -20,9 +23,9 @@ describe('campaign setup panel', () => {
     const match = createCampaignDraft()
     const setup = { ...match.setup!, selectedFormationIds: ['viper', 'raven', 'ghost'] }
     const legacyDraft = { ...match, setup }
-    const markup = renderToStaticMarkup(<CampaignSetupPanel match={legacyDraft} onChange={() => {}} onContinue={() => {}} />)
+    const markup = renderToStaticMarkup(<CampaignSetupPanel match={legacyDraft} onContinue={() => {}} />)
 
-    expect(markup).toContain('This saved deployment keeps its previously selected force.')
+    expect(markup).toContain('SAVED FORCE')
     expect(markup).toContain('VIPER 1 FIGHTER · RAVEN 3 RECON · GHOST 4 RECON')
     expect(markup).not.toContain('FORMATIONS</b>')
     expect(markup).not.toContain('GHOST</b>')

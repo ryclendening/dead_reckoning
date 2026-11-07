@@ -138,7 +138,7 @@ describe('mission planning shelf', () => {
     expect(markup).toContain('RECOVER HOME')
   })
 
-  it('keeps base strike visible but disabled with the intelligence gate explained', () => {
+  it('keeps ground strike visible but disabled with the intelligence gate explained', () => {
     const match = createMatch()
     const fighter = match.squadrons.find(squadron => squadron.role === 'fighter')!
     const markup = renderToStaticMarkup(<CommandShelf
@@ -146,11 +146,11 @@ describe('mission planning shelf', () => {
       squadron={fighter} routeDistance={10} maxDistance={40} onSelect={noop} onBaseSelect={noop}
       onRosterMode={noop} onMission={noop} onClear={noop} onCommit={noop}
       step="mission" onClose={noop} reviewedIds={new Set()} reviewedCount={0} totalCount={4}
-      campaign strikeDisabledReason="RECOVER BASE INTELLIGENCE FIRST"
+      campaign strikeDisabledReason="RECOVER GROUND TARGET INTELLIGENCE FIRST"
     />)
 
-    expect(markup).toContain('BASE STRIKE')
-    expect(markup).toContain('RECOVER BASE INTELLIGENCE FIRST')
+    expect(markup).toContain('GROUND STRIKE')
+    expect(markup).toContain('RECOVER GROUND TARGET INTELLIGENCE FIRST')
     expect(markup).toContain('disabled=""')
   })
 })

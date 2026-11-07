@@ -25,3 +25,11 @@ export function campaignOutcome(state: MatchState): CampaignOutcome | undefined 
   if (state.round >= CAMPAIGN_ROUND_LIMIT && state.lastResult?.round === state.round) return 'deadline'
   return undefined
 }
+
+/** Only recovered, confirmed intelligence can authorize a new ground strike. */
+export function groundStrikeTargets(state: Pick<MatchState, 'enemyAssets'>): Asset[] {
+  return state.enemyAssets.filter(asset => asset.health > 0 && asset.intel === 'confirmed' && !asset.hidden)
+}
+export function selectedStrikeTarget(state: Pick<MatchState, 'enemyAssets'>, targetId?: string): Asset | undefined {
+  return groundStrikeTargets(state).find(asset => asset.id === targetId)
+}

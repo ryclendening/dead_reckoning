@@ -13,14 +13,14 @@ export function missionOrderDebrief(match:MatchState,result:RoundResult):Mission
     let purpose=''
     if(squadron.mission==='defensive-cap')purpose=`PROTECT ${protectedFlight?.callsign??protectedAsset?.name??protectedAsset?.kind.toUpperCase()??'MAP POINT'}`
     else if(squadron.mission==='forward-patrol')purpose='PATROL ASSIGNED CORRIDOR'
-    else if(squadron.mission==='base-strike')purpose='STRIKE CONFIRMED ENEMY BASE'
+    else if(squadron.mission==='base-strike')purpose=`STRIKE ${match.enemyAssets.find(asset=>asset.id===squadron.strikeTargetId)?.name??match.enemyAssets.find(asset=>asset.id===squadron.strikeTargetId)?.kind.toUpperCase()??'UNSELECTED GROUND TARGET'}`
     else if(squadron.mission==='transit')purpose=`TRANSIT TO ${field?.name??(field?.kind==='base'?'HOME BASE':field?.kind.toUpperCase()??'RECOVERY FIELD')}`
     else purpose='SEARCH ASSIGNED ROUTE'
 
     const related=(title:string)=>result.events.find(event=>event.title===title&&event.detail.includes(squadron.callsign))
     let outcome='NO CONTACTS · ORDER COMPLETED'
     if(squadron.mission==='base-strike'){
-      const launch=related('BASE STRIKE LAUNCHED'),failure=related('BASE STRIKE FAILED')
+      const launch=related('GROUND STRIKE LAUNCHED'),failure=related('GROUND STRIKE FAILED')
       const strike=result.combatSequences.find(sequence=>sequence.kind==='strike'&&sequence.participantIds.includes(squadron.id))
       outcome=launch?`LAUNCHED · ${strike?.exchanges.reduce((total,exchange)=>total+exchange.damage,0)??0} DAMAGE`:failure?.detail.replace(`${squadron.callsign}: `,'').replace(/\.$/,'')??'RELEASE WINDOW NOT REACHED'
     }else if(squadron.mission==='defensive-cap'||squadron.mission==='forward-patrol'){

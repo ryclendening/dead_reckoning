@@ -2,13 +2,11 @@ import type { Asset, CampaignSetupState, MatchState, Squadron } from './types'
 
 export const SETUP_FORMATION_COUNT = 3
 export const SETUP_FORMATION_IDS = ['viper', 'falcon', 'raven'] as const
-export const SETUP_OPTIONAL_ASSET_COUNT = 2
-export const SETUP_REQUIRED_ASSET_IDS = ['p-base', 'p-radar'] as const
-export const SETUP_OPTIONAL_ASSET_IDS = ['p-decoy', 'p-sam', 'p-aaa'] as const
+export const SETUP_REQUIRED_ASSET_IDS = ['p-base', 'p-radar', 'p-sam', 'p-aaa'] as const
 
 // New campaigns use the fixed opening force. Keep the selected IDs in setup
 // state so older saved deployment drafts can retain their chosen roster.
-export const createCampaignSetupState = (): CampaignSetupState => ({ stage: 'allocate', selectedFormationIds: [...SETUP_FORMATION_IDS], selectedAssetIds: [...SETUP_REQUIRED_ASSET_IDS], placedAssetIds: [] })
+export const createCampaignSetupState = (): CampaignSetupState => ({ stage: 'place', selectedFormationIds: [...SETUP_FORMATION_IDS], selectedAssetIds: [...SETUP_REQUIRED_ASSET_IDS], placedAssetIds: [] })
 
 export const setupFormationById = (state: MatchState, id: string) => state.squadrons.find(squadron => squadron.id === id)
 export const setupAssetById = (state: MatchState, id: string) => state.playerAssets.find(asset => asset.id === id)
@@ -21,12 +19,7 @@ export function toggleSetupFormation(setup: CampaignSetupState, id: string): Cam
 }
 
 export function toggleSetupAsset(setup: CampaignSetupState, id: string): CampaignSetupState {
-  if ((SETUP_REQUIRED_ASSET_IDS as readonly string[]).includes(id)) return setup
-  if (!(SETUP_OPTIONAL_ASSET_IDS as readonly string[]).includes(id)) return setup
-  const selected = setup.selectedAssetIds.includes(id)
-  if (selected) return { ...setup, selectedAssetIds: setup.selectedAssetIds.filter(item => item !== id), placedAssetIds: setup.placedAssetIds.filter(item => item !== id) }
-  if (setup.selectedAssetIds.filter(item => (SETUP_OPTIONAL_ASSET_IDS as readonly string[]).includes(item)).length >= SETUP_OPTIONAL_ASSET_COUNT) return setup
-  return { ...setup, selectedAssetIds: [...setup.selectedAssetIds, id] }
+  return setup
 }
 
 export function markSetupAssetPlaced(setup: CampaignSetupState, id: string): CampaignSetupState {
@@ -41,10 +34,9 @@ export function validateCampaignAllocation(state: MatchState, setup: CampaignSet
   if (formations.length !== setup.selectedFormationIds.length) errors.push('UNKNOWN FORMATION SELECTION')
   if (!formations.some(squadron => squadron.role === 'fighter')) errors.push('SELECT AT LEAST ONE FIGHTER')
   if (!formations.some(squadron => squadron.role === 'recon')) errors.push('SELECT AT LEAST ONE RECON')
-  if (!SETUP_REQUIRED_ASSET_IDS.every(id => setup.selectedAssetIds.includes(id))) errors.push('AIRFIELD AND RADAR ARE REQUIRED')
-  const optionalCount = setup.selectedAssetIds.filter(id => (SETUP_OPTIONAL_ASSET_IDS as readonly string[]).includes(id)).length
-  if (optionalCount !== SETUP_OPTIONAL_ASSET_COUNT) errors.push(`SELECT ${SETUP_OPTIONAL_ASSET_COUNT} SUPPORT ASSETS`)
-  if (setup.selectedAssetIds.some(id => !setupAssetById(state, id))) errors.push('UNKNOWN SUPPORT ASSET')
+  if (setup.selectedAssetIds.length !== SETUP_REQUIRED_ASSET_IDS.length
+      || !SETUP_REQUIRED_ASSET_IDS.every(id => setup.selectedAssetIds.includes(id))) errors.push('STARTING PACKAGE IS INCOMPLETE')
+  if (setup.selectedAssetIds.some(id => !setupAssetById(state, id))) errors.push('UNKNOWN STARTING ASSET')
   return errors
 }
 

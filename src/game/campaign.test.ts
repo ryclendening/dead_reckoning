@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest'
 import { CAMPAIGN_ROUND_LIMIT, campaignOutcome, confirmedStrikeTarget, isCampaign } from './campaign'
 import { applyRound, createRoundSimulation, resolveRound } from './engine'
 import { beginNextRound, openAdaptPhase } from './economy'
-import { buildBaseStrikeRoute, validateBaseStrikeOrder } from './routeTemplates'
+import { buildGroundStrikeRoute, validateGroundStrikeOrder } from './routeTemplates'
 import { createMatch } from './data'
 import { createScenario } from './scenarios'
 import type { MatchState } from './types'
@@ -28,10 +28,10 @@ describe('campaign outcomes',()=>{
       const state=createMatch(seed);regions.add(state.world.startRegionId)
       const enemyAssets=state.enemyAssets.map(asset=>asset.kind==='base'?{...asset,intel:'confirmed' as const,confidence:100,hidden:false}:asset)
       const armed={...state,enemyAssets},fighter=armed.squadrons.find(squadron=>squadron.role==='fighter')!
-      const route=buildBaseStrikeRoute(armed,fighter.id)
+      const route=buildGroundStrikeRoute(armed,fighter.id,'e-base')
       expect(route).toBeDefined()
-      const planned={...fighter,mission:'base-strike' as const,route:route!,routeIngress:route!,plannedRecoveryFieldId:'p-base'}
-      expect(validateBaseStrikeOrder(armed,planned)).toBeUndefined()
+      const planned={...fighter,mission:'base-strike' as const,strikeTargetId:'e-base',route:route!,routeIngress:route!,plannedRecoveryFieldId:'p-base'}
+      expect(validateGroundStrikeOrder(armed,planned)).toBeUndefined()
       expect(Math.hypot(route!.at(-1)![0]-enemyAssets[0].position[0],route!.at(-1)![1]-enemyAssets[0].position[1])).toBeLessThanOrEqual(6)
     }
     expect(regions.size).toBe(4)
@@ -40,38 +40,37 @@ describe('campaign outcomes',()=>{
   it('uses a short in-range waypoint when the launch field is already near the base',()=>{
     const state=createMatch(),home=state.playerAssets.find(asset=>asset.kind==='base')!,enemy=state.enemyAssets.find(asset=>asset.id==='e-base')!
     const armed={...state,enemyAssets:state.enemyAssets.map(asset=>asset.id===enemy.id?{...asset,position:[home.position[0]+5,home.position[1]] as [number,number],intel:'confirmed' as const,confidence:100,hidden:false}:asset)}
-    const fighter=armed.squadrons.find(squadron=>squadron.role==='fighter')!,route=buildBaseStrikeRoute(armed,fighter.id)!
+    const fighter=armed.squadrons.find(squadron=>squadron.role==='fighter')!,route=buildGroundStrikeRoute(armed,fighter.id,'e-base')!
     expect(route).toHaveLength(2)
     expect(Math.hypot(route[1][0]-home.position[0],route[1][1]-home.position[1])).toBeLessThanOrEqual(.25)
     expect(Math.hypot(route[1][0]-armed.enemyAssets[0].position[0],route[1][1]-armed.enemyAssets[0].position[1])).toBeLessThan(6)
   })
 
-  it('launches from an already-in-range origin even when the edited route immediately flies away',()=>{
-    const original=createMatch(7304),home=original.playerAssets.find(asset=>asset.kind==='base')!.position,target=original.enemyAssets.find(asset=>asset.id==='e-base')!
-    const near={...original,enemyAssets:original.enemyAssets.map(asset=>asset.id===target.id?{...asset,position:[home[0]+5.99,home[1]] as [number,number],intel:'confirmed' as const,confidence:100,hidden:false}:asset)}
-    const fighter=near.squadrons.find(squadron=>squadron.id==='viper')!,route=[home,[home[0]-2,home[1]] as [number,number]]
-    const state={...near,squadrons:near.squadrons.map(squadron=>squadron.id===fighter.id?{...squadron,mission:'base-strike' as const,route,routeIngress:route,plannedRecoveryFieldId:'p-base'}:{...squadron,aircraft:0,strength:0})}
-    expect(validateBaseStrikeOrder(state,state.squadrons.find(squadron=>squadron.id===fighter.id)!)).toBeUndefined()
+  it('keeps an already-in-range strike on its fixed release point rather than launching at takeoff',()=>{
+    const original=createScenario('neutral-los'),home=original.playerAssets.find(asset=>asset.kind==='base')!.position
+    const near={...original,enemyAssets:original.enemyAssets.map(asset=>asset.id==='e-base'?{...asset,position:[home[0]+5,home[1]] as [number,number],intel:'confirmed' as const,confidence:100,hidden:false}:asset)}
+    const fighter=near.squadrons.find(squadron=>squadron.role==='fighter')!,route=buildGroundStrikeRoute(near,fighter.id,'e-base')!
+    const state={...near,squadrons:near.squadrons.map(squadron=>squadron.id===fighter.id?{...squadron,mission:'base-strike' as const,strikeTargetId:'e-base',route,routeIngress:route,plannedRecoveryFieldId:'p-base',sortieOrdered:true}:{...squadron,sortieOrdered:false})}
+    expect(validateGroundStrikeOrder(state,state.squadrons.find(squadron=>squadron.id===fighter.id)!)).toBeUndefined()
     const missile=resolveRound(state).weaponEffects.find(effect=>effect.kind==='air-to-ground-missile'&&effect.targetId==='e-base')
     expect(missile).toBeDefined()
-    expect(missile!.from).toEqual(home)
-    expect(missile!.start).toBeLessThan(.1)
+    expect(missile!.from).toEqual(route.at(-1))
+    expect(missile!.start).toBeGreaterThan(.1)
   })
 
-  it('fires when a flown movement segment passes inside the six-unit strike limit',()=>{
-    const original=createMatch(7305),home=original.playerAssets.find(asset=>asset.kind==='base')!.position,target=original.enemyAssets.find(asset=>asset.id==='e-base')!
-    const center:[number,number]=[home[0]+6,home[1]],near={...original,enemyAssets:original.enemyAssets.map(asset=>asset.id===target.id?{...asset,position:center,intel:'confirmed' as const,confidence:100,hidden:false}:asset)}
-    const fighter=near.squadrons.find(squadron=>squadron.id==='viper')!,from:[number,number]=[home[0]+5.93,home[1]-.2],to:[number,number]=[home[0]+5.93,home[1]+.2],route=[home,from,to,home]
-    const state={...near,squadrons:near.squadrons.map(squadron=>squadron.id===fighter.id?{...squadron,mission:'base-strike' as const,route,routeIngress:route,plannedRecoveryFieldId:'p-base'}:{...squadron,aircraft:0,strength:0})}
-    expect(validateBaseStrikeOrder(state,state.squadrons.find(squadron=>squadron.id===fighter.id)!)).toBeUndefined()
-    expect(resolveRound(state).weaponEffects.some(effect=>effect.kind==='air-to-ground-missile'&&effect.targetId==='e-base')).toBe(true)
+  it('rejects edited routes that move the fixed strike point even if they pass within weapon range',()=>{
+    const state=createMatch(),target=state.enemyAssets.find(asset=>asset.id==='e-base')!,home=state.playerAssets.find(asset=>asset.kind==='base')!.position
+    const armed={...state,enemyAssets:state.enemyAssets.map(asset=>asset.id===target.id?{...asset,intel:'confirmed' as const,confidence:100,hidden:false}:asset)}
+    const fighter=armed.squadrons.find(squadron=>squadron.id==='viper')!,route=buildGroundStrikeRoute(armed,fighter.id,target.id)!
+    const edited=[home,route[1],home]
+    expect(validateGroundStrikeOrder(armed,{...fighter,mission:'base-strike',strikeTargetId:target.id,route:edited,routeIngress:edited})).toBe('KEEP THE FIXED TAKEOFF AND STRIKE POINTS')
   })
 
   it('queues one deterministic missile and applies health only after impact',()=>{
     const original=createMatch(7302),target=original.enemyAssets.find(asset=>asset.id==='e-base')!
     const confirmed={...original,enemyAssets:original.enemyAssets.map(asset=>asset.id===target.id?{...asset,intel:'confirmed' as const,confidence:100,hidden:false}:asset)}
-    const fighter=confirmed.squadrons.find(squadron=>squadron.id==='viper')!,route=buildBaseStrikeRoute(confirmed,fighter.id)!
-    const state={...confirmed,squadrons:confirmed.squadrons.map(squadron=>squadron.id===fighter.id?{...squadron,mission:'base-strike' as const,route,routeIngress:route,plannedRecoveryFieldId:'p-base'}:{...squadron,aircraft:0,strength:0})}
+    const fighter=confirmed.squadrons.find(squadron=>squadron.id==='viper')!,route=buildGroundStrikeRoute(confirmed,fighter.id,'e-base')!
+    const state={...confirmed,squadrons:confirmed.squadrons.map(squadron=>squadron.id===fighter.id?{...squadron,mission:'base-strike' as const,strikeTargetId:'e-base',route,routeIngress:route,plannedRecoveryFieldId:'p-base'}:{...squadron,aircraft:0,strength:0})}
     const simulation=createRoundSimulation(state)
     let launchedAt=-1
     while(!simulation.complete){
@@ -88,23 +87,24 @@ describe('campaign outcomes',()=>{
     const home=state.playerAssets.find(asset=>asset.kind==='base')!.position,base=state.enemyAssets.find(asset=>asset.id==='e-base')!.position
     const vector=[home[0]-base[0],home[1]-base[1]],length=Math.hypot(...vector),edge: [number,number]=[base[0]+vector[0]/length*6,base[1]+vector[1]/length*6]
     const boundaryState={...state,squadrons:state.squadrons.map(squadron=>squadron.id===fighter.id?{...squadron,route:[home,edge],routeIngress:[home,edge]}:squadron)}
-    expect(validateBaseStrikeOrder(boundaryState,boundaryState.squadrons.find(squadron=>squadron.id===fighter.id)!)).toBeUndefined()
-    expect(resolveRound(boundaryState).weaponEffects.some(effect=>effect.kind==='air-to-ground-missile'&&effect.targetId==='e-base')).toBe(true)
+    expect(validateGroundStrikeOrder(boundaryState,boundaryState.squadrons.find(squadron=>squadron.id===fighter.id)!)).toBe('KEEP THE FIXED TAKEOFF AND STRIKE POINTS')
+    expect(resolveRound(boundaryState).weaponEffects.some(effect=>effect.kind==='air-to-ground-missile'&&effect.targetId==='e-base')).toBe(false)
   })
 
   it('rejects a strike order without recovered enemy-base intelligence',()=>{
     const state=createMatch(),fighter=state.squadrons.find(squadron=>squadron.role==='fighter')!
     expect(confirmedStrikeTarget(state)).toBeUndefined()
-    expect(validateBaseStrikeOrder({...state,squadrons:state.squadrons.map(squadron=>squadron.id===fighter.id?{...squadron,mission:'base-strike'}:squadron)},{...fighter,mission:'base-strike'})).toBe('CONFIRM THE ENEMY BASE BEFORE STRIKING')
+    expect(validateGroundStrikeOrder({...state,squadrons:state.squadrons.map(squadron=>squadron.id===fighter.id?{...squadron,mission:'base-strike'}:squadron)},{...fighter,mission:'base-strike'})).toBe('SELECT A CONFIRMED GROUND TARGET')
   })
 
-  it('validates a normalized route that passes within strike range before recovering',()=>{
+  it('validates optional waypoints between the canonical strike anchors',()=>{
     const state=createMatch(),target=state.enemyAssets.find(asset=>asset.id==='e-base')!,home=state.playerAssets.find(asset=>asset.kind==='base')!.position
     const armed={...state,enemyAssets:state.enemyAssets.map(asset=>asset.id===target.id?{...asset,intel:'confirmed' as const,confidence:100,hidden:false}:asset)}
     const fighter=armed.squadrons.find(squadron=>squadron.id==='viper')!,dx=home[0]-target.position[0],dz=home[1]-target.position[1],d=Math.hypot(dx,dz)
     const inRange: [number,number]=[target.position[0]+dx/d*5.8,target.position[1]+dz/d*5.8]
-    const route=[home,inRange,home]
-    expect(validateBaseStrikeOrder(armed,{...fighter,mission:'base-strike',route,routeIngress:route,plannedRecoveryFieldId:'p-base'})).toBeUndefined()
+    const anchors=buildGroundStrikeRoute(armed,fighter.id,target.id)!
+    const route=[home,inRange,anchors[1]]
+    expect(validateGroundStrikeOrder(armed,{...fighter,mission:'base-strike',strikeTargetId:'e-base',route,routeIngress:route,plannedRecoveryFieldId:'p-base'})).toBeUndefined()
   })
 
   it('only raises exposure for recovered enemy recon that observes the real base',()=>{

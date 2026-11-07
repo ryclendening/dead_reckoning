@@ -159,8 +159,9 @@ export function deriveRecoveryPlanningView(state: MatchState, formationId: strin
   const assets = normalizeFormationBasing(state.squadrons, state.playerAssets)
   const launchField = formationField(assets, formationId)
   if (!launchField) return undefined
-  const normalizedRoute = snapRouteToRecoveryField(route, assets)
-  const recognized = fieldAtRouteEnd(assets, normalizedRoute)
+  const strike = state.squadrons.find(item => item.id === formationId)?.mission === 'base-strike'
+  const normalizedRoute = strike ? route : snapRouteToRecoveryField(route, assets)
+  const recognized = strike ? undefined : fieldAtRouteEnd(assets, normalizedRoute)
   const intendedField = recognized ?? launchField
   const flown = routeDistanceForBasing(normalizedRoute)
   const reserve = recognized ? 0 : distanceBetween(normalizedRoute.at(-1) ?? launchField.position, launchField.position)
