@@ -38,11 +38,12 @@ describe('deterministic debug scenarios',()=>{
     expect(applyRound(match,result).enemyAssets.some(asset=>asset.intel==='confirmed')).toBe(true)
   })
 
-  it('recovers an exact boundary segment in the recon edge fixture',()=>{
+  it('keeps the boundary hidden in the recon edge fixture',()=>{
     const match=createScenario('recon-edge'),result=resolveRound(match)
     expect(result.squadrons.find(squadron=>squadron.id==='raven')?.status).toBe('rtb')
-    expect(result.discoveredBoundaries.length).toBeGreaterThan(0)
-    expect(result.events.some(event=>event.title==='WORLD EDGE DISCOVERED')).toBe(true)
+    expect(result.discoveredBoundaries).toEqual([])
+    expect(result.events.some(event=>event.title==='WORLD EDGE DISCOVERED')).toBe(false)
+    expect(result.behaviorIntervals.some(interval=>interval.unitId==='raven'&&interval.reason==='world-edge')).toBe(false)
     expect(applyRound(match,result).discoveredBoundaries).toEqual(result.discoveredBoundaries)
   })
 
