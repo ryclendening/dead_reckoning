@@ -7,7 +7,7 @@ import type { CpuDifficulty, CpuObjective, CpuPlan, CpuSiteReport, CpuState } fr
 
 const distance = (a: Point, b: Point) => Math.hypot(a[0] - b[0], a[1] - b[1])
 const copy = (p: Point): Point => [...p]
-const SEARCH_SECTORS: Point[] = [[0, 0], [-3, 4], [3, 4], [-3, -4], [3, -4]]
+const SEARCH_SECTORS: Point[] = [[0, 0], [-6, 8], [0, 8], [6, 8], [-6, 0], [6, 0], [-6, -8], [0, -8], [6, -8]]
 export const CPU_PROFILES = {
   easy: { offsets: [0], riskWeight: .45, escortValue: 16 },
   medium: { offsets: [0, 4, -4], riskWeight: 1.2, escortValue: 35 },
@@ -90,7 +90,11 @@ export function planCpu(view: CpuPlanningView): CpuPlan {
   const { cpu, home, round } = view, fighter = cpu.formations.find(unit => unit.role === 'fighter')!, recon = cpu.formations.find(unit => unit.role === 'recon')!
   const profile = CPU_PROFILES[cpu.difficulty]
   const knownBase = cpu.sites.find(site => site.kind === 'base' && site.health > 0)
-  const search = knownBase && view.exposure < ENEMY_TARGETING_THRESHOLD ? knownBase.position : SEARCH_SECTORS[cpu.searchIndex % SEARCH_SECTORS.length]
+  // Public geographic prior, ordered only from our own home. Never reconstruct
+  // an opposing start from the campaign seed or inspect hidden placements.
+  const sectors = SEARCH_SECTORS.filter(point => distance(point, home) >= 10)
+    .sort((a, b) => Math.abs(distance(a, home) - 18) - Math.abs(distance(b, home) - 18))
+  const search = knownBase && view.exposure < ENEMY_TARGETING_THRESHOLD ? knownBase.position : sectors[cpu.searchIndex % sectors.length]
   const recentTraffic = cpu.traffic.filter(contact => round - contact.observedRound <= 2)
   const wantsEscort = cpu.difficulty !== 'easy' && (cpu.lastReconLost || recentTraffic.some(contact => contact.role === 'fighter'))
   const reconOrder = bestOrder(view, recon, 'search-area', search, wantsEscort ? 36 : 48)

@@ -13,6 +13,8 @@ export interface TerritoryRegion { id:string; kind:'home'|'fob'; center:Point; r
 export interface FriendlyTerritory { center:Point; radius:number; regions?:TerritoryRegion[] }
 export interface CampaignWorld {
   seed:number
+  /** Absent on legacy saves and deterministic tactical fixtures. */
+  layoutVersion?:1
   bounds:WorldBounds
   presentationBounds:WorldBounds
   startRegionId:string

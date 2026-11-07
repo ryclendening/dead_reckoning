@@ -10,6 +10,7 @@ import { KnownWorldMap } from './components/KnownWorldMap'
 import { CampaignBriefing } from './components/CampaignBriefing'
 import { CommandShelf, ContactTracks, ExecutionChitRail, FormationDock, ObserveEventFeed, TopBar, type PlanningRosterMode, type PlanningStep } from './components/Hud'
 import { createCampaignDraft } from './game/data'
+import { freshCampaignSeed } from './game/campaignLayout'
 import { campaignOutcome, confirmedStrikeTarget, groundStrikeTargets, isCampaign } from './game/campaign'
 import { placeInitialAsset, validateInitialPlacement } from './game/campaignPlacement'
 import { confirmCampaignSetup, validateCampaignAllocation, SETUP_REQUIRED_ASSET_IDS } from './game/campaignSetup'
@@ -218,7 +219,7 @@ export default function App(){
   const nextRound=()=>{setSelectedAssetId(undefined);setInspectedFlightId(undefined);simulationRef.current=undefined;pendingCommandsRef.current=[];setLiveResult(undefined);setAcknowledgedThreatIds(new Set());setWorldMapOpen(false);setFollowId(undefined);setExecutionBaseId(undefined);setFocusPoint(undefined);setRouteNotice(undefined);setPlanningStep('idle');setReviewedIds(new Set());setPlanningBaseId('p-base');setPlanningRosterMode('closed');closeProcurement();setMatch(beginNextRound)}
   const resetPlanningUi=()=>{setSelectedAssetId(undefined);setInspectedFlightId(undefined);simulationRef.current=undefined;pendingCommandsRef.current=[];setLiveResult(undefined);setAcknowledgedThreatIds(new Set());setWorldMapOpen(false);setProgress(0);setActiveEvent(undefined);setFollowId(undefined);setExecutionBaseId(undefined);setFocusPoint(undefined);setRouteNotice(undefined);setPlanningStep('idle');setPlanningBaseId('p-base');setPlanningRosterMode('closed');setReviewedIds(new Set());closeProcurement()}
   const selectScenario=(scenario:DebugScenario)=>{setHasCampaign(true);resetPlanningUi();setEconomyTarget({kind:'campaign',id:'campaign'});setMatch(createScenario(scenario))}
-  const restart=()=>{localStorage.removeItem(SAVE_KEY);for(const key of LEGACY_SAVE_KEYS)localStorage.removeItem(key);resetPlanningUi();setEconomyTarget({kind:'campaign',id:'campaign'});setMatch(m=>m.debugScenario&&m.debugScenario!=='campaign'?createScenario(m.debugScenario):createCampaignDraft(undefined,m.cpu?.difficulty))}
+  const restart=()=>{const seed=freshCampaignSeed();localStorage.removeItem(SAVE_KEY);for(const key of LEGACY_SAVE_KEYS)localStorage.removeItem(key);resetPlanningUi();setEconomyTarget({kind:'campaign',id:'campaign'});setMatch(m=>m.debugScenario&&m.debugScenario!=='campaign'?createScenario(m.debugScenario):createCampaignDraft(seed,m.cpu?.difficulty))}
   const selectFormation=(id:string)=>{setAcknowledgedThreatIds(current=>{const next=new Set(current);for(const alert of liveResult?.threatAlerts??[])if(alert.unitId===id)next.add(alert.id);return next});setFollowId(id);setFocusPoint(undefined);setMatch(m=>({...m,selectedId:id}))}
   const escortEstimateFor=(escort:Squadron,target:Squadron,state:MatchState=match)=>{
     const launch=formationField(state.playerAssets,escort.id),targetLaunch=formationField(state.playerAssets,target.id)
@@ -310,7 +311,7 @@ export default function App(){
   const stageProcurementPlacement=useCallback((point:Point)=>{if(!procurementDefinition||!validProcurementPoint(point))return;const quote=economyQuotesFor(match,{kind:'campaign',id:'campaign'}).find(item=>item.id===procurementDefinition.actionId);if(!quote?.eligible)return;setProcurementPlacement(point)},[match,procurementDefinition,validProcurementPoint])
   const confirmProcurementPlacement=useCallback(()=>{if(!procurementDefinition||!procurementPlacement||!validProcurementPoint(procurementPlacement))return;const quote=economyQuotesFor(match,{kind:'campaign',id:'campaign'}).find(item=>item.id===procurementDefinition.actionId);if(!quote?.eligible)return;setMatch(state=>executeEconomyCommand(state,{...economyCommandForQuote(state,quote),placement:procurementPlacement}));setProcurementMode('closed');setProcurementActionId(undefined);setProcurementPlacement(undefined)},[match,procurementDefinition,procurementPlacement,validProcurementPoint])
 
-  const startCampaign=(difficulty:CpuDifficulty)=>{resetPlanningUi();setPlacementId('p-base');setEconomyTarget({kind:'campaign',id:'campaign'});setMatch(createCampaignDraft(Date.now()%2147483647,difficulty));setHasCampaign(true);setMenuOpen(false)}
+  const startCampaign=(difficulty:CpuDifficulty)=>{resetPlanningUi();setPlacementId('p-base');setEconomyTarget({kind:'campaign',id:'campaign'});setMatch(createCampaignDraft(freshCampaignSeed(),difficulty));setHasCampaign(true);setMenuOpen(false)}
   if(menuOpen)return <CampaignMenu saved={hasCampaign?match:undefined} onContinue={()=>setMenuOpen(false)} onStart={startCampaign}/>
 
   return <main className="app-shell">

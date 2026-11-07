@@ -5,6 +5,7 @@ import { createEconomyState } from './economy'
 import { createCampaignSetupState } from './campaignSetup'
 import { createCpuState, prepareCpuRound } from './cpu/planner'
 import type { CpuDifficulty } from './cpu/types'
+import { campaignEnemySites, campaignEnemyStart } from './campaignLayout'
 
 const add=(origin:Point,offset:Point):Point=>snapToHex([origin[0]+offset[0],origin[1]+offset[1]])
 const route=(...points:Point[])=>points
@@ -17,13 +18,13 @@ export function friendlyAssetsFor(world:CampaignWorld):Asset[]{const base=world.
   {id:'p-aaa',kind:'aaa',position:add(base,[-2.1,-1.2]),intel:'confirmed',confidence:100,health:100,maxHealth:100,hidden:false,struck:false},
 ]}
 
-export function enemyBaseFor(world:CampaignWorld):Point{const [x,z]=world.friendlyTerritory.center;return snapToHex([(x>=0?-1:1)*9.2,(z>=0?-1:1)*12.4])}
-export function enemyAssetsFor(world:CampaignWorld):Asset[]{const base=enemyBaseFor(world);return [
+export function enemyBaseFor(world:CampaignWorld):Point{if(world.layoutVersion===1)return campaignEnemyStart(world.seed,world.bounds,world.friendlyTerritory.center);const [x,z]=world.friendlyTerritory.center;return snapToHex([(x>=0?-1:1)*9.2,(z>=0?-1:1)*12.4])}
+export function enemyAssetsFor(world:CampaignWorld):Asset[]{const base=enemyBaseFor(world),sites=world.layoutVersion===1?campaignEnemySites(world.seed,world.bounds,base):undefined;return [
   {id:'e-base',kind:'base',position:base,intel:'unknown',confidence:0,health:100,maxHealth:100,hidden:true,struck:false},
-  {id:'e-decoy',kind:'decoy',position:add(base,[-3.1,1.8]),intel:'unknown',confidence:0,health:50,maxHealth:50,hidden:true,struck:false},
-  {id:'e-radar',kind:'radar',position:add(base,[1.9,3.3]),intel:'unknown',confidence:0,health:70,maxHealth:70,hidden:true,struck:false},
-  {id:'e-sam',kind:'sam',position:add(base,[-2.4,3.5]),intel:'unknown',confidence:0,health:65,maxHealth:65,hidden:true,struck:false},
-  {id:'e-aaa',kind:'aaa',position:add(base,[3.1,1.5]),intel:'unknown',confidence:0,health:55,maxHealth:55,hidden:true,struck:false},
+  {id:'e-decoy',kind:'decoy',position:sites?.decoy??add(base,[-3.1,1.8]),intel:'unknown',confidence:0,health:50,maxHealth:50,hidden:true,struck:false},
+  {id:'e-radar',kind:'radar',position:sites?.radar??add(base,[1.9,3.3]),intel:'unknown',confidence:0,health:70,maxHealth:70,hidden:true,struck:false},
+  {id:'e-sam',kind:'sam',position:sites?.sam??add(base,[-2.4,3.5]),intel:'unknown',confidence:0,health:65,maxHealth:65,hidden:true,struck:false},
+  {id:'e-aaa',kind:'aaa',position:sites?.aaa??add(base,[3.1,1.5]),intel:'unknown',confidence:0,health:55,maxHealth:55,hidden:true,struck:false},
 ]}
 
 export function squadronsFor(world:CampaignWorld):Squadron[]{const base=world.friendlyTerritory.center,at=(offset:Point)=>add(base,offset);return [
@@ -39,8 +40,8 @@ export const initialPlayerAssets=friendlyAssetsFor(DEFAULT_WORLD)
 export const initialSquadrons=squadronsFor(DEFAULT_WORLD)
 export const initialAssets=enemyAssetsFor(DEFAULT_WORLD)
 
-export const createMatch=(seed=7301, difficulty:CpuDifficulty='medium'):MatchState=>{
-  const world=generateCampaignWorld(seed),knowledge=createStartingKnowledge(world)
+export const createMatch=(seed=7301, difficulty:CpuDifficulty='medium',randomize=true):MatchState=>{
+  const world=generateCampaignWorld(seed,randomize),knowledge=createStartingKnowledge(world)
   return prepareCpuRound({round:1,phase:'plan',logistics:10,command:2,replacements:3,selectedId:'raven',squadrons:squadronsFor(world),enemyAssets:enemyAssetsFor(world),playerAssets:friendlyAssetsFor(world),playerBaseHealth:100,enemyBaseHealth:100,baseExposure:6,campaignScore:0,seed,world,mappedAreas:knowledge.mappedAreas,discoveredBoundaries:knowledge.discoveredBoundaries,economy:createEconomyState(),cpu:createCpuState(enemyBaseFor(world),difficulty,seed)})
 }
 export const createCampaignDraft=(seed=7301,difficulty:CpuDifficulty='medium'):MatchState=>({...createMatch(seed,difficulty),phase:'deploy',setup:createCampaignSetupState()})
