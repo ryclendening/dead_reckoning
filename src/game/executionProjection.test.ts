@@ -58,12 +58,32 @@ describe('execution projection', () => {
     expect(sampleUnitTrackForRender(track,.8,.9,{contactStart:null})).toBeUndefined()
   })
 
+  it('interpolates headings across the wrap boundary and keeps zero-length headings finite',()=>{
+    const wrap:UnitTrack={unitId:'wrap',frames:[
+      {...track.frames[0],time:0,position:[0,0],facing:[Math.sin(3.12),Math.cos(3.12)]},
+      {...track.frames[0],time:1,position:[0,0],facing:[Math.sin(-3.12),Math.cos(-3.12)]},
+    ]}
+    const middle=sampleUnitTrack(wrap,.5)!
+    expect(Math.abs(middle.facing[0])).toBeLessThan(.03)
+    expect(middle.facing[1]).toBeLessThan(-.99)
+    const zero:UnitTrack={unitId:'zero',frames:[{...track.frames[0],position:[1,1],facing:[1,1]},{...track.frames[0],time:1,position:[2,2],facing:[2,2]}]}
+    expect(sampleUnitTrack(zero,.5)?.facing.every(Number.isFinite)).toBe(true)
+  })
+
   it('uses visual contact over radar and remembers learned identity in simulated seconds', () => {
     const result = resultWithContacts()
     expect(contactProjectionAt(result, 'red-fighter', .3)).toMatchObject({ level: 'radar', identityKnown: false })
     expect(contactProjectionAt(result, 'red-fighter', .6)).toMatchObject({ level: 'visual', identityKnown: true, visibleSince: .5 })
     expect(contactProjectionAt(result, 'red-fighter', 1.1)).toBeUndefined()
     expect(contactProjectionAt(result, 'red-fighter', 1.5)).toMatchObject({ level: 'radar', identityKnown: true, visibleSince: 1.25 })
+  })
+
+  it('retains the incoming heading when a recorded arrival has zero-length facing',()=>{
+    const arrival:UnitTrack={unitId:'arrival',frames:[
+      {...track.frames[0],time:0,position:[0,0],facing:[1,0]},
+      {...track.frames[0],time:1,position:[1,0],facing:[1,0]},
+    ]}
+    expect(sampleUnitTrack(arrival,.5)?.facing).toEqual([1.5,Math.cos(Math.PI/2)])
   })
 
   it('fails closed for hostile truth when no current contact exists', () => {

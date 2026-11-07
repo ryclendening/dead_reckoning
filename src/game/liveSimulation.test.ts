@@ -24,11 +24,41 @@ describe('incremental round simulation',()=>{
     }
   })
 
+  it('publishes merged gun bursts live once with stable IDs and preserves resolved combat',()=>{
+    const simulation=createRoundSimulation(createScenario('fighter-2v1'))
+    while(!simulation.complete&&!(simulation.result.activeDogfights?.length&&simulation.result.weaponEffects.some(effect=>effect.kind==='gun')))simulation.advance()
+    const liveGunEffects=simulation.result.weaponEffects.filter(effect=>effect.kind==='gun')
+    expect(liveGunEffects.length).toBeGreaterThan(0)
+    expect(liveGunEffects.every(effect=>effect.start===effect.end)).toBe(true)
+    expect(simulation.result.activeDogfights?.length).toBeGreaterThan(0)
+    expect(liveGunEffects.every(effect=>effect.id.startsWith('weapon-'))).toBe(true)
+    const ids=liveGunEffects.map(effect=>effect.id)
+    while(!simulation.complete)simulation.advance()
+    const finalGunIds=simulation.result.weaponEffects.filter(effect=>effect.kind==='gun').map(effect=>effect.id)
+    for(const id of ids)expect(finalGunIds.filter(candidate=>candidate===id)).toHaveLength(1)
+    expect(new Set(simulation.result.weaponEffects.map(effect=>effect.id)).size).toBe(simulation.result.weaponEffects.length)
+    expect(simulation.result.combatSequences).toEqual(resolveRound(createScenario('fighter-2v1')).combatSequences)
+  })
+
   it('produces the same deterministic result as the synchronous compatibility resolver',()=>{
     const state=createScenario('fighter-duel')
     const simulation=createRoundSimulation(structuredClone(state))
     while(!simulation.complete)simulation.advance()
     expect(simulation.result).toEqual(resolveRound(structuredClone(state)))
+  })
+
+  it('starts pursuit gun bursts at the actual shot tick rather than backdating them',()=>{
+    const simulation=createRoundSimulation(createScenario('fighter-recon'))
+    while(!simulation.complete&&!simulation.result.weaponEffects.some(effect=>effect.kind==='gun'))simulation.advance()
+    const first=simulation.result.weaponEffects.find(effect=>effect.kind==='gun')
+    expect(first).toBeDefined()
+    expect(first!.start).toBeCloseTo(simulation.result.duration,8)
+    expect(first!.end).toBe(first!.start)
+    while(!simulation.complete)simulation.advance()
+    const shots=simulation.result.combatSequences.filter(sequence=>sequence.kind==='pursuit').flatMap(sequence=>sequence.exchanges.filter(exchange=>exchange.weapon==='gun'))
+    const effects=simulation.result.weaponEffects.filter(effect=>effect.kind==='gun')
+    expect(shots.length).toBeGreaterThan(0)
+    expect(effects.map(effect=>effect.start)).toEqual(shots.map(shot=>shot.time))
   })
 
   it('exposes only completed fixed ticks instead of precomputing the visualization',()=>{

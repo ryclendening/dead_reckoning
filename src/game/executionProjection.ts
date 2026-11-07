@@ -1,4 +1,5 @@
 import type { ContactInterval, RoundResult, UnitFrame, UnitTrack } from './types'
+import { headingAngle, shortestAngleLerp } from './heading'
 
 export type ContactLevel = 'radar' | 'visual'
 
@@ -66,10 +67,13 @@ export function sampleUnitTrack(track: UnitTrack | undefined, seconds: number): 
   if (after.time === seconds) return copyFrame(after)
   const before = frames[low - 1]
   const amount = (seconds - before.time) / Math.max(Number.EPSILON, after.time - before.time)
+  const position:[number,number]=[lerp(before.position[0],after.position[0],amount),lerp(before.position[1],after.position[1],amount)]
+  const fromHeading=headingAngle(before.position,before.facing)
+  const angle=shortestAngleLerp(fromHeading,headingAngle(after.position,after.facing,fromHeading),amount)
   return {
     time: seconds,
-    position: [lerp(before.position[0], after.position[0], amount), lerp(before.position[1], after.position[1], amount)],
-    facing: [lerp(before.facing[0], after.facing[0], amount), lerp(before.facing[1], after.facing[1], amount)],
+    position,
+    facing: [position[0]+Math.sin(angle),position[1]+Math.cos(angle)],
     mode: before.mode,
     strength: lerp(before.strength, after.strength, amount),
     morale: lerp(before.morale, after.morale, amount),

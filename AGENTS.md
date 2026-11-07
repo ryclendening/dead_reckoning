@@ -27,3 +27,7 @@ Never perform browser-control testing, including automated browser interaction, 
 - Make one focused revision pass from review findings. If uncertainty remains, return it to the planner; do not silently upgrade to a more costly model.
 - If the agent interface does not expose these named roles, select the documented model and reasoning effort explicitly in fresh-context agents and include the relevant role instructions. Do not claim that automatic role routing is enforced.
 - Carry the gameplay source-of-truth and browser-testing permission rules above into delegated tasks whenever they apply.
+
+## OpenAI Sites Deployment
+
+For requests to deploy this project to its existing ChatGPT managed Site, invoke `npm run deploy:openai` and follow [the local deployment workflow](./skills/deploy-openai-site/SKILL.md). The command handles build, source sync, and archive packaging; use the native Sites connector for credential issuance and production publication. Never put credentials in source, shell arguments, environment files, or logs.

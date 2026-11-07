@@ -56,7 +56,7 @@ describe('mission planning shelf', () => {
       onRosterMode={noop} onMission={noop} onPickProtectTarget={noop} onProtectFlight={noop} onClear={noop} onCommit={noop}
       step="route" onClose={noop} reviewedIds={new Set([match.squadrons.find(item=>item.role==='recon')!.id])} reviewedCount={1} totalCount={4} selectingProtectTarget
     />)
-    expect(markup).toContain('Tap a friendly site or map point to defend. A checked flight pip selects an escort.')
+    expect(markup).toContain('Tap a friendly site or map point once to confirm area defense. A checked flight pip selects an escort and shows its route.')
     expect(markup).toContain('DEFEND SITE OR POINT')
     expect(markup).toContain('ESCORT A FLIGHT')
     expect(markup).toContain('RAVEN 3 · ORDER READY')
