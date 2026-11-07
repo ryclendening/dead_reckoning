@@ -50,10 +50,9 @@ export function createStartingKnowledge(world:CampaignWorld):{mappedAreas:Point[
 }
 
 /** Smallest player-known extent; deliberately does not consult hidden world edges. */
-export function deriveKnownEnvelope(world:CampaignWorld,mappedAreas:Point[],boundaries:BoundarySegment[]=[],friendlyTerritory:FriendlyTerritory=world.friendlyTerritory):WorldBounds{
+export function deriveKnownEnvelope(world:CampaignWorld,mappedAreas:Point[],_boundaries:BoundarySegment[]=[],friendlyTerritory:FriendlyTerritory=world.friendlyTerritory):WorldBounds{
   const territory=territoryBounds(friendlyTerritory)
-  const boundaryPoints:Point[]=boundaries.flatMap(segment=>segment.edge==='north'||segment.edge==='south'?[[segment.from,segment.coordinate],[segment.to,segment.coordinate]]:[[segment.coordinate,segment.from],[segment.coordinate,segment.to]])
-  const points=[...mappedAreas,...boundaryPoints]
+  const points=mappedAreas
   return {minX:Math.min(territory.minX,...points.map(point=>point[0]-MAPPED_AREA_RADIUS)),maxX:Math.max(territory.maxX,...points.map(point=>point[0]+MAPPED_AREA_RADIUS)),minZ:Math.min(territory.minZ,...points.map(point=>point[1]-MAPPED_AREA_RADIUS)),maxZ:Math.max(territory.maxZ,...points.map(point=>point[1]+MAPPED_AREA_RADIUS))}
 }
 
