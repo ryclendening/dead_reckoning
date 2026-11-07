@@ -1,7 +1,10 @@
 import { isCampaign } from '../campaign'
-import { LOGISTICS_COSTS, LOGISTICS_EFFECTS } from '../economyRules'
+import { LOGISTICS_EFFECTS } from '../economyRules'
 import type { MatchState, RoundResult } from '../types'
-import { prepareCpuRound } from './planner'
+import { applyRecoveryOutcomesToBasing } from '../forwardBasing'
+import { prepareCpuRound, cpuPlanningView } from './planner'
+import { planPurchases } from './purchases'
+import { executeCpuEconomyCommand } from './economy'
 
 export function settleCpuRound(state: MatchState, result: RoundResult): MatchState {
   if (!isCampaign(state) || !state.cpu || !result.cpuReport || state.cpu.lastSettledRound === result.round) return state
@@ -9,49 +12,39 @@ export function settleCpuRound(state: MatchState, result: RoundResult): MatchSta
   const priorIds = new Set(cpu.sites.map(site => site.id))
   const sites = new Map(cpu.sites.map(site => [site.id, site]))
   for (const site of report.sites) sites.set(site.id, site)
+  for (const strike of report.strikes ?? []) {
+    const site=sites.get(strike.targetId)
+    if(site&&(site.observedRound<result.round||(site.observedAt??0)<strike.releasedAt+.6))site.estimatedDamage=Math.min(site.health,(site.estimatedDamage??0)+strike.damage)
+  }
   cpu.sites = [...sites.values()]
   const recovered = new Set(report.recoveredIds)
   cpu.formations = cpu.formations.map(formation => {
     const flight = result.enemyFlights.find(flight => flight.id === formation.id)
     const ordered = cpu.plan?.orders.find(order => order.id === formation.id)?.sortieOrdered !== false
-    if (!ordered) return formation
+    const outcome = report.recoveryOutcomes?.find(item => item.formationId === formation.id)
+    if (!ordered || outcome?.outcome === 'trapped') return { ...formation, status: outcome?.outcome === 'trapped' ? 'trapped' as const : formation.status }
     return { ...formation, aircraft: recovered.has(formation.id) ? flight?.aircraft ?? 0 : 0,
       strength: recovered.has(formation.id) ? flight?.strength ?? 0 : 0, morale: flight?.morale ?? formation.morale, status: recovered.has(formation.id) ? 'rtb' : 'destroyed' }
   })
   cpu.lastReconLost = cpu.plan?.orders.some(order => order.role === 'recon' && order.sortieOrdered !== false && !recovered.has(order.id)) ?? false
+  cpu.outcomes=[...(cpu.outcomes??[]),...(cpu.plan?.orders.filter(o=>o.sortieOrdered!==false).map(o=>({round:result.round,formationId:o.id,mission:o.mission,targetId:o.strikeTargetId,recovered:recovered.has(o.id)}))??[])].slice(-12)
   cpu.searchIndex += 1
   cpu.traffic = [...cpu.traffic.filter(contact => result.round - contact.observedRound < 2), ...report.traffic].slice(-12)
-  cpu.logistics += LOGISTICS_EFFECTS.baseIncome + report.sites.filter(site => !priorIds.has(site.id)).length * LOGISTICS_EFFECTS.intelRecovery
+  cpu.logistics += LOGISTICS_EFFECTS.baseIncome + (state.enemyAssets.find(a=>a.kind==='base')?.upgrades?.includes('supply-depot')?2:0) + report.sites.filter(site => !priorIds.has(site.id)).length * LOGISTICS_EFFECTS.intelRecovery + (report.confirmedKills??0)
+  cpu.mappedAreas = [...(cpu.mappedAreas ?? [])]
+  for (const point of report.mappedAreas ?? []) if (!cpu.mappedAreas.some(p => Math.hypot(p[0]-point[0],p[1]-point[1]) < 1)) cpu.mappedAreas.push(point)
   cpu.lastSettledRound = result.round
-  return { ...state, cpu }
+  return { ...state, cpu, enemyAssets: applyRecoveryOutcomesToBasing(state.enemyAssets, report.recoveryOutcomes ?? [], cpu.formations) }
 }
 
-/** Finite maintenance only in this slice. Uses shared prices and formation-relative aircraft capacity. */
+/** Evaluate isolated packages; only the selected sequence reaches authoritative shared commands. */
 export function maintainCpu(state: MatchState): MatchState {
   if (!isCampaign(state) || !state.cpu || state.phase !== 'adapt' || state.cpu.lastAdaptedRound === state.round) return state
-  const cpu = structuredClone(state.cpu), assets = structuredClone(state.enemyAssets)
-  const spend = (action: 'repair' | 'replace' | 'repair-defense', targetId: string, cost: number) => {
-    cpu.logistics -= cost; cpu.spending.push({ round: state.round, action, targetId, cost })
-  }
-  for (const formation of cpu.formations) {
-    while (formation.aircraft < formation.maxAircraft && cpu.reserves > 0 && cpu.logistics >= LOGISTICS_COSTS.aircraftReplacement) {
-      spend('replace', formation.id, LOGISTICS_COSTS.aircraftReplacement); cpu.reserves -= 1; formation.aircraft += 1
-      formation.strength = Math.min(100, (formation.strength ?? 0) + 100 / formation.maxAircraft); formation.status = 'rtb'
-    }
-    const capacity = formation.aircraft / formation.maxAircraft * 100
-    while ((formation.strength ?? 0) < capacity - .001 && cpu.logistics >= LOGISTICS_COSTS.formationRepair) {
-      spend('repair', formation.id, LOGISTICS_COSTS.formationRepair)
-      formation.strength = Math.min(capacity, (formation.strength ?? 0) + LOGISTICS_EFFECTS.formationRepair)
-    }
-  }
-  for (const asset of assets.filter(asset => ['sam', 'aaa', 'radar'].includes(asset.kind))) {
-    while (asset.health < asset.maxHealth && cpu.logistics >= LOGISTICS_COSTS.defenseRepair) {
-      spend('repair-defense', asset.id, LOGISTICS_COSTS.defenseRepair)
-      asset.health = Math.min(asset.maxHealth, asset.health + LOGISTICS_EFFECTS.defenseRepair)
-    }
-  }
-  cpu.lastAdaptedRound = state.round
-  return { ...state, cpu, enemyAssets: assets }
+  const view=cpuPlanningView(state)!
+  const decision=planPurchases(view)
+  let next=state
+  for(const command of decision.package.purchases) next=executeCpuEconomyCommand(next,command)
+  return {...next,cpu:{...next.cpu!,version:2,lastAdaptedRound:state.round,intent:decision.intent,adaptTrace:decision.trace}}
 }
 
 export const planNextCpuRound = (state: MatchState) => prepareCpuRound(state)

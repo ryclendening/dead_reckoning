@@ -1,4 +1,6 @@
-import type { Asset, FormationRecoveryOutcome, MatchState, Point, Squadron } from './types'
+import type { Asset, FormationRecoveryOutcome, Point, Squadron } from './types'
+
+export interface BasingContext { playerAssets: Asset[]; squadrons: Squadron[] }
 
 export const AIRFIELD_LANDING_RADIUS = .6
 export const FOB_MIN_CAPACITY = 2
@@ -68,7 +70,7 @@ export function snapRouteToRecoveryField(route: Point[], assets: Asset[]): Point
 }
 
 /** End the selected formation's drawn ingress at an airfield instead of applying a patrol/search pattern. */
-export function routeToRecoveryField(state: MatchState, formationId: string, fieldId: string, direct = false): Point[] | undefined {
+export function routeToRecoveryField(state: BasingContext, formationId: string, fieldId: string, direct = false): Point[] | undefined {
   const squadron = state.squadrons.find(item => item.id === formationId)
   const assets = normalizeFormationBasing(state.squadrons, state.playerAssets)
   const launch = formationField(assets, formationId)
@@ -84,7 +86,7 @@ export function routeToRecoveryField(state: MatchState, formationId: string, fie
   return fieldAtRouteEnd(assets, snapRouteToRecoveryField(directRoute, assets))?.id === destination.id ? directRoute : undefined
 }
 
-function projectedOccupants(state: MatchState, omitFormationId?: string): Map<string, Set<string>> {
+function projectedOccupants(state: BasingContext, omitFormationId?: string): Map<string, Set<string>> {
   const assets = normalizeFormationBasing(state.squadrons, state.playerAssets)
   const result = new Map(assets.filter(isAirfield).map(asset => [asset.id, new Set(asset.basedFormationIds ?? [])]))
   for (const squadron of state.squadrons) {
@@ -96,7 +98,7 @@ function projectedOccupants(state: MatchState, omitFormationId?: string): Map<st
   return result
 }
 
-export function fieldHasCapacity(state: MatchState, field: Asset, formationId: string): boolean {
+export function fieldHasCapacity(state: BasingContext, field: Asset, formationId: string): boolean {
   if (field.kind === 'base') return true
   const occupants = projectedOccupants(state, formationId).get(field.id) ?? new Set<string>()
   return occupants.has(formationId) || occupants.size < (field.capacity ?? FOB_MIN_CAPACITY)
@@ -126,7 +128,7 @@ export interface RouteBudget {
 }
 
 /** Break down the exact route that execution and recovery validation will use. */
-export function deriveRouteBudget(state: MatchState, formationId: string, route: Point[], routeIngress: Point[], maxDistance: number): RouteBudget | undefined {
+export function deriveRouteBudget(state: BasingContext, formationId: string, route: Point[], routeIngress: Point[], maxDistance: number): RouteBudget | undefined {
   const view = deriveRecoveryPlanningView(state, formationId, route, maxDistance)
   if (!view) return undefined
   const flownDistance = routeDistanceForBasing(view.normalizedRoute)
@@ -146,7 +148,7 @@ export function deriveRouteBudget(state: MatchState, formationId: string, route:
   }
 }
 
-export function nearestReachableAlternate(state: MatchState, formationId: string, from: Point, remainingRange: number, excludedFieldId: string, claims?: Map<string, Set<string>>): Asset | undefined {
+export function nearestReachableAlternate(state: BasingContext, formationId: string, from: Point, remainingRange: number, excludedFieldId: string, claims?: Map<string, Set<string>>): Asset | undefined {
   return state.playerAssets.filter(isOperationalAirfield).filter(field => field.id !== excludedFieldId).filter(field => {
     if (distanceBetween(from, field.position) > remainingRange + .001) return false
     if (field.kind === 'base') return true
@@ -155,7 +157,7 @@ export function nearestReachableAlternate(state: MatchState, formationId: string
   }).sort((a, b) => distanceBetween(from, a.position) - distanceBetween(from, b.position) || a.id.localeCompare(b.id))[0]
 }
 
-export function deriveRecoveryPlanningView(state: MatchState, formationId: string, route: Point[], maxDistance: number): RecoveryPlanningView | undefined {
+export function deriveRecoveryPlanningView(state: BasingContext, formationId: string, route: Point[], maxDistance: number): RecoveryPlanningView | undefined {
   const assets = normalizeFormationBasing(state.squadrons, state.playerAssets)
   const launchField = formationField(assets, formationId)
   if (!launchField) return undefined
@@ -177,7 +179,7 @@ export function deriveRecoveryPlanningView(state: MatchState, formationId: strin
   return { launchField, intendedField, alternateField, normalizedRoute, missionDistance, remainingRange, valid, reason, summary: `RECOVERY: ${intendedField.name ?? (intendedField.kind === 'base' ? 'HOME BASE' : 'FORWARD BASE')} · ALTERNATE: ${alternate}` }
 }
 
-export function validateRecoveryPackage(state: MatchState, maxDistances: Record<Squadron['role'], number>, formationIds?: ReadonlySet<string>): { valid: boolean; reason?: string } {
+export function validateRecoveryPackage(state: BasingContext, maxDistances: Record<Squadron['role'], number>, formationIds?: ReadonlySet<string>): { valid: boolean; reason?: string } {
   for (const squadron of state.squadrons.filter(item => item.aircraft > 0 && item.status !== 'trapped' && (!formationIds || formationIds.has(item.id)))) {
     const view = deriveRecoveryPlanningView(state, squadron.id, squadron.route, maxDistances[squadron.role])
     if (!view?.valid) return { valid: false, reason: view?.reason ?? `INVALID RECOVERY FOR ${squadron.callsign}` }

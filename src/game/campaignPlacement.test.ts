@@ -30,6 +30,7 @@ describe('initial campaign placement', () => {
     expect(validateInitialPlacement(state, 'p-base', [center[0] + state.world.friendlyTerritory.radius + 1, center[1]])).toContain('PLACE INSIDE FRIENDLY TERRITORY')
     expect(validateInitialPlacement(state, 'p-base', [center[0] + state.world.friendlyTerritory.radius - INITIAL_PLACEMENT_EDGE_MARGIN / 2, center[1]])).toContain('PLACE INSIDE FRIENDLY TERRITORY')
     const radar = state.playerAssets.find(asset => asset.id === 'p-radar')!
+    radar.position = [...center]
     expect(validateInitialPlacement(state, 'p-base', [radar.position[0] + INITIAL_PLACEMENT_SPACING / 2, radar.position[1]])).toContain('TOO CLOSE TO ANOTHER FRIENDLY ASSET')
   })
 

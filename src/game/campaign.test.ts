@@ -58,12 +58,12 @@ describe('campaign outcomes',()=>{
     expect(missile!.start).toBeGreaterThan(.1)
   })
 
-  it('rejects edited routes that move the fixed strike point even if they pass within weapon range',()=>{
+  it('rejects a release point outside weapon range even when the ingress passes a valid release',()=>{
     const state=createMatch(),target=state.enemyAssets.find(asset=>asset.id==='e-base')!,home=state.playerAssets.find(asset=>asset.kind==='base')!.position
     const armed={...state,enemyAssets:state.enemyAssets.map(asset=>asset.id===target.id?{...asset,intel:'confirmed' as const,confidence:100,hidden:false}:asset)}
     const fighter=armed.squadrons.find(squadron=>squadron.id==='viper')!,route=buildGroundStrikeRoute(armed,fighter.id,target.id)!
     const edited=[home,route[1],home]
-    expect(validateGroundStrikeOrder(armed,{...fighter,mission:'base-strike',strikeTargetId:target.id,route:edited,routeIngress:edited})).toBe('KEEP THE FIXED TAKEOFF AND STRIKE POINTS')
+    expect(validateGroundStrikeOrder(armed,{...fighter,mission:'base-strike',strikeTargetId:target.id,route:edited,routeIngress:edited})).toBe('KEEP THE STRIKE POINT INSIDE THE 6-UNIT RELEASE CIRCLE')
   })
 
   it('queues one deterministic missile and applies health only after impact',()=>{
@@ -87,8 +87,8 @@ describe('campaign outcomes',()=>{
     const home=state.playerAssets.find(asset=>asset.kind==='base')!.position,base=state.enemyAssets.find(asset=>asset.id==='e-base')!.position
     const vector=[home[0]-base[0],home[1]-base[1]],length=Math.hypot(...vector),edge: [number,number]=[base[0]+vector[0]/length*6,base[1]+vector[1]/length*6]
     const boundaryState={...state,squadrons:state.squadrons.map(squadron=>squadron.id===fighter.id?{...squadron,route:[home,edge],routeIngress:[home,edge]}:squadron)}
-    expect(validateGroundStrikeOrder(boundaryState,boundaryState.squadrons.find(squadron=>squadron.id===fighter.id)!)).toBe('KEEP THE FIXED TAKEOFF AND STRIKE POINTS')
-    expect(resolveRound(boundaryState).weaponEffects.some(effect=>effect.kind==='air-to-ground-missile'&&effect.targetId==='e-base')).toBe(false)
+    expect(validateGroundStrikeOrder(boundaryState,boundaryState.squadrons.find(squadron=>squadron.id===fighter.id)!)).toBeUndefined()
+    expect(resolveRound(boundaryState).weaponEffects.some(effect=>effect.kind==='air-to-ground-missile'&&effect.targetId==='e-base')).toBe(true)
   })
 
   it('rejects a strike order without recovered enemy-base intelligence',()=>{
@@ -108,7 +108,7 @@ describe('campaign outcomes',()=>{
   })
 
   it('only raises exposure for recovered enemy recon that observes the real base',()=>{
-    const initial={...createMatch(),cpu:undefined},state={...initial,squadrons:initial.squadrons.map(squadron=>squadron.role==='fighter'?{...squadron,aircraft:0,strength:0,status:'destroyed' as const}:squadron),playerAssets:initial.playerAssets.map(asset=>asset.kind==='radar'?{...asset,health:0}:asset)},result=resolveRound(state)
+    const initial={...createMatch(),cpu:undefined},state={...initial,squadrons:initial.squadrons.map(squadron=>squadron.role==='fighter'?{...squadron,aircraft:0,strength:0,status:'destroyed' as const}:squadron),playerAssets:initial.playerAssets.filter(asset=>asset.kind!=='decoy').map(asset=>asset.kind==='radar'?{...asset,health:0}:asset)},result=resolveRound(state)
     expect(result.enemyFlights.find(flight=>flight.id==='red-recon')?.route[1]).toEqual(state.world.friendlyTerritory.center)
     expect(result.baseExposureDelta).toBe(40)
     const base=state.playerAssets.find(asset=>asset.kind==='base')!

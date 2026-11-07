@@ -6,6 +6,7 @@ import { beginNextRound, openAdaptPhase } from '../economy'
 import { aircraftAtStrength, missionDistance } from '../flightRules'
 import { normalizeMatch } from '../persistence'
 import { cpuPlanningView, cpuReportAt, cpuRouteRisk, planCpu, prepareCpuRound } from './planner'
+import { strikeOrders } from './routes'
 import { maintainCpu, settleCpuRound } from './settlement'
 import type { CpuDifficulty, CpuSiteReport } from './types'
 
@@ -21,6 +22,8 @@ describe('CPU campaign planning', () => {
     changed.squadrons.forEach(unit => { unit.route = [[900, 900], [800, 800]]; unit.mission = 'transit' })
     changed.world.bounds = { minX: -900, maxX: 900, minZ: -800, maxZ: 800 }
     changed.logistics = 10000
+    changed.mappedAreas = [[800,900]]; changed.world.friendlyTerritory={center:[800,900],radius:100}
+    changed.enemyAssets.forEach(a=>{a.intel='confirmed';a.hidden=false;a.confidence=100})
     expect(cpuPlanningView(changed)).toEqual(cpuPlanningView(state))
     expect(planCpu(cpuPlanningView(changed)!)).toEqual(planCpu(cpuPlanningView(state)!))
     expect(prepareCpuRound(changed)).toBe(changed)
@@ -30,8 +33,8 @@ describe('CPU campaign planning', () => {
   it('changes from patrol to home defense after its own base is damaged', () => {
     const initial = view()
     initial.cpu.traffic = []; initial.cpu.lastReconLost = false
-    expect(planCpu(initial).objective).toBe('patrol')
-    expect(planCpu({ ...initial, homeHealth: 30 }).objective).toBe('defend')
+    expect(planCpu(initial).intent).toBe('discover')
+    expect(planCpu({ ...initial, homeHealth: 30 }).intent).toBe('protect-base')
   })
 
   it('requires recovered confirmation and the same base-pressure gate on every difficulty', () => {
@@ -60,7 +63,7 @@ describe('CPU campaign planning', () => {
     const initial = view()
     const position: [number, number] = [initial.home[0] + x * 5.99, initial.home[1] + z * 5.99]
     initial.cpu.sites = [{ id: 'near-sam', kind: 'sam', position, health: 100, maxHealth: 100, observedRound: 1 }]
-    const fighter = planCpu(initial).orders[0], release = fighter.route.at(-1)!
+    const fighter = strikeOrders(initial,initial.cpu.formations[0],initial.cpu.sites[0],{expansions:0,rejected:[]})[0], release = fighter.route.at(-1)!
     expect(fighter.strikeTargetId).toBe('near-sam')
     expect(Math.hypot(release[0] - position[0], release[1] - position[1])).toBeLessThanOrEqual(6)
     expect(release).not.toEqual(initial.home)
@@ -75,13 +78,12 @@ describe('CPU campaign planning', () => {
     }
   })
 
-  it('shortens a collection mission to offer feasible cover after losing recon', () => {
+  it('does not invent fighter opposition or force escort after an unexplained recon loss', () => {
     const initial = view('hard')
     initial.cpu.lastReconLost = true
     const plan = planCpu(initial)
-    expect(plan.objective).toBe('escort')
-    expect(plan.orders[0].protectedTargetId).toBe('red-recon')
-    expect(missionDistance(plan.orders[1].route, initial.home)).toBeLessThanOrEqual(36.001)
+    expect(plan.orders[0].protectedTargetId).toBeUndefined()
+    expect(missionDistance(plan.orders[1].route, initial.home)).toBeLessThanOrEqual(48.001)
   })
 })
 
@@ -136,6 +138,7 @@ describe('CPU execution and persistence', () => {
     state = { ...state, enemyAssets: state.enemyAssets.map(a => a.kind === 'base' ? { ...a, health: 40 } : a),
       playerAssets: state.playerAssets.filter(a => a.kind === 'base').map(a => ({ ...a, position: launch })),
       squadrons: state.squadrons.map(s => ({ ...s, sortieOrdered: s.role === 'recon', route: [launch, launch], routeIngress: [launch, launch] })), cpu: { ...state.cpu!, plan: undefined } }
+    state.enemyAssets = state.enemyAssets.map(a => a.kind === 'radar' ? { ...a, position: home } : a)
     state = prepareCpuRound(state)
     const result = resolveRound(state)
     expect(result.interceptPlans.some(p => p.squadronId === 'red-fighter' && p.source === 'radar')).toBe(true)
@@ -165,7 +168,9 @@ describe('CPU execution and persistence', () => {
     // A support strike is valuable late in the campaign when no base is confirmed.
     state.cpu!.sites[0].kind = 'sam'; target.kind = 'sam'
     state = prepareCpuRound(state)
-    expect(state.cpu!.plan!.orders[0].strikeTargetId).toBe(target.id)
+    const order=strikeOrders(cpuPlanningView(state)!,state.cpu!.formations[0],state.cpu!.sites[0],{expansions:0,rejected:[]})[0]
+    state.cpu!.plan!.orders[0]=order
+    expect(order.strikeTargetId).toBe(target.id)
     const result = resolveRound(state)
     const missile = result.weaponEffects.find(effect => effect.sourceId === 'red-fighter' && effect.kind === 'air-to-ground-missile')
     expect(missile?.targetId).toBe(target.id)

@@ -42,7 +42,7 @@ export interface EnemyFlight {
   strength?: number; morale?: number; status?: ExecutionStatus
   route: Point[]; detectionWindows: DetectionWindow[]; identityLearnedAt?: number; target: 'base' | 'decoy'
   mission?: MissionId; routeIngress?: Point[]; maxAircraft?: number; sortieOrdered?: boolean
-  strikeTargetId?: string; protectedPoint?: Point; protectedTargetId?: string
+  plannedRecoveryFieldId?: string; strikeTargetId?: string; protectedPoint?: Point; protectedTargetId?: string
 }
 export type AssetKind = 'base' | 'fob' | 'decoy' | 'radar' | 'sam' | 'aaa'
 export type ConstructibleAssetKind = 'fob' | 'decoy' | 'sam' | 'aaa'

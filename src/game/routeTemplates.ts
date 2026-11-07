@@ -9,7 +9,7 @@ export type RouteAdjustment = 'none' | 'pattern-shrunk' | 'ingress-shortened' | 
 export interface RouteGenerationResult { route:Point[]; ingress:Point[]; requestedIngress:Point[]; adjustment:RouteAdjustment }
 
 export const ROUTE_TEMPLATES:RouteTemplateDefinition[]=[
-  {id:'base-strike',label:'Ground Strike',shortLabel:'GROUND STRIKE',description:'Choose a confirmed ground target, then edit the ingress between fixed takeoff and strike points. Avoid voluntary air combat.',roles:['fighter'],requiresTarget:true},
+  {id:'base-strike',label:'Ground Strike',shortLabel:'GROUND STRIKE',description:'Choose a confirmed ground target, then edit the ingress and place the strike point inside its six-unit release circle. Avoid voluntary air combat.',roles:['fighter'],requiresTarget:true},
   {id:'transit',label:'Transit',shortLabel:'TRANSIT',description:'Fly to a friendly airfield without diverting to intercept contacts.',roles:['fighter'],requiresTarget:true},
   {id:'defensive-cap',label:'Protect',shortLabel:'PROTECT',description:'Choose a friendly site, flight, or map point. Intercept threats inside the moving or fixed cover circle; break off at its marked edge.',roles:['fighter'],requiresTarget:true},
   {id:'forward-patrol',label:'Forward Patrol',shortLabel:'FORWARD PATROL',description:'Hunt inside the corridor around the patrol route, then break pursuit at its marked edge. Shots +10 points; incoming hits +6 points.',roles:['fighter'],requiresTarget:true},
@@ -32,8 +32,8 @@ export function buildGroundStrikeRoute(state:MatchState,squadronId:string,target
 }
 
 /** Preserve both mission anchors while replacing only optional ingress waypoints. */
-export function groundStrikeRoute(anchors:Point[],waypoints:Point[]):Point[]{
-  return anchors.length<2?anchors:[anchors[0],...waypoints.slice(0,5),anchors.at(-1)!]
+export function groundStrikeRoute(anchors:Point[],waypoints:Point[],releasePoint:Point=anchors.at(-1)!):Point[]{
+  return anchors.length<2?anchors:[anchors[0],...waypoints.slice(0,5),releasePoint]
 }
 
 export function validateGroundStrikeOrder(state:MatchState,squadron:Squadron):string|undefined{
@@ -44,7 +44,8 @@ export function validateGroundStrikeOrder(state:MatchState,squadron:Squadron):st
   const anchors=buildGroundStrikeRoute(state,squadron.id,target.id)
   if(!anchors)return 'NO LEGAL STRIKE INGRESS FROM THIS FIELD'
   const route=squadron.route
-  if(route.length<2||route.length>7||distance(route[0],anchors[0])>.001||distance(route.at(-1)!,anchors[1])>.001)return 'KEEP THE FIXED TAKEOFF AND STRIKE POINTS'
+  if(route.length<2||route.length>7||distance(route[0],anchors[0])>.001)return 'KEEP THE FIXED TAKEOFF POINT'
+  if(distance(route.at(-1)!,target.position)>BASE_STRIKE_RANGE+.001)return 'KEEP THE STRIKE POINT INSIDE THE 6-UNIT RELEASE CIRCLE'
   if(missionDistance(route,anchors[0])>40+.001)return 'GROUND STRIKE ROUTE EXCEEDS AVAILABLE RANGE'
   return undefined
 }

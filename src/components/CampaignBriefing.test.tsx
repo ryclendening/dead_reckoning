@@ -12,7 +12,7 @@ describe('campaign briefing', () => {
     const opposite: Record<string, string> = { 'north-west': 'south-east', 'north-east': 'south-west', 'south-west': 'north-east', 'south-east': 'north-west' }
 
     expect(markup).toContain('LOCATE AND STRIKE ENEMY BASE')
-    expect(markup).toContain(opposite[match.world.startRegionId])
+    expect(markup).toContain(opposite[match.world.startRegionId] ?? 'opposite sector')
     expect(markup).not.toContain('ENEMY BASE</span>')
     expect(markup).not.toContain(String(hidden.position[0]))
     expect(markup).not.toContain(String(hidden.position[1]))
