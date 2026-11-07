@@ -72,25 +72,25 @@ export function CommandShelf({squadrons,bases,activeBaseId,rosterMode,squadron,r
     {expanded?<div className={`command-sheet ${step}-step`}>
       {step==='route'?<>
         <div className="sheet-heading"><span>ORDERS {reviewedCount} / {totalCount}</span><b>{squadron.callsign}</b><button onClick={onClose}>CLOSE</button></div>
-        <h2 className="planning-title">BUILD YOUR ROUTE</h2>
-        <p className="planning-help">{selectingProtectTarget?"Tap a friendly site or map point once to confirm area defense. A checked flight pip selects an escort and shows its route.":squadron.mission==='base-strike'?"The takeoff point stays fixed. Select the strike marker, then tap anywhere inside the six-unit circle to move it. Add up to five ingress waypoints.":squadron.mission==='defensive-cap'?"Choose a site or point with one tap, or escort a confirmed flight. Escort draws the longest fighter-feasible stretch of that flight's route.":"Add or move up to five waypoints. Select another aircraft to save this route."}</p>
-        {squadron.mission==='defensive-cap'?<div className="planning-protect-target"><button onClick={onPickProtectTarget}>DEFEND SITE OR POINT</button><details><summary>ESCORT A FLIGHT</summary><div>{squadrons.filter(item=>item.id!==squadron.id&&reviewedIds.has(item.id)&&item.aircraft>0).map(item=><button key={item.id} onClick={()=>onProtectFlight?.(item.id)}>{item.callsign} · ORDER READY · VIEW ROUTE</button>)}{!squadrons.some(item=>item.id!==squadron.id&&reviewedIds.has(item.id)&&item.aircraft>0)?<small>Confirm the other flight first, then select it here.</small>:null}</div></details><small>{protectSummary??"Default: defend the route endpoint."}</small></div>:null}
+        <h2 className="planning-title">BUILD ROUTE</h2>
+        <p className="planning-help">{selectingProtectTarget?'Tap a friendly site or map point.':squadron.mission==='base-strike'?'Move S inside the target circle; add up to five waypoints.':squadron.mission==='defensive-cap'?'Choose a site, point, or confirmed flight.':'Tap to add a waypoint; select one to move it.'}</p>
+        {squadron.mission==='defensive-cap'?<div className="planning-protect-target"><button onClick={onPickProtectTarget}>DEFEND AREA</button><details><summary>ESCORT FLIGHT</summary><div>{squadrons.filter(item=>item.id!==squadron.id&&reviewedIds.has(item.id)&&item.aircraft>0).map(item=><button key={item.id} onClick={()=>onProtectFlight?.(item.id)}>{item.callsign}</button>)}{!squadrons.some(item=>item.id!==squadron.id&&reviewedIds.has(item.id)&&item.aircraft>0)?<small>Confirm another flight first.</small>:null}</div></details><small>{protectSummary??'DEFEND ROUTE ENDPOINT'}</small></div>:null}
         {squadron.mission==='base-strike'?<p className="strike-target-summary">TARGET: {groundTargets.find(asset=>asset.id===squadron.strikeTargetId)?.name??groundTargets.find(asset=>asset.id===squadron.strikeTargetId)?.kind.toUpperCase()??'SELECT TARGET'} <button onClick={onChangeGroundTarget}>CHANGE TARGET</button></p>:null}
         <div className="planning-route-actions">{squadron.role==='fighter'&&onBack?<button onClick={onBack}>CHANGE TASK</button>:null}{forwardBased&&onRecoverHome?<button onClick={onRecoverHome}>RECOVER HOME</button>:null}<button onClick={onClear}>{squadron.mission==='base-strike'?'CLEAR WAYPOINTS':'CLEAR ROUTE'}</button></div>
         <p className={`shelf-range ${routeDistance>=maxDistance-.1?'limit':''}`} aria-live="polite">{routeNotice??(squadron.route.length<2?'TAP THE MAP TO START':`${Math.min(5,Math.max(0,squadron.routeIngress.length-(squadron.mission==='base-strike'?2:1)))} / 5 WAYPOINTS · ${Math.max(0,maxDistance-routeDistance).toFixed(1)} RANGE LEFT`)}</p>
       </>:null}
       {step==='target'?<>
         <div className="sheet-heading"><b>{squadron.callsign} · GROUND STRIKE</b><button onClick={onClose}>CLOSE</button></div>
-        <h2 className="planning-title">CLICK A TARGET ON THE MAP</h2>
-        <p className="planning-help">Tap a confirmed enemy target on the map.</p>
-        <p className="mission-effect">{routeNotice??(!groundTargets.length?'Recover ground target intelligence first.':'One missile payload per formation. No voluntary air interceptions.')}</p>
-        <button onClick={onBack}>CHANGE TASK</button>
+        <h2 className="planning-title">CHOOSE TARGET</h2>
+        <p className="planning-help">Tap a confirmed enemy site on the map.</p>
+        {routeNotice?<p className="shelf-range" aria-live="polite">{routeNotice}</p>:null}
+        <div className="planning-route-actions"><button onClick={onBack}>CHANGE TASK</button></div>
       </>:null}
       {step==='mission'?<>
         <div className="sheet-heading"><span>ORDERS {reviewedCount} / {totalCount}</span><b>{squadron.callsign}</b><button onClick={onClose}>CLOSE</button></div>
-        <h2 className="planning-title">CHOOSE YOUR TASK</h2>
+        <h2 className="planning-title">CHOOSE TASK</h2>
         <div className="shelf-route">{templatesForRole(squadron.role).filter(template=>template.id!=='base-strike').map(template=>{const MissionIcon=template.id==='defensive-cap'?Shield:template.id==='forward-patrol'?Sword:Map;return <button key={template.id} className={squadron.mission===template.id?'active':''} aria-label={template.label} aria-pressed={squadron.mission===template.id} onClick={()=>onMission(template.id)}><MissionIcon/><b>{template.shortLabel}</b></button>})}{squadron.role==='fighter'?<button className={squadron.mission==='base-strike'?'active':''} aria-label="Ground Strike" aria-pressed={squadron.mission==='base-strike'} disabled={!strikeUnlocked} title={!strikeUnlocked?strikeDisabledReason:'Choose a confirmed enemy ground target.'} onClick={()=>onMission('base-strike')}><Crosshair/><b>GROUND STRIKE</b></button>:null}</div>
-        <p className="mission-effect" aria-live="polite">{routeNotice??(squadron.mission==='forward-patrol'?'Patrol and pursue contacts near your route.':squadron.mission==='base-strike'?'Select a ground target, then plan the ingress.':squadron.mission==='transit'?'Fly directly to a friendly airfield.':'Defend your route endpoint, a site, or a confirmed flight.')}</p>
+        <p className="mission-effect" aria-live="polite">{routeNotice??(squadron.mission==='forward-patrol'?'Pursue contacts near the route.':squadron.mission==='base-strike'?'Choose a confirmed ground target.':squadron.mission==='transit'?'Fly to a friendly airfield.':'Defend a site, point, or flight.')}</p>
       </>:null}
     </div>:null}
     {!expanded&&rosterMode!=='closed'?<div className="planning-roster" aria-label={rosterMode==='all'?'All formations':'Airfield formations'}>
