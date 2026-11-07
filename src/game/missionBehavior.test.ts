@@ -120,6 +120,23 @@ describe('mission-based aircraft behavior',()=>{
     expect(result.behaviorIntervals.some(interval=>interval.unitId==='viper'&&interval.reason==='direct-fighter-contact')).toBe(false)
   })
 
+  it('keeps RAVEN on the same executed route through first fighter contact',()=>{
+    const threatened=createScenario('recon-pursuit')
+    const peaceful={...structuredClone(threatened),debugScenario:'recon-recovery' as const}
+    const withContact=resolveRound(threatened),withoutFighter=resolveRound(peaceful)
+    const firstContact=withContact.threatAlerts!.find(alert=>alert.unitId==='raven'&&alert.kind==='fighter-contact')!
+    expect(firstContact).toBeDefined()
+    const threatenedTrack=withContact.unitTracks.find(track=>track.unitId==='raven')!
+    const peacefulTrack=withoutFighter.unitTracks.find(track=>track.unitId==='raven')!
+    const duringContact=threatenedTrack.frames.filter(frame=>frame.time>=firstContact.time&&frame.time<firstContact.time+.8)
+    expect(duringContact.length).toBeGreaterThan(1)
+    for(const frame of duringContact){
+      expect(frame.mode).toBe('following-route')
+      expect(frame.position).toEqual(peacefulTrack.frames.find(candidate=>candidate.time===frame.time)!.position)
+    }
+    expect(withContact.behaviorIntervals.some(interval=>interval.unitId==='raven'&&interval.mode==='recovering'&&interval.start===firstContact.time)).toBe(false)
+  })
+
   it('is byte-deterministic with mission responsibility state',()=>{
     const state=createScenario('fighter-duel')
     expect(JSON.stringify(resolveRound(state))).toBe(JSON.stringify(resolveRound(structuredClone(state))))

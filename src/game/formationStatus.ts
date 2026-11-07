@@ -20,6 +20,18 @@ export interface FormationStatus {
 
 const clamp = (value: number, min: number, max: number) => Math.min(max, Math.max(min, value))
 
+export function recoveryReasonLabel(reason?:string){
+  switch(reason){
+    case 'fuel-reserve':return 'FUEL RESERVE'
+    case 'world-edge':return 'WORLD EDGE'
+    case 'player-rtb':case 'recovery-commanded':return 'PLAYER RTB ORDER'
+    case 'recovery-field-unusable':return 'AIRFIELD DIVERSION'
+    case 'protected-flight-ended':return 'ESCORT COMPLETE'
+    case 'route-complete':case 'mission-unavailable':return 'ROUTE COMPLETE'
+    default:return 'RECOVERY REQUIRED'
+  }
+}
+
 export function formationStatus(squadron: Pick<Squadron, 'aircraft' | 'maxAircraft' | 'damaged' | 'readiness' | 'ammo' | 'status'>): FormationStatus {
   const maxAircraft = Math.max(0, Math.round(squadron.maxAircraft))
   const aircraft = clamp(Math.round(squadron.aircraft), 0, maxAircraft)

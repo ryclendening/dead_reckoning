@@ -330,7 +330,10 @@ function updatePursuitEngagement(engagement:ActiveEngagement,time:number,roll:nu
     transition(engagement.attacker,'following-route',time,missionBreak?'mission-pursuit-limit':engagement.target.mode==='destroyed'?'recon-destroyed':'recon-escaped')
   }
   if(missionBreak)add('friendly',source.mission==='defensive-cap'?'PROTECT BREAKS PURSUIT':'PATROL BREAKS PURSUIT',`${engagement.attacker.callsign} stops chasing ${engagement.target.callsign} beyond the marked mission edge and resumes its assigned task.`,engagement.attacker.position,time)
-  else if(engagement.target.mode!=='destroyed')add('warning','RECON ESCAPES PURSUIT',`${engagement.target.callsign} opens the distance and ${engagement.target.mode==='recovered'?'completes recovery':'continues its current route'}.`,engagement.target.position,time)
+  else if(engagement.target.mode!=='destroyed'){
+    const volleyComplete=engagement.effects.length>=4
+    add('warning',volleyComplete?'PURSUIT VOLLEY COMPLETE':escaped?'RECON ESCAPES PURSUIT':'PURSUIT ENDS',volleyComplete?`${engagement.attacker.callsign} completes its four-shot volley; ${engagement.target.callsign} continues its current route.`:escaped?`${engagement.target.callsign} opens the distance and continues its current route.`:`${engagement.attacker.callsign} ends pursuit; ${engagement.target.callsign} ${engagement.target.mode==='recovered'?'completes recovery':'continues its current route'}.`,engagement.target.position,time)
+  }
   return {roll,effects:engagement.effects,released:[engagement.attacker,engagement.target].filter(unit=>!terminal(unit)),sequence:{id:engagement.id,kind:'pursuit',participantIds:[engagement.attacker.id,engagement.target.id],location:engagement.location,start:engagement.start,end:time,exchanges:engagement.exchanges,finalDisposition:{[engagement.attacker.id]:engagement.attacker.mode==='destroyed'?'destroyed':'enroute',[engagement.target.id]:engagement.target.mode==='destroyed'?'destroyed':engagement.target.mode==='recovering'?'rtb':'enroute'}}}
 }
 
@@ -359,7 +362,8 @@ function* simulateRoundTicks(state:MatchState):Generator<RoundResult,RoundResult
   const claim=(unit:SimUnit,fieldId:string)=>{releaseClaim(unit);fieldClaims.get(fieldId)?.add(unit.id)}
   const transition=(u:SimUnit,mode:FlightMode,time:number,reason:string,targetId?:string,source?:'radar'|'visual')=>{if(u.mode===mode&&u.targetId===targetId)return;const old=openBehavior.get(u.id);if(old)old.end=time;u.mode=mode;u.targetId=targetId;const item:BehaviorInterval={id:`behavior-${behavior.length}`,unitId:u.id,mode,start:time,end:time,targetId,source,reason};behavior.push(item);openBehavior.set(u.id,item)}
   const record=(time:number)=>units.forEach(u=>u.frames.push({time,position:[...u.position] as Point,facing:[...u.facing] as Point,mode:u.mode,strength:u.strength,morale:u.morale,aircraft:u.aircraft,traveledDistance:u.traveled}))
-  const contact=(observerId:string,targetId:string,source:'radar'|'visual',position:Point,active:boolean,time:number)=>{const key=`${observerId}:${targetId}:${source}`;const old=openContacts.get(key);if(active&&!old){const x={id:`contact-${intervals.length}`,observerId,targetId,source,start:time,end:time,position:[...position] as Point};intervals.push(x);openContacts.set(key,x)}else if(active&&old)old.end=time;else if(!active&&old){old.end=time;openContacts.delete(key)}}
+  const currentContactKeys=new Set<string>()
+  const contact=(observerId:string,targetId:string,source:'radar'|'visual',position:Point,active:boolean,time:number)=>{const key=`${observerId}:${targetId}:${source}`;const old=openContacts.get(key);if(active){currentContactKeys.add(key);if(!old){const x={id:`contact-${intervals.length}`,observerId,targetId,source,start:time,end:time,position:[...position] as Point};intervals.push(x);openContacts.set(key,x)}else old.end=time}else if(old)openContacts.delete(key)}
   add('info','SORTIES AIRBORNE',`${units.filter(u=>u.friendly&&!u.trapped&&u.mode!=='grounded').reduce((n,u)=>n+u.aircraft,0)} aircraft committed.`,undefined,.8)
   for(const u of units)transition(u,u.mode,0,'round-start')
   record(0)
@@ -418,9 +422,29 @@ function* simulateRoundTicks(state:MatchState):Generator<RoundResult,RoundResult
     // 3: contacts. An operational friendly radar distributes every track it
     // detects to friendly formations; hostile radar never publishes tracks to
     // the player.
-    const current=new Map<string,AirContact[]>(); const radar=playerAssets.find(a=>a.kind==='radar'&&a.health>0)
-    for(const friendly of units.filter(u=>u.friendly&&!terminal(u))){const seen:AirContact[]=[];for(const enemy of units.filter(u=>!u.friendly&&!terminal(u))){const visual=distance(friendly.position,enemy.position)<=effectiveSensorRange(friendly.source as Squadron);contact(friendly.id,enemy.id,'visual',enemy.position,visual,time);if(visual)seen.push({target:enemy,source:'visual'}); // `radar` is selected only from playerAssets; enemy radar never enters this link.
-      const radarDetected=!!radar&&distance(radar.position,enemy.position)<=RADAR_RANGE;contact(friendly.id,enemy.id,'radar',enemy.position,radarDetected,time);if(radarDetected)seen.push({target:enemy,source:'radar'})}current.set(friendly.id,seen)}
+    const current=new Map<string,AirContact[]>(),radarTargets=new Set<string>()
+    const hostiles=units.filter(unit=>!unit.friendly&&!terminal(unit))
+    currentContactKeys.clear()
+    // Ground sensors publish their own tracks even with every friendly grounded.
+    for(const radar of playerAssets.filter(asset=>asset.kind==='radar'&&asset.health>0&&asset.operational!==false))for(const enemy of hostiles){
+      const detected=distance(radar.position,enemy.position)<=RADAR_RANGE
+      contact(radar.id,enemy.id,'radar',enemy.position,detected,time)
+      if(detected)radarTargets.add(enemy.id)
+    }
+    for(const friendly of units.filter(unit=>unit.friendly&&!terminal(unit))){
+      const seen:AirContact[]=[]
+      for(const enemy of hostiles){
+        const visual=distance(friendly.position,enemy.position)<=effectiveSensorRange(friendly.source as Squadron)
+        contact(friendly.id,enemy.id,'visual',enemy.position,visual,time)
+        if(visual)seen.push({target:enemy,source:'visual'})
+        const radarDetected=radarTargets.has(enemy.id)
+        contact(friendly.id,enemy.id,'radar',enemy.position,radarDetected,time)
+        if(radarDetected)seen.push({target:enemy,source:'radar'})
+      }
+      current.set(friendly.id,seen)
+    }
+    // Do not leave an observer's last contact live after it lands or is lost.
+    for(const key of openContacts.keys())if(!currentContactKeys.has(key))openContacts.delete(key)
     // 4-5: shared reaction priority, pursuit, and direct combat. A formation
     // may belong to only one engagement; independent pairs can fight at once.
     const engagedUnitIds=()=>new Set(activeEngagements.flatMap(engagement=>engagement.participants.map(participant=>participant.id)))

@@ -18,6 +18,7 @@ import { territoryBounds, territoryRegions } from '../game/territory'
 import { firstRouteFobLatch } from '../game/forwardBasing'
 import type { ActiveDogfightPresentation, Asset, BoundarySegment, CombatEvent, CombatSequence, ConstructibleAssetKind, DefenseCue, EnemyFlight, FriendlyTerritory, Phase, Point, ReinforcementCall, RoundResult, Squadron, UnitFrame, UnitTrack, WeaponEffect, WorldBounds } from '../game/types'
 import { advanceFrameClock, createFrameClock, type FrameClock } from '../game/frameClock'
+import { identifiedAircraftType } from '../game/contactTracks'
 import type { FogMaskInput, MapObservation } from '../game/fog'
 import { authorizedWeaponTarget, combatManeuver, combatWindow, headingAngle, sampledBank, weaponPath, weaponTangent, weaponTrail, weaponVisibleAt, weaponVisualLifecycle } from './graphicsPresentation'
 
@@ -442,7 +443,7 @@ function EnemyContact({flight,projection,status,track,sceneClock,authoritativeSe
   const visual=projection.visibility==='visual'
   const damageEvent=hitEvent&&status.hasDamage?hitEvent:undefined
   const contactColor=visual?hostile:amber
-  const contactLabel=projection.identityKnown?`${flight.callsign} · ${flight.role.toUpperCase()} · RADAR TRACK`:'ENEMY · RADAR CONTACT'
+  const contactLabel=`${projection.trackId} · ${projection.identityKnown?identifiedAircraftType(flight):'UNKNOWN AIRCRAFT'}`
   const position=new THREE.Vector3(visibleRenderFrame.position[0],.6,visibleRenderFrame.position[1])
   if(!visual)return <group ref={ref} visible={status.aircraft>0||!!hitEvent} position={position}>
     <mesh rotation={[-Math.PI/2,0,Math.PI/4]}><planeGeometry args={[.72,.72]}/><meshBasicMaterial color={amber} transparent opacity={.58} depthWrite={false}/></mesh>
@@ -451,7 +452,7 @@ function EnemyContact({flight,projection,status,track,sceneClock,authoritativeSe
   </group>
   return <group ref={ref} visible={status.aircraft>0||!!hitEvent} position={position}>
     <group ref={modelRef}><AircraftFormation id={flight.id} role={flight.role as Squadron['role']} aircraft={Math.max(1,status.aircraft)} color={contactColor} enemy sceneClock={sceneClock} window={maneuverWindow}/>{status.hasDamage?<AircraftSmoke/>:null}</group>
-    <HealthBar3D fraction={status.fraction} color={contactColor} label={`${flight.callsign} · ${status.aircraft} PIPS`} status={status.action} position={[0,1.36,0]}/>
+    <HealthBar3D fraction={status.fraction} color={contactColor} label={`${projection.trackId} · ${flight.role==='fighter'?'MiG-23':'RECON'}`} status={`${status.aircraft} AC`} position={[0,1.36,0]}/>
     {damageEvent?<HitCallout key={damageEvent.id} label="ENEMY −1 AIRCRAFT"/>:null}
     <group position={[0,-.6,0]}><Ring radius={1.1} color={hostile} opacity={.3}/></group>
   </group>

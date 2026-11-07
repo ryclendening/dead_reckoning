@@ -210,3 +210,10 @@
 .planning-protect-target{display:grid;grid-template-columns:1fr 1fr;gap:5px;margin-top:8px}.planning-protect-target>button,.planning-protect-target>details>summary{display:flex;align-items:center;justify-content:center;min-height:32px;padding:4px 7px;border:1px solid var(--line);background:#192b23;color:#d0e8d3;font:700 9px 'Barlow Condensed';letter-spacing:.5px;text-align:center;cursor:pointer}.planning-protect-target>details{position:relative}.planning-protect-target>details>summary{list-style:none}.planning-protect-target>details>summary::-webkit-details-marker{display:none}.planning-protect-target>details>div{position:absolute;z-index:20;left:0;right:0;bottom:35px;display:grid;gap:4px;padding:6px;border:1px solid var(--line);background:#101b14;box-shadow:0 4px 14px rgba(0,0,0,.4)}.planning-protect-target>details>div button{min-height:30px;border:1px solid var(--line);background:#21362a;color:#e0efe2;font:700 9px 'Barlow Condensed';letter-spacing:.4px}.planning-protect-target>details>div small{color:#c7d8c9;font:600 9px/1.35 Inter,sans-serif}.planning-protect-target>small{grid-column:1/-1;color:#acc5b1;font:600 9px/1.35 Inter,sans-serif}
 .planning-capsule:not(.has-commit){grid-template-columns:minmax(0,1fr) 48px}
 .planning-capsule.route-editing{height:54px}
+
+.contact-tracks{position:absolute;top:112px;left:80px;width:min(286px,calc(100% - 88px));z-index:8;border:1px solid #465448;background:rgba(7,11,8,.95);color:#cbd6c6;pointer-events:auto}
+.contact-tracks summary{padding:7px;cursor:pointer;font:800 9px 'Barlow Condensed',sans-serif;letter-spacing:.4px}
+.contact-tracks>div{max-height:138px;overflow-y:auto}
+.contact-tracks button{display:block;width:100%;padding:7px;border:0;border-top:1px solid #344136;background:transparent;color:var(--amber);text-align:left;cursor:pointer}
+.contact-tracks button.visual{color:#f09b86}.contact-tracks button.lost{color:#9ba595}
+.contact-tracks b,.contact-tracks span{display:block;overflow-wrap:anywhere}.contact-tracks b{font:800 10px 'Barlow Condensed',sans-serif}.contact-tracks span{margin-top:3px;font:600 8px Inter,sans-serif;color:#b6bfae}

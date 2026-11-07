@@ -1,8 +1,33 @@
 import { renderToStaticMarkup } from 'react-dom/server'
 import { describe, expect, it } from 'vitest'
-import { createMatch } from '../game/data'
+import { createMatch,enemyBaseFor } from '../game/data'
+import {createRoundSimulation,resolveRound} from '../game/engine'
+import {createScenario} from '../game/scenarios'
 import type { Asset } from '../game/types'
-import { CommandShelf, ExecutionChitRail } from './Hud'
+import { CommandShelf, ContactTracks, ExecutionChitRail, FormationDock } from './Hud'
+
+describe('contact and recovery information',()=>{
+  it('shows one unknown numbered report per radar contact without leaking aircraft type or count',()=>{
+    const state=createScenario('radar-intercept')
+    state.squadrons=state.squadrons.map(squadron=>({...squadron,sortieOrdered:false}))
+    state.playerAssets=state.playerAssets.map(asset=>asset.kind==='radar'?{...asset,position:enemyBaseFor(state.world)}:asset)
+    const simulation=createRoundSimulation(state);simulation.advance()
+    const markup=renderToStaticMarkup(<ContactTracks result={simulation.result} seconds={simulation.result.duration} home={state.world.friendlyTerritory.center} onFocus={()=>{}}/>)
+    expect(markup).toContain('TRACK 01 · UNKNOWN AIRCRAFT')
+    expect(markup).not.toContain('MiG-23')
+    expect(markup).not.toContain('BOGEY')
+    expect(markup).not.toContain('FIGHTER')
+    expect(markup).not.toContain('4 AIRCRAFT')
+  })
+
+  it('explains why a recon is returning in the compact formation shelf',()=>{
+    const state=createScenario('recon-recovery'),result=resolveRound(state)
+    const recovery=result.behaviorIntervals.find(interval=>interval.unitId==='raven'&&interval.mode==='recovering')!
+    const seconds=recovery.start
+    const markup=renderToStaticMarkup(<FormationDock squadrons={state.squadrons} bases={state.playerAssets} result={result} progress={seconds/result.duration} selectedId="raven" onSelect={()=>{}} onClearFollow={()=>{}} onAirfield={()=>{}} onRtb={()=>{}}/>)
+    expect(markup).toContain('ROUTE COMPLETE')
+  })
+})
 
 describe('execution airfield chit rail', () => {
   it('shows only formations launched from the selected airfield', () => {

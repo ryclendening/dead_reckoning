@@ -4,6 +4,7 @@ import { headingAngle, shortestAngleLerp } from './heading'
 export type ContactLevel = 'radar' | 'visual'
 
 export interface ContactProjection {
+  trackId: string
   level: ContactLevel
   identityKnown: boolean
   observerIds: string[]
@@ -18,6 +19,7 @@ export interface FriendlyUnitProjection {
 
 export interface HostileUnitProjection {
   unitId: string
+  trackId: string
   frame: UnitFrame
   visibility: ContactLevel
   identityKnown: boolean
@@ -114,6 +116,7 @@ export function contactProjectionAt(
   const visibleSince = Math.min(...active.filter(interval => interval.source === level).map(interval => interval.start))
   const identityKnown = targetIntervals.some(interval => interval.source === 'visual' && interval.start <= seconds)
   return {
+    trackId: contactTrackIdAt(result,targetId,seconds)!,
     level,
     identityKnown,
     observerIds: [...new Set(active.map(interval => interval.observerId))].sort(),
@@ -140,12 +143,21 @@ export function projectHostileUnitAt(
   const frame = sampleUnitTrack(unitTrackFor(result, unitId), seconds)
   return frame ? {
     unitId,
+    trackId: contact.trackId,
     frame,
     visibility: contact.level,
     identityKnown: contact.identityKnown,
     observerIds: contact.observerIds,
     visibleSince: contact.visibleSince,
   } : undefined
+}
+
+/** Number only acquired contacts; hidden flights never reserve or renumber IDs. */
+export function contactTrackIdAt(result:RoundResult,targetId:string,seconds:number):string|undefined{
+  const acquired=[...result.contactIntervals].filter(interval=>interval.start<=seconds).sort((left,right)=>left.start-right.start)
+  const ids=[...new Set(acquired.map(interval=>interval.targetId))]
+  const index=ids.indexOf(targetId)
+  return index<0?undefined:`TRACK ${String(index+1).padStart(2,'0')}`
 }
 
 interface ContactSpan {
