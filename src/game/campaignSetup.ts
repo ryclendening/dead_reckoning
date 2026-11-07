@@ -44,7 +44,6 @@ export function validateCampaignSetup(state: MatchState, setup: CampaignSetupSta
   const errors = validateCampaignAllocation(state, setup)
   const selectedAssets = setup.selectedAssetIds.filter(id => !!setupAssetById(state, id))
   if (selectedAssets.some(id => !setup.placedAssetIds.includes(id))) errors.push('PLACE EVERY SELECTED ASSET')
-  if (setup.stage !== 'review') errors.push('REVIEW THE OPENING PACKAGE')
   return errors
 }
 
