@@ -248,3 +248,13 @@
 
 /* Campaign entry stays independent of the battlefield canvas. */
 .campaign-menu{height:100dvh;min-height:0;box-sizing:border-box;display:flex;flex-direction:column;align-items:center;padding:28px 18px;background:radial-gradient(ellipse at 20% 15%,#23382e,transparent 60%),#0b110e;color:#e4e8d6;overflow:auto}.campaign-menu>section{flex-shrink:0;margin-block:auto;width:min(100%,620px);box-sizing:border-box;padding:clamp(20px,5vw,42px);border:1px solid #536451;background:#111b15}.menu-kicker{margin:0;color:#8de8cf;font:700 11px Inter,sans-serif;letter-spacing:1.5px}.campaign-menu h1{margin:16px 0;font:800 clamp(30px,8vw,52px)/1 'Barlow Condensed',sans-serif;letter-spacing:1px}.menu-intro{max-width:440px;color:#aebba9;font:400 14px/1.6 Inter,sans-serif}.campaign-menu fieldset{padding:0;margin:28px 0 20px;border:0;min-width:0}.campaign-menu legend{margin-bottom:12px;color:#b8c9b1;font:800 12px Inter,sans-serif;letter-spacing:.5px}.difficulty-options{display:grid;gap:8px}.difficulty-options label{display:flex;gap:12px;align-items:center;border:1px solid #435343;padding:14px;cursor:pointer;background:#131f17}.difficulty-options label.selected{border-color:#8de8cf;background:#1b3328}.difficulty-options input{accent-color:#8de8cf;width:17px;height:17px;flex-shrink:0}.difficulty-options strong,.difficulty-options small{display:block}.difficulty-options strong{font:700 15px Inter,sans-serif}.difficulty-options small{margin-top:5px;color:#adbaa7;font:400 12px/1.5 Inter,sans-serif}.menu-start,.menu-resume button{width:100%;display:flex;align-items:center;justify-content:space-between;gap:12px;min-height:48px;box-sizing:border-box;padding:14px;border:1px solid #8de8cf;background:#49674a;color:#f2f8e9;font:800 13px Inter,sans-serif;cursor:pointer;text-align:left}.menu-resume{margin-top:24px}.menu-resume button{flex-wrap:wrap;background:#203a2e}.menu-resume span{font:500 10px Inter,sans-serif;color:#b5d3bc}.menu-footnote{font:400 11px/1.6 Inter,sans-serif;color:#93a28c}.menu-button{padding:3px 6px;min-height:28px;background:#17251d;border:1px solid #536451;color:#d9e5d0;font:700 10px Inter,sans-serif;cursor:pointer}.campaign-menu button:focus-visible,.difficulty-options input:focus-visible,.menu-button:focus-visible{outline:2px solid #d9eb95;outline-offset:3px}
+
+@media(max-width:699px){
+  .command-shelf .command-sheet{height:min(200px,calc(100dvh - 160px));padding:8px}
+  .command-sheet .planning-title{margin:5px 0 2px}
+  .command-sheet .planning-route-actions{margin-top:5px}
+  .command-sheet .planning-protect-target{margin-top:5px;gap:4px}
+  .command-sheet .shelf-range{margin-top:5px}
+  .mission-step .mission-effect{margin-top:5px}
+  .mission-step .shelf-route button{min-height:38px}
+}
