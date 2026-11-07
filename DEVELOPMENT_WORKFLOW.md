@@ -18,11 +18,15 @@ Open the matching directory when starting a new chat. Tell the chat which lane
 it owns. Each worktree has independent source files, build output, dependencies,
 and a checked-out branch; Git history and branches are shared.
 
-The original `/Users/ryanclendening/Development/air_power_game` checkout remains
-on `cpu-strategy` with older uncommitted prototype work. It is preserved as an
-archive of that work. Do not use it for new implementation or discard its edits.
-Earlier temporary worktrees are also retained so existing references remain
-recoverable.
+The original `/Users/ryanclendening/Development/air_power_game` checkout is
+detached at the archive tag `archive/legacy-prototype-2026-11-07`. Its previously
+uncommitted prototype work is saved in that tagged commit. Do not use this
+archival checkout for new implementation.
+
+The obsolete `cpu-strategy`, `cpu-play-plan`, `cpu-publish`, and
+`integration/gameplay` branches have been retired. The three temporary CPU and
+integration worktrees were removed. Their integrated commits remain in `main`;
+unrelated historical branches and worktrees are outside this cleanup.
 
 ## Starting work
 
