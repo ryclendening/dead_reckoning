@@ -37,12 +37,19 @@ const boundsWidth=(bounds:WorldBounds)=>bounds.maxX-bounds.minX
 const boundsDepth=(bounds:WorldBounds)=>bounds.maxZ-bounds.minZ
 const expandBounds=(bounds:WorldBounds,margin:number):WorldBounds=>({minX:bounds.minX-margin,maxX:bounds.maxX+margin,minZ:bounds.minZ-margin,maxZ:bounds.maxZ+margin})
 
-type CameraPoseSnapshot={target:[number,number,number];zoom:number}
+export type CameraPoseSnapshot={target:[number,number,number];zoom:number;viewportWidth:number;viewportHeight:number;lastFocus?:Point;focusInitialized?:boolean;lastFollowKey?:string}
 
 function CameraRig({phase,friendlyTerritory,planningBounds,presentationBounds,focusPoint,followKey,poseMemory}:{phase:Phase;friendlyTerritory:FriendlyTerritory;planningBounds:WorldBounds;presentationBounds:WorldBounds;focusPoint?:Point;followKey?:string;poseMemory:{current:CameraPoseSnapshot|undefined}}){
   const {camera,size}=useThree(),controls=useRef<MapControlsImpl>(null),focusDestination=useRef<Point|undefined>(undefined),focusPending=useRef(false),initialized=useRef(false)
   const {width:viewportWidth,height:viewportHeight}=size
-  useEffect(()=>{focusDestination.current=focusPoint?[...focusPoint] as Point:undefined;focusPending.current=Boolean(focusPoint)},[focusPoint?.[0],focusPoint?.[1]])
+  useEffect(()=>{
+    const remembered=poseMemory.current
+    if(remembered?.focusInitialized&&remembered.lastFocus?.[0]===focusPoint?.[0]&&remembered.lastFocus?.[1]===focusPoint?.[1])return
+    const destination=focusPoint?[...focusPoint] as Point:undefined
+    if(remembered){remembered.lastFocus=destination;remembered.focusInitialized=true}
+    focusDestination.current=destination
+    focusPending.current=Boolean(destination)
+  },[focusPoint?.[0],focusPoint?.[1],poseMemory])
   useEffect(()=>{const control=controls.current;if(!control)return;const cancelFocus=()=>{focusPending.current=false};control.addEventListener('start',cancelFocus);return()=>control.removeEventListener('start',cancelFocus)},[])
   const presentation=cameraPresentationForPhase(phase)
   const commandBounds=useMemo(()=>territoryBounds(friendlyTerritory),[friendlyTerritory])
@@ -51,7 +58,10 @@ function CameraRig({phase,friendlyTerritory,planningBounds,presentationBounds,fo
   const commandTarget=useMemo(()=>boundsCenter(commandBounds),[commandBounds])
   const target= presentation.kind==='command-map' ? commandTarget : friendlyTerritory.center
   const targetX=target[0],targetZ=target[1]
-  const minimumZoom=useMemo(()=>Math.max(viewportWidth/Math.max(1,boundsWidth(presentationBounds)-2),viewportHeight/Math.max(1,boundsDepth(presentationBounds)-2)),[presentationBounds,viewportHeight,viewportWidth])
+  // Drawers resize the canvas, but must not change which views are legal.
+  const limitHeight=Math.max(viewportHeight,poseMemory.current?.viewportWidth===viewportWidth?poseMemory.current.viewportHeight:0)
+  const minimumZoom=useMemo(()=>Math.max(viewportWidth/Math.max(1,boundsWidth(presentationBounds)-2),limitHeight/Math.max(1,boundsDepth(presentationBounds)-2)),[presentationBounds,limitHeight,viewportWidth])
+  const needsInitialization=poseMemory.current===undefined
   useLayoutEffect(()=>{
     const c=camera as THREE.OrthographicCamera,control=controls.current
     if(!control||viewportWidth<=0||viewportHeight<=0)return
@@ -64,11 +74,18 @@ function CameraRig({phase,friendlyTerritory,planningBounds,presentationBounds,fo
     c.updateProjectionMatrix()
     control.target.set(anchor[0],anchor[1],anchor[2])
     control.update()
-    poseMemory.current={target:[control.target.x,control.target.y,control.target.z],zoom:c.zoom}
+    poseMemory.current={...poseMemory.current,target:[control.target.x,control.target.y,control.target.z],zoom:c.zoom,viewportWidth,viewportHeight:limitHeight}
     initialized.current=true
-  },[camera,phase,presentation,poseMemory,viewportWidth,viewportHeight,minimumZoom])
-  useEffect(()=>{if(!followKey||presentation.kind==='command-map')return;const c=camera as THREE.OrthographicCamera;c.zoom=Math.min(64,Math.max(minimumZoom,viewportHeight/presentation.followWorldHeight));c.updateProjectionMatrix()},[camera,followKey,minimumZoom,presentation,viewportHeight])
-  useFrame((_,delta)=>{const c=camera as THREE.OrthographicCamera,control=controls.current;if(!control||!initialized.current)return;if(focusPending.current&&focusDestination.current){const desired=new THREE.Vector3(focusDestination.current[0],0,focusDestination.current[1]),offset=desired.sub(control.target),distanceSq=offset.lengthSq(),shift=offset.multiplyScalar(distanceSq<.0004?1:Math.min(1,delta*5));control.target.add(shift);c.position.add(shift);if(distanceSq<.0004)focusPending.current=false}const halfWidth=size.width/(2*c.zoom),halfDepth=size.height/(2*c.zoom),padding=.75,safeMinX=presentationBounds.minX+halfWidth+padding,safeMaxX=presentationBounds.maxX-halfWidth-padding,safeMinZ=presentationBounds.minZ+halfDepth+padding,safeMaxZ=presentationBounds.maxZ-halfDepth-padding,minX=Math.max(planningBounds.minX,Math.min(safeMinX,safeMaxX)),maxX=Math.min(planningBounds.maxX,Math.max(safeMinX,safeMaxX)),minZ=Math.max(planningBounds.minZ,Math.min(safeMinZ,safeMaxZ)),maxZ=Math.min(planningBounds.maxZ,Math.max(safeMinZ,safeMaxZ)),nextX=minX<=maxX?THREE.MathUtils.clamp(control.target.x,minX,maxX):(presentationBounds.minX+presentationBounds.maxX)/2,nextZ=minZ<=maxZ?THREE.MathUtils.clamp(control.target.z,minZ,maxZ):(presentationBounds.minZ+presentationBounds.maxZ)/2,shift=new THREE.Vector3(nextX-control.target.x,0,nextZ-control.target.z);if(shift.lengthSq()>0){control.target.add(shift);c.position.add(shift)}control.update();poseMemory.current={target:[control.target.x,control.target.y,control.target.z],zoom:c.zoom}})
+  },[camera,presentation,poseMemory,minimumZoom,needsInitialization])
+  useEffect(()=>{
+    const remembered=poseMemory.current,previous=remembered?.lastFollowKey
+    if(remembered)remembered.lastFollowKey=followKey
+    if(!followKey||followKey===previous||presentation.kind==='command-map')return
+    const c=camera as THREE.OrthographicCamera
+    c.zoom=Math.min(64,Math.max(minimumZoom,viewportHeight/presentation.followWorldHeight))
+    c.updateProjectionMatrix()
+  },[camera,followKey,minimumZoom,presentation,viewportHeight,poseMemory])
+  useFrame((_,delta)=>{const c=camera as THREE.OrthographicCamera,control=controls.current;if(!control||!initialized.current)return;if(focusPending.current&&focusDestination.current){const desired=new THREE.Vector3(focusDestination.current[0],0,focusDestination.current[1]),offset=desired.sub(control.target),distanceSq=offset.lengthSq(),shift=offset.multiplyScalar(distanceSq<.0004?1:Math.min(1,delta*5));control.target.add(shift);c.position.add(shift);if(distanceSq<.0004)focusPending.current=false}const halfWidth=size.width/(2*c.zoom),halfDepth=limitHeight/(2*c.zoom),padding=.75,safeMinX=presentationBounds.minX+halfWidth+padding,safeMaxX=presentationBounds.maxX-halfWidth-padding,safeMinZ=presentationBounds.minZ+halfDepth+padding,safeMaxZ=presentationBounds.maxZ-halfDepth-padding,minX=Math.max(planningBounds.minX,Math.min(safeMinX,safeMaxX)),maxX=Math.min(planningBounds.maxX,Math.max(safeMinX,safeMaxX)),minZ=Math.max(planningBounds.minZ,Math.min(safeMinZ,safeMaxZ)),maxZ=Math.min(planningBounds.maxZ,Math.max(safeMinZ,safeMaxZ)),nextX=minX<=maxX?THREE.MathUtils.clamp(control.target.x,minX,maxX):(presentationBounds.minX+presentationBounds.maxX)/2,nextZ=minZ<=maxZ?THREE.MathUtils.clamp(control.target.z,minZ,maxZ):(presentationBounds.minZ+presentationBounds.maxZ)/2,shift=new THREE.Vector3(nextX-control.target.x,0,nextZ-control.target.z);if(shift.lengthSq()>0){control.target.add(shift);c.position.add(shift)}control.update();poseMemory.current={...poseMemory.current,target:[control.target.x,control.target.y,control.target.z],zoom:c.zoom,viewportWidth,viewportHeight:limitHeight}})
   return <MapControls ref={controls} makeDefault enableRotate={false} enableDamping dampingFactor={.12} screenSpacePanning minZoom={minimumZoom} maxZoom={64} mouseButtons={{LEFT:THREE.MOUSE.PAN,MIDDLE:THREE.MOUSE.DOLLY,RIGHT:THREE.MOUSE.PAN}} touches={{ONE:THREE.TOUCH.PAN,TWO:THREE.TOUCH.DOLLY_PAN}}/>
 }
 
@@ -625,7 +642,7 @@ function enemyStatusAt(flight:EnemyFlight,frame:UnitFrame,initialStrength?:numbe
 }
 
 
-export interface BattlefieldProps {squadrons:Squadron[]; assets:Asset[]; playerAssets:Asset[]; mappedAreas:Point[]; discoveredBoundaries?:BoundarySegment[]; presentationBounds?:WorldBounds; planningBounds?:WorldBounds; friendlyTerritory?:FriendlyTerritory; selectedId:string; followId?:string; focusPoint?:Point; placementId:string; positionedPlacementIds?:string[]; onPlacementSelect?:(id:string)=>void; planningBaseId?:string; executionBaseId?:string; planningRecoveryFieldId?:string; plannedFormationIds?:string[]; routeOrigin?:Point; routePlanningEnabled?:boolean; showMissionPreview?:boolean; selectingProtectTarget?:boolean; selectingGroundTarget?:boolean; onGroundTargetSelect?:(id:string)=>void; selectedAssetId?:string; inspectedFlightId?:string; onAssetInspect?:(id:string)=>void; onFlightInspect?:(id:string)=>void; escortPreview?:{targetId:string}; phase:Phase; progress:number; activeEvent?:CombatEvent; executionResult?:RoundResult; packageReview?:boolean; economySelectionId?:string; onPlanningBaseSelect?:(id:string)=>void; onPlanningFormationSelect?:(id:string)=>void; onPlanningProtectTarget?:(id:string)=>void; onPlanningProtectPoint?:(point:Point)=>void; onPlanningProtectFlight?:(id:string)=>void; onPlanningRecoverySelect?:(id:string)=>void; onExecutionBaseSelect?:(id:string)=>void; onEconomySelect?:(id:string)=>void; construction?:{kind:ConstructibleAssetKind;placement?:Point;isValid:(point:Point)=>boolean;onStage:(point:Point)=>void}; isPlacementValid?:(point:Point)=>boolean; onRoute:(route:Point[])=>boolean|void; onPlace:(id:string,position:Point)=>void}
+export interface BattlefieldProps {cameraMemory?:{current:CameraPoseSnapshot|undefined};squadrons:Squadron[]; assets:Asset[]; playerAssets:Asset[]; mappedAreas:Point[]; discoveredBoundaries?:BoundarySegment[]; presentationBounds?:WorldBounds; planningBounds?:WorldBounds; friendlyTerritory?:FriendlyTerritory; selectedId:string; followId?:string; focusPoint?:Point; placementId:string; positionedPlacementIds?:string[]; onPlacementSelect?:(id:string)=>void; planningBaseId?:string; executionBaseId?:string; planningRecoveryFieldId?:string; plannedFormationIds?:string[]; routeOrigin?:Point; routePlanningEnabled?:boolean; showMissionPreview?:boolean; selectingProtectTarget?:boolean; selectingGroundTarget?:boolean; onGroundTargetSelect?:(id:string)=>void; selectedAssetId?:string; inspectedFlightId?:string; onAssetInspect?:(id:string)=>void; onFlightInspect?:(id:string)=>void; escortPreview?:{targetId:string}; phase:Phase; progress:number; activeEvent?:CombatEvent; executionResult?:RoundResult; packageReview?:boolean; economySelectionId?:string; onPlanningBaseSelect?:(id:string)=>void; onPlanningFormationSelect?:(id:string)=>void; onPlanningProtectTarget?:(id:string)=>void; onPlanningProtectPoint?:(point:Point)=>void; onPlanningProtectFlight?:(id:string)=>void; onPlanningRecoverySelect?:(id:string)=>void; onExecutionBaseSelect?:(id:string)=>void; onEconomySelect?:(id:string)=>void; construction?:{kind:ConstructibleAssetKind;placement?:Point;isValid:(point:Point)=>boolean;onStage:(point:Point)=>void}; isPlacementValid?:(point:Point)=>boolean; onRoute:(route:Point[])=>boolean|void; onPlace:(id:string,position:Point)=>void}
 type BattlefieldSceneProps=BattlefieldProps&{poseMemory:{current:CameraPoseSnapshot|undefined}}
 function BattlefieldScene({squadrons,assets,playerAssets,mappedAreas,presentationBounds,planningBounds,friendlyTerritory,selectedId,followId,focusPoint,placementId,positionedPlacementIds=[],onPlacementSelect,planningBaseId,executionBaseId,planningRecoveryFieldId,plannedFormationIds=[],routeOrigin,routePlanningEnabled=false,showMissionPreview=false,selectingProtectTarget=false,selectingGroundTarget=false,onGroundTargetSelect,selectedAssetId,inspectedFlightId,onAssetInspect,onFlightInspect,escortPreview,phase,progress,activeEvent,executionResult,packageReview,economySelectionId,onPlanningBaseSelect,onPlanningFormationSelect,onPlanningProtectTarget,onPlanningProtectPoint,onPlanningProtectFlight,onPlanningRecoverySelect,onExecutionBaseSelect,onEconomySelect,construction,isPlacementValid,onRoute,onPlace,poseMemory}:BattlefieldSceneProps){
   const selected=squadrons.find(s=>s.id===selectedId)!
@@ -763,4 +780,4 @@ function BattlefieldScene({squadrons,assets,playerAssets,mappedAreas,presentatio
 const distance2=(a:Point,b:Point)=>Math.hypot(a[0]-b[0],a[1]-b[1])
 const clamp01=(value:number)=>Math.max(0,Math.min(1,value))
 
-export const Battlefield=memo(function Battlefield(props:BattlefieldProps){const poseMemory=useRef<CameraPoseSnapshot|undefined>(undefined);return <Canvas orthographic shadows="basic" dpr={[1,1.5]} gl={{antialias:true,powerPreference:'high-performance'}}><BattlefieldScene {...props} poseMemory={poseMemory}/></Canvas>})
+export const Battlefield=memo(function Battlefield({cameraMemory,...props}:BattlefieldProps){const localPoseMemory=useRef<CameraPoseSnapshot|undefined>(undefined),poseMemory=cameraMemory??localPoseMemory;return <Canvas orthographic shadows="basic" dpr={[1,1.5]} gl={{antialias:true,powerPreference:'high-performance'}}><BattlefieldScene {...props} poseMemory={poseMemory}/></Canvas>})
