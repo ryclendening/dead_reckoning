@@ -451,7 +451,7 @@ function* simulateRoundTicks(state:MatchState):Generator<RoundResult,RoundResult
     const engagedUnitIds=()=>new Set(activeEngagements.flatMap(engagement=>engagement.participants.map(participant=>participant.id)))
     const evaluateReaction=(u:SimUnit)=>{if(terminal(u)||engagedUnitIds().has(u.id)||u.mode==='stranded')return;const seen:AirContact[]=u.friendly?(current.get(u.id)??[]):[];const recovery=playerAssets.find(asset=>asset.id===u.recoveryFieldId)?.position??base;const protectedId=u.friendly?(u.source as Squadron).protectedTargetId:undefined;const protectedPosition=protectedId?byId.get(protectedId)?.position:(u.source as Squadron).protectedPoint;const choice=u.friendly?selectAirTarget(u,seen,recovery,base,protectedPosition):undefined
       const hostileVisual=seen.find(x=>x.source==='visual'&&x.target.role==='fighter')
-      if(u.role==='recon'&&hostileVisual){const key=`fighter:${u.id}:${hostileVisual.target.id}`;if(!alertedThreats.has(key)){alertedThreats.add(key);threatAlerts.push({id:`threat-${threatAlerts.length}`,unitId:u.id,time,kind:'fighter-contact',sourceId:hostileVisual.target.id});add('warning','RECON THREAT',`${u.callsign} has direct fighter contact and continues searching until ordered home.`,u.position,time)}}
+      if(u.friendly&&hostileVisual){const key=`fighter:${u.id}:${hostileVisual.target.id}`;if(!alertedThreats.has(key)){alertedThreats.add(key);threatAlerts.push({id:`threat-${threatAlerts.length}`,unitId:u.id,time,kind:'fighter-contact',sourceId:hostileVisual.target.id});if(u.role==='recon')add('warning','RECON THREAT',`${u.callsign} has direct fighter contact and continues searching until ordered home.`,u.position,time)}}
       const decision=decideReaction({destroyed:u.mode==='destroyed',inDirectCombat:false,recoveryCommanded:!!u.recoveryCommanded,recoveryRequired:u.mode==='recovering',actionableTargetId:choice?.target.id,missionAvailable:u.waypoint<u.route.length})
       if(decision.state==='recovering'){if(u.mode!=='recovering')transition(u,'recovering',time,decision.reason);return}
       if(decision.state==='intercept'&&choice){if(u.mode!=='intercepting'||u.targetId!==choice.target.id){transition(u,'intercepting',time,choice.source==='visual'?'visual-contact-in-responsibility':'radar-contact-in-responsibility',choice.target.id,choice.source);plans.push({squadronId:u.id,targetId:choice.target.id,start:time,end:time,source:choice.source,outcome:'merge'});add('friendly','FIGHTER INTERCEPT',`${u.callsign} diverts on a ${choice.source.toUpperCase()} contact inside its ${((u.source as Squadron).mission==='defensive-cap'?'CAP area':'patrol corridor')}.`,u.position,time)}return}
@@ -499,9 +499,9 @@ function* simulateRoundTicks(state:MatchState):Generator<RoundResult,RoundResult
       if(distance(asset.position,target.position)>range)continue
       if(asset.kind==='sam'){const status=samStatusAt(asset.id,effects,time);if(status.remaining===0||status.cooldown>.000001)continue}
       else {if(fired.has(key))continue;fired.add(key)}
-      if(target.friendly&&target.role==='recon'){
+      if(target.friendly){
         threatAlerts.push({id:`threat-${threatAlerts.length}`,unitId:target.id,time,kind:asset.kind==='sam'?'sam-launch':'aaa-launch',sourceId:asset.id})
-        add('warning','RECON THREAT',`${target.callsign} is targeted by ${asset.kind.toUpperCase()} and continues searching until ordered home.`,target.position,time)
+        if(target.role==='recon')add('warning','RECON THREAT',`${target.callsign} is targeted by ${asset.kind.toUpperCase()} and continues searching until ordered home.`,target.position,time)
       }
       roll+=1
       const hit=rand(roll)>(asset.kind==='sam'?.36:.48),amount=hit?(asset.kind==='sam'?38:13):0,kind:WeaponKind=asset.kind
