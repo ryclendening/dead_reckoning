@@ -37,6 +37,14 @@ const boundsWidth=(bounds:WorldBounds)=>bounds.maxX-bounds.minX
 const boundsDepth=(bounds:WorldBounds)=>bounds.maxZ-bounds.minZ
 const expandBounds=(bounds:WorldBounds,margin:number):WorldBounds=>({minX:bounds.minX-margin,maxX:bounds.maxX+margin,minZ:bounds.minZ-margin,maxZ:bounds.maxZ+margin})
 
+function anchorCameraViewport(camera:THREE.OrthographicCamera,width:number,height:number,referenceHeight:number){
+  const offset=(referenceHeight-height)/(2*camera.zoom)
+  const left=-width/2,right=width/2,top=height/2+offset,bottom=-height/2+offset
+  if(camera.left===left&&camera.right===right&&camera.top===top&&camera.bottom===bottom)return
+  camera.left=left;camera.right=right;camera.top=top;camera.bottom=bottom
+  camera.updateProjectionMatrix()
+}
+
 export type CameraPoseSnapshot={target:[number,number,number];zoom:number;viewportWidth:number;viewportHeight:number;lastFocus?:Point;focusInitialized?:boolean;lastFollowKey?:string}
 
 function CameraRig({phase,friendlyTerritory,planningBounds,presentationBounds,focusPoint,followKey,poseMemory}:{phase:Phase;friendlyTerritory:FriendlyTerritory;planningBounds:WorldBounds;presentationBounds:WorldBounds;focusPoint?:Point;followKey?:string;poseMemory:{current:CameraPoseSnapshot|undefined}}){
@@ -77,6 +85,10 @@ function CameraRig({phase,friendlyTerritory,planningBounds,presentationBounds,fo
     poseMemory.current={...poseMemory.current,target:[control.target.x,control.target.y,control.target.z],zoom:c.zoom,viewportWidth,viewportHeight:limitHeight}
     initialized.current=true
   },[camera,presentation,poseMemory,minimumZoom,needsInitialization])
+  useLayoutEffect(()=>{
+    // Adapt drawers crop the bottom of the view rather than recentering it.
+    anchorCameraViewport(camera as THREE.OrthographicCamera,viewportWidth,viewportHeight,phase==='adapt'?limitHeight:viewportHeight)
+  },[camera,phase,viewportWidth,viewportHeight,limitHeight])
   useEffect(()=>{
     const remembered=poseMemory.current,previous=remembered?.lastFollowKey
     if(remembered)remembered.lastFollowKey=followKey
@@ -85,7 +97,7 @@ function CameraRig({phase,friendlyTerritory,planningBounds,presentationBounds,fo
     c.zoom=Math.min(64,Math.max(minimumZoom,viewportHeight/presentation.followWorldHeight))
     c.updateProjectionMatrix()
   },[camera,followKey,minimumZoom,presentation,viewportHeight,poseMemory])
-  useFrame((_,delta)=>{const c=camera as THREE.OrthographicCamera,control=controls.current;if(!control||!initialized.current)return;if(focusPending.current&&focusDestination.current){const desired=new THREE.Vector3(focusDestination.current[0],0,focusDestination.current[1]),offset=desired.sub(control.target),distanceSq=offset.lengthSq(),shift=offset.multiplyScalar(distanceSq<.0004?1:Math.min(1,delta*5));control.target.add(shift);c.position.add(shift);if(distanceSq<.0004)focusPending.current=false}const halfWidth=size.width/(2*c.zoom),halfDepth=limitHeight/(2*c.zoom),padding=.75,safeMinX=presentationBounds.minX+halfWidth+padding,safeMaxX=presentationBounds.maxX-halfWidth-padding,safeMinZ=presentationBounds.minZ+halfDepth+padding,safeMaxZ=presentationBounds.maxZ-halfDepth-padding,minX=Math.max(planningBounds.minX,Math.min(safeMinX,safeMaxX)),maxX=Math.min(planningBounds.maxX,Math.max(safeMinX,safeMaxX)),minZ=Math.max(planningBounds.minZ,Math.min(safeMinZ,safeMaxZ)),maxZ=Math.min(planningBounds.maxZ,Math.max(safeMinZ,safeMaxZ)),nextX=minX<=maxX?THREE.MathUtils.clamp(control.target.x,minX,maxX):(presentationBounds.minX+presentationBounds.maxX)/2,nextZ=minZ<=maxZ?THREE.MathUtils.clamp(control.target.z,minZ,maxZ):(presentationBounds.minZ+presentationBounds.maxZ)/2,shift=new THREE.Vector3(nextX-control.target.x,0,nextZ-control.target.z);if(shift.lengthSq()>0){control.target.add(shift);c.position.add(shift)}control.update();poseMemory.current={...poseMemory.current,target:[control.target.x,control.target.y,control.target.z],zoom:c.zoom,viewportWidth,viewportHeight:limitHeight}})
+  useFrame((_,delta)=>{const c=camera as THREE.OrthographicCamera,control=controls.current;if(!control||!initialized.current)return;if(focusPending.current&&focusDestination.current){const desired=new THREE.Vector3(focusDestination.current[0],0,focusDestination.current[1]),offset=desired.sub(control.target),distanceSq=offset.lengthSq(),shift=offset.multiplyScalar(distanceSq<.0004?1:Math.min(1,delta*5));control.target.add(shift);c.position.add(shift);if(distanceSq<.0004)focusPending.current=false}const halfWidth=size.width/(2*c.zoom),halfDepth=limitHeight/(2*c.zoom),padding=.75,safeMinX=presentationBounds.minX+halfWidth+padding,safeMaxX=presentationBounds.maxX-halfWidth-padding,safeMinZ=presentationBounds.minZ+halfDepth+padding,safeMaxZ=presentationBounds.maxZ-halfDepth-padding,minX=Math.max(planningBounds.minX,Math.min(safeMinX,safeMaxX)),maxX=Math.min(planningBounds.maxX,Math.max(safeMinX,safeMaxX)),minZ=Math.max(planningBounds.minZ,Math.min(safeMinZ,safeMaxZ)),maxZ=Math.min(planningBounds.maxZ,Math.max(safeMinZ,safeMaxZ)),nextX=minX<=maxX?THREE.MathUtils.clamp(control.target.x,minX,maxX):(presentationBounds.minX+presentationBounds.maxX)/2,nextZ=minZ<=maxZ?THREE.MathUtils.clamp(control.target.z,minZ,maxZ):(presentationBounds.minZ+presentationBounds.maxZ)/2,shift=new THREE.Vector3(nextX-control.target.x,0,nextZ-control.target.z);if(shift.lengthSq()>0){control.target.add(shift);c.position.add(shift)}control.update();anchorCameraViewport(c,viewportWidth,viewportHeight,phase==='adapt'?limitHeight:viewportHeight);poseMemory.current={...poseMemory.current,target:[control.target.x,control.target.y,control.target.z],zoom:c.zoom,viewportWidth,viewportHeight:limitHeight}})
   return <MapControls ref={controls} makeDefault enableRotate={false} enableDamping dampingFactor={.12} screenSpacePanning minZoom={minimumZoom} maxZoom={64} mouseButtons={{LEFT:THREE.MOUSE.PAN,MIDDLE:THREE.MOUSE.DOLLY,RIGHT:THREE.MOUSE.PAN}} touches={{ONE:THREE.TOUCH.PAN,TWO:THREE.TOUCH.DOLLY_PAN}}/>
 }
 
