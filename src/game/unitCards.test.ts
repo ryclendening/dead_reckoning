@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { createMatch } from './data'
 import { resolveRound } from './engine'
-import { aircraftCardData, aircraftInspectionAt, assetCardData } from './unitCards'
+import { aircraftCardData, aircraftInspectionAt, assetCardData, usesCompactUnitCards } from './unitCards'
 import type { Asset, EnemyFlight, UnitFrame } from './types'
 
 const frame:UnitFrame={time:2,position:[0,0],facing:[1,0],mode:'intercepting',strength:62,morale:70,aircraft:3,traveledDistance:2}
@@ -31,6 +31,15 @@ describe('shared tactical unit cards',()=>{
     expect(aircraftCardData(hostile,{...frame,mode:'dogfighting'},'visual','TRACK 01')).toMatchObject({title:'BOGEY 1',subtitle:'TRACK 01 · MiG-23 · 3 AC',health:62,status:'DOGFIGHT'})
     expect(aircraftCardData(hostile,frame,'radar','TRACK 01')).toBeUndefined()
     expect(aircraftCardData(friendly,{...frame,strength:0,aircraft:0,mode:'destroyed'},'friendly')).toMatchObject({health:0,status:'DESTROYED'})
+  })
+
+  it('uses the minimal label layout on portrait and landscape phones',()=>{
+    expect(usesCompactUnitCards(390,844)).toBe(true)
+    expect(usesCompactUnitCards(844,390)).toBe(true)
+    expect(usesCompactUnitCards(1440,1000)).toBe(false)
+    const sam=createMatch().playerAssets.find(asset=>asset.kind==='sam')!
+    expect(assetCardData(sam)?.mapLabel).toBe('SAM')
+    expect(assetCardData({...sam,name:'SAM ALPHA'})?.mapLabel).toBe('SAM ALPHA')
   })
 
   it('closes hostile details when visual contact ends even if radar still knows the identity',()=>{
