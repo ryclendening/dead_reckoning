@@ -268,3 +268,11 @@ The two-SAM execution fixture reduces weighted route cost from 46.5046 to
 42.9896 (33.5075-unit round trip), has zero modeled ingress exposure, launches
 a full 60-damage payload, and remains within canonical fuel/recovery limits.
 This capability result does not establish the >70% campaign target.
+
+
+The completed routing development comparison preserves base-kill results at
+16/30 Easy, 15/30 Medium, and 15/30 Hard against `competitive-v1`. Hard mean
+enemy-base damage rose from 59.13 to 61.13 HP; no campaign outcome changed.
+See `Evaluation/CpuPlannerV2/ROUTING_RESULTS.md` and fingerprinted raw records.
+The route algorithm is validated independently; the competitive gate remains
+unpassed and the fresh validation cohort remains unused.
