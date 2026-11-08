@@ -1,213 +1,158 @@
-# CPU play plan
+# CPU v2: strategic planner + tactical action planner
 
-Status: staged design with an initial basic CPU implementation, 2026-11-07. [GAMEPLAY_STATE.md](./GAMEPLAY_STATE.md) is the source of truth for implemented behavior; the broader systems below remain the design target.
+Status: **implementation plan**, 2026-11-07. This replaces the broad original CPU proposal with a smaller, outcome-driven architecture. The previous version remains available in Git history. **Not implemented by writing this plan.** `GAMEPLAY_STATE.md` is authoritative for shipped mechanics; update it only as code lands.
 
-## Basic implementation checkpoint
+## Outcome and design constraints
 
-The current branch implements a campaign entry menu with saved Easy/Medium/Hard selection, persistent CPU forces and finite repair/replacement spending, recovery-gated site and traffic memory, stored mission orders, defense/patrol/escort/strike selection, bounded direct/flank route alternatives, support-site strikes, private sensing, and CPU recon RTB. Checks cover deterministic adaptation, information isolation, save/load, and complete recon-to-strike sequences on all tiers.
+Make the CPU a credible six-round opponent that (a) finds valuable enemy sites, (b) protects its own base as exposure grows, (c) expands SAM coverage when justified, (d) builds/stages at FOBs when they enable a concrete mission, and (e) attacks confirmed targets using routes that account for known SAM/AAA danger. It must respond to *observable* enemy behavior, including apparent direct and flank approaches, without reading the player's hidden orders or knowledge.
 
-This is a basic subset of the milestones below. CPU construction, upgrades, FOB staging, terrain/boundary recovery, confirmed-kill income, graph-search routing, and Hard campaign lookahead remain future work. The fixed maintenance priority is a baseline heuristic rather than the proposed joint mission/purchase evaluator. No browser testing has been performed.
+**Architecture: two decision layers, not separate playbooks.**
+- **Strategic planner:** ranks a *small* set of candidate campaign intentions given an authorized observation snapshot, remaining rounds, economy, and *best available tactical opportunity*. Retain its chosen intention with bounded switching friction. Intentions are preferences, never gameplay modes or new combat rules.
+- **Tactical planner:** enumerates and validates shared **action packages** (aircraft mission/routes, purchases/placements, recovery and staging). Scores their measurable effects relative to each intention, then returns a feasible package. All movement, combat, detection, construction and landing still resolve through the existing game engine.
+- **World knowledge:** one compact persistent CPU record of recovered sites, observed tracks/approaches, own units/assets, attempts and outcomes. Recompute sector interest and threat coverage as derived views rather than persisting a second synthetic map.
 
-## Goal and first-pass scope
+Do **not** create special exceptions such as “strike aircraft ignore contacts when player spotted,” “CPU gets free SAMs after discovery,” or “FOB teleports a fighter.” Use the same side-aware rules as a human.
 
-Build a CPU opponent that gathers information, chooses a campaign objective, assigns its available aircraft, plans feasible routes, spends a finite budget, and changes its next plan when evidence shows that its previous approach failed. Easy, Medium, and Hard should differ in planning quality and coordination.
+## Current code audit: what v2 replaces
 
-The first complete pass must include reconnaissance, fighter defense and escort, ground strikes against confirmed sites, persistent losses, repairs and replacements, defense construction, upgrade evaluation, FOB construction and staging, and adaptation across rounds. Deliver these through the milestones below; difficulty selection alone is not a completed CPU opponent.
-
-Keep the current six-round campaign and starting forces as the initial balance baseline. In particular, the CPU begins with its existing one four-aircraft fighter formation and one two-aircraft recon formation. Its single fighter creates a real choice between strike, defense, patrol, and escort. Additional formations and new aircraft types require a separate balance decision.
-
-## Isolation and baseline
-
-- Worktree: `/private/tmp/air_power_game-cpu-play-plan`.
-- Branch: `cpu-play-plan`, created from `origin/main` at `41890c1`.
-- Run every edit, Git command, and later implementation check from this worktree or a subsequent worktree created from this branch. Verify the working directory before mutations.
-- The original `/Users/ryanclendening/Development/air_power_game` checkout remains on `cpu-strategy` with mixed uncommitted CPU prototype and other-chat edits. This planning change leaves that checkout untouched.
-- The earlier uncommitted 80/60/40 difficulty-threshold prototype is not part of this baseline. Resolve its overlapping edits with the owner of the original checkout before merging later work. This plan proposes one shared intelligence gate across difficulties.
-- Commit the plan on this branch so it has its own durable history. A branch name in a shared dirty checkout does not provide isolation.
-
-## Current implementation and required foundations
-
-| Area | Current behavior at the baseline | Required change |
+| Current code on main | Problem / actual gap | v2 change |
 | --- | --- | --- |
-| Enemy forces | `engine.ts:enemyFlights` regenerates full formations each round. | Persist the CPU roster, strength, aircraft, reserves, and operating fields. |
-| Intelligence | Enemy recon and fighters observe friendly fixed assets; recovered base/decoy observations affect persistent targeting pressure. | Maintain the CPU's own recovered mapping, site reports, uncertainty, and observed traffic history. |
-| Missions and sensors | Enemy routes are scripted. Voluntary target selection, ground-radar receipts, escort, and several fuel/recovery checks are friendly-specific. | Share gameplay rules by side while retaining separate player visibility projections. |
-| Ground strike | The enemy can launch only against the home base when exposure reaches 60. | Give CPU strike orders an explicit confirmed target and release point, including defense and FOB targets. |
-| Spending | Economy commands and placement validators operate on the player's campaign state. | Expose the same quotes and validation against an explicit owning side; add a CPU ledger and settlement. |
-| FOBs | Player construction, capacity, recovery, diversion, and trapping exist. Enemy flights have no equivalent operating-field lifecycle. | Apply those rules to CPU-owned fields and persistent formations. |
-| Difficulty | No committed difficulty setting exists at this baseline. | Persist a profile controlling candidate evaluation and lookahead. |
+| `src/game/cpu/planner.ts:planCpu` | Flat fixed mission scores (defend/patrol/escort/strike); no campaign intent or explicit progress | Two-level strategy-to-package evaluation with campaign value and switching |
+| `cpu/planner.ts:CPU_PROFILES` | Difficulty mainly changes offsets, risk weights, escort bonus; Hard can become merely conservative | Same actions/rules; vary search effort, evaluation accuracy and occasional suboptimal selection; verify via benchmarks |
+| `ingressAlternatives` and `bestOrder` | Direct/one-bend flanks; fighter always starts/recovers at `e-base`; no multi-threat routing | Field-aware route candidate generator, real release/recovery checks, bounded search if simple candidates fail |
+| `cpu/settlement.ts:maintainCpu` | Replaces/repairs in fixed order until money runs out; no construction, upgrade or save option | Compare a bounded set of legal purchase/placement packages and cash preservation against current strategic need |
+| `cpu/types.ts` | Only two formations, recovered site reports, limited traffic, last-recon-lost flag | Add only necessary goal, basing, observed-approach, and decision-outcome memory; migrate saves once |
+| `forwardBasing.ts`, `routeTemplates.ts`, economy / placement helpers | Player-centric functions and assumptions prevent real CPU FOB/construct/recover lifecycle | Extract explicit side-aware validators and commands; one shared mechanic implementation |
+| `cpu/cpu.test.ts` | Deterministic capability tests, no meaningful competitive evaluation | Add behavioral scenarios and paired-seed campaign benchmarks |
 
-Reference modules: [engine.ts](./src/game/engine.ts), [types.ts](./src/game/types.ts), [campaign.ts](./src/game/campaign.ts), [economy.ts](./src/game/economy.ts), [routeTemplates.ts](./src/game/routeTemplates.ts), [missionResponsibility.ts](./src/game/missionResponsibility.ts), [forwardBasing.ts](./src/game/forwardBasing.ts), and [persistence.ts](./src/game/persistence.ts).
+Already working and **retain**: persistent CPU aircraft/losses; recovery-gated target intelligence; private sensing; fighter missions and recon RTB; support-site strike impact; deterministic saving/settlement. Do not rewrite these just to create a new abstraction.
 
-## Decision architecture
+## Planner contract
 
-Use a utility planner with a small set of mission templates, route search, and a purchase evaluator. Add bounded lookahead for Hard after immediate decisions are reliable. The continuous route space, simultaneous orders, and hidden information make exhaustive game-tree search a poor first implementation.
+```ts
+type Intent =
+  | "discover" | "protect-base" | "expand-defense"
+  | "forward-position" | "suppress-defenses"
+  | "strike-base" | "contest-air";
 
-```mermaid
-flowchart LR
-  A[Authorized observations and own outcomes] --> B[Persistent beliefs and campaign needs]
-  B --> C[Candidate goals and purchase options]
-  C --> D[Feasible missions, routes, and recovery]
-  D --> E[Score complete plans]
-  E --> F[Commit orders and spending once]
-  F --> G[Execute shared simulation rules]
-  G --> A
+interface StrategicCandidate {
+  intent: Intent;
+  goal: string;                 // measurable desired change, not script
+  rationale: string[];
+}
+interface TacticalPackage {
+  orders: CpuAircraftOrder[];   // one feasible action per available formation, or hold
+  purchases: CpuEconomyCommand[]; // ordered, affordable, validated
+  predicted: {
+    informationGain: number;
+    baseDamage: number;
+    ownBaseRiskReduced: number;
+    defenseCoverageGain: number;
+    futureStrikeAccessGain: number;
+    expectedAircraftLoss: number;
+    logisticsSpent: number;
+    roundsUntilPayoff: number;
+  };
+  checks: string[];             // canonical validators applied
+}
+interface CpuDecisionTrace {
+  round: number;
+  observedEvidenceIds: string[];
+  alternatives: Array<{ intent: Intent; bestPackageScore: number; reason: string }>;
+  selected: Intent;
+  chosenPackageSummary: string;
+}
 ```
 
-The strategic planner operates at phase boundaries. Tactical execution uses the existing reaction priority: destruction, direct combat, commanded/required recovery, authorized intercept, assigned mission. The CPU does not continuously rewrite campaign objectives at every simulation tick.
+This is a *conceptual interface*, not an instruction to introduce elaborate class hierarchies. Begin with plain functions and narrow data types. `strategy.ts` enumerates/ranks intentions; `actions.ts` generates packages; `routes.ts` and `placement.ts` generate spatial candidates; `planner.ts` orchestrates; `settlement.ts` records outcomes. A separate knowledge module is warranted only when it reduces duplicated logic. Avoid eight interdependent “agent” services, generic GOAP infrastructure, generic effect graphs and arbitrary per-strategy route implementations.
 
-### Phase timing and determinism
+**Selection sequence each phase:**
+1. Construct a sanitized CPU view: own inventory/assets, confirmed recovered sites, last *observed* tracks/approach sectors, actual own outcomes, public mechanics, and remaining rounds.
+2. Enumerate 4–7 relevant intentions; prune those without a plausible payoff before deadline.
+3. For each intention, generate a bounded set of *legal* tactical packages from the same action library. Include “hold/save” as a genuine candidate.
+4. Score the **best achievable package in context** for each intention. No strategy wins merely because its label has a high base score.
+5. Choose the best intention + package, with a small commitment/switch cost; drop that cost immediately if the current plan is completed, invalidated, or clearly dominated.
+6. Commit spending once at Adapt, and immutable mission orders once before player Plan edits. Use the same settlement/phase idempotence and separate deterministic CPU random stream as v1. If purchase occurs at Adapt and flight at next Plan, save a provisional intent and re-evaluate the available route then.
 
-1. At campaign creation, initialize CPU-owned state and search priors without inspecting player placements.
-2. At round settlement, persist CPU attrition, recovery, recoverable intelligence, witnessed results, and income exactly once.
-3. At entry to Adapt, decide and apply CPU purchases from that settled knowledge. Purchases cannot read the player's pending Adapt choices.
-4. At entry to the next Plan phase, generate and store CPU orders before the player edits their orders. Freeze them for the round. A reload uses the stored plan rather than rerolling it.
-5. During Execute, allow only mission reactions and authorized local commands, such as CPU recon RTB. New strategic ground targets wait for recovered intelligence and a later round.
+Use a common estimated *campaign contribution* (survival probability, chance of completing a decisive strike, information that changes actionable options) as the primary utility. Normalize secondary costs such as expected losses, logistics, and time delay. Do not simply add arbitrary 72/54/35 mission bonuses. Approximate probabilities are fine; preserve score breakdowns so weights can be calibrated. A strategic plan with no legal tactical payoff must score poorly. Limit search by candidate/expansion count, not wall clock.
 
-Key settlement, spending, and order generation by campaign, round, and phase so repeated renders, phase transitions, or reloads cannot duplicate them. Use deterministic candidate order, stable identity tie breaks, and a CPU random stream separate from combat rolls. Bound search by candidate/expansion counts rather than elapsed time.
+**Victory asymmetry to acknowledge:** the existing deadline awards the CPU victory if its base survives all six rounds. A pure win-probability optimizer may rationally turtle. Test whether that produces unfun behavior; require measurable offensive pressure in *benchmark design* instead of secretly inventing extra victory rules. Changing the win condition is a separate gameplay decision.
 
-## Persistent CPU state and shared rules
+## Shared tactical actions and spatial generators
 
-Store a versioned CPU campaign record containing difficulty, roster, aircraft reserves, Logistics, income/spending history, owned assets and basing, mapped areas, boundary observations, recovered site reports, behavioral evidence, selected goal, committed orders, and the last settled/planned round.
+Use the real `ROUTE_TEMPLATES` mission IDs and canonical side-aware economy/recovery/placement validators. Tactical actions should be *instantiated candidates*, not independent strategic scripts:
 
-Enemy fixed assets currently stored in `enemyAssets` remain authoritative; reference them from the CPU state rather than creating a second mutable copy. Keep player-facing `EnemyFlight` results as projections of the authoritative CPU roster and orders. Do not use sortie presentation objects as the campaign inventory.
-
-Initially propose 10 Logistics, three reserve aircraft, and the same income/cost rules as the player. Preserve the existing asymmetric opening roster and existing enemy-site health values across all difficulties. These are balance assumptions to validate, not additional difficulty bonuses.
-
-Extract explicit side views for mission validation, sensing, economy quotes, placement, and recovery. Audit each `friendly` conditional: some enforce gameplay ownership and need generalization; others intentionally protect player visibility. Avoid swapping player/enemy arrays into a whole `MatchState` and hoping every helper interprets them correctly.
-
-The two-aircraft CPU recon needs an explicit strength/aircraft-capacity audit. Existing count conversion and replacement code contains four-aircraft/25-strength assumptions. Define strength per aircraft from formation capacity, and verify both two-aircraft and four-aircraft formations before enabling persistent CPU replacements.
-
-Save migration must initialize an absent CPU record once from a documented legacy snapshot. Existing saves do not contain trustworthy historical enemy inventory, so do not reconstruct past losses from hidden results or reset forces on every reload. Retain deterministic tactical fixtures through their explicit fixture path.
-
-## Knowledge and observation rules
-
-Give the planner a sanitized `CpuPlanningView` containing its own state, public rules, authorized observations, and derived beliefs. It must not receive unrestricted `MatchState`, player orders, selected targets, purchase intent, hidden current positions, hidden site health, the player's resource ledger, or unrecovered map bounds.
-
-- Start with a search distribution over scenario-permitted opposing regions. Do not read the real placed base coordinates or reverse world generation from its seed. The planner seed is for reproducible choices only.
-- Recon and fighters collect site positions/types provisionally along their actual flight paths. Recovery commits those reports for next-round targeting. A lost flight does not reveal the sites or exact location/cause of its loss to the campaign planner.
-- A missing flight is known to be missing. Its assigned corridor can become a coarse uncertainty/risk clue; the planner cannot use its hidden death position to locate a SAM.
-- Current visual and radar contacts authorize tactical reactions. Radar-only contacts retain unknown role. Contact loss stops exact live tracking; old traffic becomes a distribution over sectors, not an intercept coordinate.
-- An observed weapon launch can inform a local threat alert or uncertain threat region. It does not independently create a permanently confirmed strike target under the current reconnaissance rules.
-- Recovered fixed-site coordinates persist. Confidence in health, operational state, and recent traffic ages separately; a stationary site's known coordinates should not disappear merely because a round passed.
-- Opponent construction, repairs, upgrades, losses, and SAM ammunition are known only when observed or legitimately inferred. The CPU always knows its own inventory and ammunition.
-
-Retain the current 60-point recovered base-pressure gate and decoy reduction initially, consistently across difficulties. Additional fixed-site targets require recovered confirmation. If pressure and the new site-report model overlap, document their separate responsibilities: pressure authorizes base targeting; reports provide the target knowledge. Any replacement of that campaign model is a separate mechanics decision.
-
-## Objectives, force assignment, and scoring
-
-Score complete feasible plans rather than scoring a target, a route, and a purchase independently and combining incompatible winners. Generate a small set of goal templates:
-
-| Goal | When it has value | Typical assignment |
+| Action | Candidate generation | Preconditions and evaluation |
 | --- | --- | --- |
-| Find or refresh a target | Useful targets are unconfirmed, stale, or outside current reach. | Recon searches a selected sector or revisits a known site; fighter escorts only if feasible. |
-| Protect the CPU base | Observed ingress or prior attacks threaten campaign survival. | Fighter Protect around home or an approach; defense repair/construction complements it. |
-| Protect recon | Recovered evidence shows fighter opposition on an important collection route. | Fighter escorts recon within the existing speed, fuel, and coverage constraints. |
-| Patrol an approach | Recent observed traffic offers an intercept opportunity. | Fighter Forward Patrol on that sector, with the normal pursuit limits. |
-| Strike a confirmed site | Expected effect and recovery prospects justify using the fighter. | Fighter Ground Strike against an explicit base, defense, radar, or FOB target. |
-| Stage or restore forces | Range, damage, missing aircraft, or an unusable field blocks a useful next mission. | Transit, repair/replacement, FOB repair, or justified construction; aircraft may remain grounded. |
+| Recon Search Area | Prioritize reachable unexplored sectors and gaps along possible strike approaches | Search sweep, recovery and escort feasibility; expected *new actionable* information vs loss risk |
+| Fighter Protect / escort | Home, important SAM/FOB, or actual recon route | Existing fixed/moving responsibility and range; time-on-station; actual overlap with threat/recon route |
+| Fighter Forward Patrol | Recent *observed* inbound corridors, including off-axis/flank approaches | Existing corridor/pursuit/fuel rules; likely intercept opportunity; no pursuit outside mission rules |
+| Fighter Ground Strike | Confirmed base, SAM, AAA, radar or FOB; candidate release points within 6 units | Recovered confirmation, base 60-pressure gate, fuel, launch and recovery; compare expected target effect and known risk |
+| Fighter Transit | Every reachable operational owned field, including new FOBs | Field capacity, route and next-round value; changes *actual basing* only after recovery |
+| SAM / AAA Build | Sample legal owned/recovered hexes; focus on base, FOB, and observed approach coverage | Shared placement rules and affordability; incremental coverage, overlap, reach, time to benefit; SAM 8 / AAA 6 Logistics |
+| FOB Build | Sample legal reachable hexes between current field and valuable known/likely target sectors | Shared FOB reach (7 from territory edge), placement, cost 8, 2 slots; count build + transit time and improvement to a named future mission |
+| Repair / Replace / Upgrade / Save | Available legal quotes; 0–2 step combinations before next mission | Compare restored capability and future value, reserves, scarce budget; no free replenishment or unsupported purchase |
 
-The single fighter cannot escort recon and perform Ground Strike in the same sortie. If escort coverage is infeasible, shorten/change the recon mission or choose another plan. Do not create invisible reserve flights or promise protection that actual movement cannot provide.
+For aircraft, evaluate **compatible packages** across the one fighter and one recon, not separate greedy winners (one fighter cannot escort and strike). For spending, compare only the few best options plus save; do not enumerate all purchase sequences or combinations of every placement hex. Generate top K spatial candidates, then validate each through the exact engine rules. Reserve enough resources for committed follow-on actions when they are legally affordable and likely to matter.
 
-Rank terminal campaign outcomes first, then expected effect, recovered information, surviving/recoverable forces, future reach, and Logistics remaining. Penalize expected damage/loss, uncertainty, fuel exposure, unsupported roles, and opportunity cost. Normalize score components before tuning weights. Account for rounds remaining and preserve a reserve when it supports a feasible future mission.
+**Route search policy:** first test direct, lateral flanks, and alternate release points from the *actual operating field*. If those are blocked or clearly inferior, run a bounded weighted search over known traversable hexes/corridors and validate simplified paths. Use known SAM/AAA envelopes, observed fighter corridors, max distance, strike release range, waypoint cap, operating field and recovery. Treat threats as *expected cost*, not impassable walls; a risky direct strike may be correct near the deadline. Never access hidden SAMs or true boundaries for scoring. Use shared engine attack/reaction rules, not new tactical interceptions.
 
-The CPU benefits from keeping its base alive through the six-round deadline; defending or conserving aircraft can be rational. Losing the CPU's aircraft does not itself become a new player victory condition. Avoid optimizing kill counts or Logistics income at the expense of the actual campaign outcome.
+**FOB value is conditional:** prefer a FOB only if it enables a concrete subsequent search/strike/recovery/patrol that is infeasible or materially safer from current basing, after paying build+transit opportunity costs. Building a FOB does not stage a formation automatically. Existing player-side first-crossed-FOB and strike-recovery exception must be preserved, and new CPU-owned fields must support disabled, trapped and diversion outcomes.
 
-Keep the previous goal when scores are close. Switch promptly when a goal becomes infeasible or new evidence creates a substantial advantage. Record the triggering evidence and score change so adaptation can be inspected.
+## Context-specific behavior: evidence -> candidate effects, not scripted switches
 
-## Routes, strikes, and tactical defense
+These cases should materially change **scores and spatial candidates**, without hard-coding “if X, always Y.”
 
-Use a bounded graph search over sampled hex centers for ingress alternatives, then convert the result into the existing route representation. Compare direct, flank, and lower-exposure approaches. Use exact segment lengths and sample risk along segments; a route with safe endpoints may still cross a defense envelope.
-
-Fuel, aircraft availability, launch-field operability, recovery capacity, intelligence authorization, waypoint limits, and mission rules are hard feasibility checks. Threat exposure and mission payoff are scored tradeoffs. A* or bounded alternative-route search should keep distance and accumulated risk costs nonnegative; discard routes that fail the canonical route/recovery validator.
-
-Respect the current fighter/recon mission allowances of 40/64, fixed speeds, mission patterns, five optional ingress waypoints, and explicit recovery reserve. Simplifying a searched path must recheck threat exposure and feasibility. Use the CPU's known planning envelope; execution still encounters unknown real world edges normally.
-
-Estimate known SAM risk using range, expected time in range, three missiles, three-second cooldown, and observed ammunition uncertainty. Estimate AAA with its one attack per formation per round. Treat radar as detection/interception risk rather than direct damage. Use observed fighter traffic as uncertain future coverage, never as access to a hidden route.
-
-For Ground Strike, select a confirmed target and a fixed release point within the existing six-unit range. Evaluate release-point alternatives together with ingress and recovery; there is no need to overfly the site. Preserve one payload, strength-scaled damage, physical release, delayed impact, and surviving launched missiles. A destroyed or invalid target does not cause an automatic replacement target to be chosen.
-
-Generalize the existing ground-target launch and impact path so CPU attacks can damage player SAMs, AAA, radar, FOBs, and decoys as well as the base. Preserve damage persistence, airfield operational changes, diversion, trapping, and missile timing. Base-only victory accounting must not count damage to support sites as base damage.
-
-CPU Protect, patrol, and escort use their normal responsibility, contact, pursuit, fuel, and posture rules. Make enemy radar receipts and aircraft visual sensing available privately to CPU formations. A strike fighter performs no voluntary air interception, while direct fighter combat still interrupts it.
-
-Allow the CPU to issue the existing irreversible recon RTB decision when current authorized threats, remaining range, and the value of already collected information justify recovery. Use the same command acceptance/recovery semantics as the player. Preplan an alternate ingress next round rather than granting a new mid-flight strategic route-editing ability.
-
-## Spending, upgrades, defenses, and FOBs
-
-Enumerate legal quotes, including an explicit option to save. Compare short purchase sequences on a working copy, re-quote after every simulated purchase, and apply the selected sequence once through the authoritative economy commands. Check budget, aircraft reserves, placement knowledge, spacing, and upgrade exclusivity on every action.
-
-| Action | Evaluation rule |
-| --- | --- |
-| Formation repairs/replacements | Value the missions restored and strength recovered, reserve-aircraft limits, and remaining campaign opportunities. A lost formation returns at home through a paid replacement. |
-| SAM/AAA repair | Value operational coverage and the chance of protecting an important site. SAM ammunition already replenishes each round; buying a repair is not a rearm action. |
-| New SAM/AAA | Sample legal owned/recovered hexes. Score predicted observed approaches, protected sites, overlapping coverage, ammunition limits, and survivability. Repeatedly stacking one approach has diminishing value. |
-| Radar repair | Preserve useful detection/interception coverage. The present catalog has no radar-construction action, so generating a new radar purchase would be invalid. |
-| Maintenance Wing | Compare its 12-Logistics cost with plausible future repair/replacement savings and the missions that spending would otherwise enable. It saves one per eligible action and occupies the one main-base upgrade slot. |
-| Supply Depot | Use the actual deadline. Cost 12 and income +2 imply six future completed rounds to repay; even an Adapt-after-round-one purchase returns at most 10 before the round-six end. Under the current rules, saving or mission spending dominates a purchase justified solely by net income. Do not buy it merely to demonstrate upgrade use. |
-| New FOB | Require a concrete reachable mission or recovery improvement before the deadline. Account for the 8-Logistics cost, legal known terrain, seven-unit territory-edge reach, two slots, staging time, exposure, and a reachable fallback. |
-| FOB repair | Restore a trapped formation or useful recovery field when its mission value exceeds alternatives. Grounded aircraft stay at the disabled field until repaired; no teleportation. |
-| Decoy | Only score deception effects that exist in the resolver. The current player decoy reduces CPU targeting pressure, but an enemy decoy has no equivalent modeled effect on player decisions. Leave CPU decoy purchasing disabled until it has a concrete supported benefit. |
-
-There is no current base-health repair action and no purchasable defense-stat upgrade. Respond to base damage with available defenses, missions, and other legal spending. Main-base upgrades do not apply to FOBs.
-
-A CPU FOB uses the same ownership/territory, capacity reservations, first-crossed-FOB behavior for non-strike routes, strike recovery exception, landing, diversion, and unusable-field rules. The CPU's mapped territory must justify placement independently of the player's mapping. A FOB built in Adapt provides its normal next-round planning benefit; it does not move aircraft there without Transit or recovery.
-
-## Observable adaptation
-
-Keep lightweight evidence, not a trained model: recent observed traffic by sector, engagements seen by survivors, recovered site reports, own losses, attempted missions and known outcomes, plus confidence and observation age. Infer behavior with recency weighting over a small number of rounds. Do not label a player as aggressive because their hidden mission field says Ground Strike.
-
-| Evidence available to the CPU | Change it should consider | Limit on the inference |
-| --- | --- | --- |
-| Recon returns after fighter interference on an important route. | Escort the next useful recon mission, search another approach, or patrol the interfering corridor. | Use witnessed contact/engagement locations; hidden fighter recovery routes remain unknown. |
-| A flight fails to return from an unexplored sector. | Reduce confidence in that approach and consider scouting a flank. | Do not invent a confirmed SAM at the hidden loss location. |
-| Recon recovers a confirmed SAM that constrains an approach. | Route around it or compare a preparatory strike with a direct base attack. | Current SAM health/ammunition remains estimated unless observed. |
-| Recovered reports and observed sorties show a forward player FOB in use. | Compare a FOB strike or interception of that corridor against higher-value goals. | An unseen new FOB is absent from the candidate target set. |
-| Known defenses block a valuable target. | Choose another release point, suppress a confirmed defense, stage forward, or gather more information. | Do not assume a failed hit or damage count unless witnessed. |
-| A player strike damages the CPU base. | Increase protection/air-defense value, repair eligible defenses, or patrol the observed approach. | The CPU cannot repair its base with an unsupported command or read the next strike route. |
-| An earlier CPU strike visibly damages a confirmed target. | Compare finishing the target against protecting its own threatened base. | Full hidden opponent health is not automatically refreshed. |
-
-Adaptation must respond to evidence in the next eligible planning cycle, persist after reload, and stop repeating a clearly inferior plan when a feasible higher-value response exists. A plan can remain unchanged when the evidence or available resources do not support a better alternative.
-
-## Difficulty profiles
-
-All tiers share sensors, intelligence gates, force budgets, costs, physics, combat odds, and campaign rules. Difficulty changes how the CPU uses available evidence.
-
-| Capability | Easy | Medium | Hard |
+| Observable situation | Strategic pressure | Tactical candidates that should become more valuable | Avoid |
 | --- | --- | --- | --- |
-| Goal selection | Small set of straightforward plans; seeded choice among reasonably close legal options. | Compare offense, defense, recon, and staging with opportunity cost. | Compare the same goals with bounded likely counterplans and the next round's needs. |
-| Routes | Few direct/flank candidates; still respect confirmed threats and recovery. | Compare multiple approaches using known threat exposure. | Jointly compare release point, ingress, escort/defense allocation, and recovery. |
-| Spending | Immediate useful repair/defense needs and saving. | Couple spending to a selected mission and campaign horizon. | Compare short purchase sequences and their next-round effects. |
-| Adaptation | Coarse response to repeated evidence; confirmed facts remain usable immediately. | Respond to meaningful recovered/witnessed changes next round. | Respond next round and test a small set of plausible player patterns before committing. |
-| Lookahead | Current sortie. | Current sortie plus simple horizon-aware future value. | At most two campaign rounds using bounded hypothetical responses. |
+| Opponent has **not been observed** near CPU territory; base undamaged | Discovery + prudent baseline defense; keep strike options open | Recon useful sectors; protect recon when credible aircraft risk; save for SAM/FOB if no good placement yet | Dump all money into SAMs merely because round advanced |
+| Opponent recon or fighter **visually/radar detected near base** | Increased protection and defensive coverage | Protect base, patrol observed ingress, SAM/AAA at legal high-coverage sites; alternative recon route | Treat a detected aircraft as proof opponent permanently knows base coordinates |
+| Enemy **recon recovered after spotting CPU base** (hidden to CPU unless observed) | No omniscient discovery flag | Act only on CPU-witnessed flight/contact, weapon launch, or damage. Confidence can rise with repeated observed recon and survived departures, but never certainty from hidden enemy reports | Read player `knownWorld`, hidden reports, or `baseExposure` as “player has found us” unless that field is explicitly CPU-authored knowledge |
+| Opponent **directly strikes or damages CPU base** | High protect/expand-defense urgency; later rounds especially urgent | Cover confirmed direct corridor, repair useful defenses, place SAM for incremental coverage, continue valid offensive options | Assume the same exact attack route next round or rebuild a destroyed base via nonexistent action |
+| Opponent **attacks from a flank** (observed off-axis ingress) | Shift defense value to that sector | Place SAM/AAA covering vulnerable approach, patrol that corridor, shift protect point within mission envelope | Static defense forever pointed at center line; infer unseen future aircraft positions |
+| CPU finds enemy **base with weak known defense** | Immediate strike-base value rises | Generate direct and alternate release routes; attack if authorized and expected payoff beats delay | Build FOB or suppress SAM without a concrete advantage |
+| CPU finds enemy base **covered by confirmed SAM(s)** | Suppress-defenses or safe alternate strike route | Compare around-SAM release, strike SAM, flank, FOB staging if it improves reachable access | Always strike SAM; overfly target unnecessarily; ignore strike range |
+| CPU knows useful enemy region but **cannot reach safely** | Forward-position value rises if sufficient rounds/funds | Candidate FOB placement -> build -> Transit -> strike, all with legal recovery | FOB construction with no achievable follow-on operation; teleporting units |
+| CPU loses recon in unexplored area, **cause unknown** | Value alternate search and preservation, not imaginary SAM certainty | Explore another corridor, consider escort *only if fighter threat evidence supports it* | Assume exact SAM/loss location or obligatorily escort |
+| CPU is low on aircraft, funds or rounds | Survival and near-term payoff weighted up | Repair/replace when action can be used, save or strike now rather than slow infrastructure | Spend on construction whose payoff arrives after round six |
 
-Hard's hypothetical responses must be built from beliefs and legal action templates, with separate planning randomness. Running the actual hidden `MatchState` through `resolveRound` to choose the best counter would leak information. Begin with analytic estimates; add sampled rollouts only if measurements show that they improve decisions enough to justify their cost.
+**Base-discovery nuance:** there is presently no fair CPU-visible ground-truth signal that the *player's knowledge* contains the CPU base. A recon contact is only a clue; damage is hard evidence of targeting. If designers want an explicit “enemy base discovered” warning, first add a *symmetric, observable* event that a human player would also receive, rather than reading hidden player state.
 
-## Implementation sequence and acceptance gates
+**Defensive buildout:** “rapid SAM buildout once threatened” means promptly spending on **marginal coverage that protects relevant assets**, within actual income/placement limits. Starting CPU budget is 10 and a SAM costs 8; it cannot spam cost-free defenses. Prefer defense where attack risk and uncovered approach coincide; compare with needed fighter maintenance and offensive follow-through. No predetermined number of SAMs.
 
-Implement each milestone with focused deterministic checks and a build. Keep gameplay documentation synchronized when mechanics actually change. Run browser control only after explicit user permission under `AGENTS.md`.
+## Knowledge and memory: smallest sufficient record
 
-1. **Persist an enemy campaign and validate shared rules.** Add CPU state, save migration, side-specific sensing, attrition settlement, operating fields, and symmetric mission/fuel/recovery behavior. Preserve current enemy identities and fixture overrides. Gate: damage and aircraft losses survive a round and reload; no free respawn; two-aircraft recon capacity is correct; settlement executes once.
-2. **Deliver one adaptive recon/defense/strike loop.** Add the sanitized planning view, recovered intelligence, goal candidates, route alternatives, explicit CPU strike targets, Protect/escort/patrol orders, and CPU recon RTB. Gate: recovered evidence causes a justified route/task change next round; non-base support targets can be struck physically; unobserved assets/orders cannot affect planning.
-3. **Connect spending and forward operations.** Add CPU income, quotes, repair/replacement, legal SAM/AAA placement, upgrade evaluation, FOB construction/repair, Transit, and recovery reservations. Gate: every purchase is affordable and legal; a constructed FOB supports an actual staged mission; disabling it triggers the real trap/diversion rules; spending and losses persist exactly once.
-4. **Expose and tune Easy/Medium/Hard.** Add the saved Deploy setting, candidate budgets, controlled suboptimal choices, and Hard's bounded lookahead. Gate: profiles produce understandable differences on the same available information while preserving legal orders and shared rules; old saves get a documented default.
-5. **Evaluate complete campaigns and tune.** Use scripted player archetypes and paired seeds, then authorized human playtests. Gate: the complete first-pass feature set is connected, adaptation examples are observable, and stronger profiles outperform weaker profiles across the agreed benchmark rather than on every individual stochastic battle.
+Retain recovered stationary-site coordinates (and observation date), current authorized radar/visual tracks for in-sortie reactions, a bounded recent **observed approach** history (sector, bearing, observed time, source), own sortie success/failure, own inventory/resources/basing and current strategic intent. Derive threat/exploration coverage on demand. Treat stale aircraft traffic as *uncertain sector likelihood*, not exact current aircraft position. Update unconfirmed site health only through legitimate observations. A lost recon carries no unrecovered hidden target data. No persistent probabilistic 2-D belief grid, player-style classifier, or simulated opponent state for v2.
 
-The first end-to-end implementation slice is milestones 1 and 2. It must demonstrate an actual evidence-to-order change, beyond a difficulty dropdown. The complete first pass includes milestones 3 through 5 as well.
+## Implementation slices (do not attempt all at once)
 
-Suggested boundaries: `cpu/types`, `cpu/knowledge`, `cpu/planningView`, `cpu/objectives`, `cpu/routes`, `cpu/purchases`, `cpu/planner`, and `cpu/settlement`. Keep orchestration thin in `engine.ts` and phase transitions; reuse explicit shared rule interfaces in economy, mission responsibility, routes, sensing, and basing. Add an internal decision record with candidates, feasibility failures, score contributions, selected reason, and supporting evidence. Do not expose private CPU reasoning or hidden sites in the player's live UI.
+**Slice 1 — truthful side-aware infrastructure**
+- Build explicit `SidePlanningContext` for economy, placement, airfield/recovery, route and sensor validation. Use the same rule functions for player and CPU; keep player UI visibility separate.
+- Add CPU-owned FOB basing and construction/repair settlement and legal SAM/AAA construction with once-only economy application. Generalize enemy routes to start at actual formation fields and resolve normal landings. Maintain legacy saves, 2-aircraft recon strength, and tactical fixtures.
+- **Gate:** CPU-built SAM engages like player SAM; CPU FOB construction and later Transit actually relocates a fighter; damage disables FOB and causes legitimate trap/diversion. No duplicated money, illegal sites, free aircraft or hidden world access.
 
-## Validation and definition of done
+**Slice 2 — strategic/tactical split**
+- Replace flat `planCpu` score table with intention candidates + shared action-package evaluation; include protect, discovery, strikes, construction, save and transit options. Migrate v1 planning data conservatively, preserve deterministic commitment.
+- Expose structured *developer-only* decision trace with observed evidence, top intentions, feasible packages, score components, selected option, and rejection reasons.
+- **Gate:** confirmed base + weak defense leads to timely strike; damaged own base increases protective action value; no nearby opponent evidence does not force expensive build; a currently impossible FOB plan loses to an executable action.
 
-- **Knowledge isolation:** mutate hidden player routes, sites, health, purchases, resources, and unexplored bounds while holding the CPU view fixed; selected plans must remain identical. A lost recon must not unlock a site strike. Test the observation boundary as well as the planner input.
-- **Orders and execution:** validate fuel, release points, target confirmation, mission responsibility, escort coverage, first-FOB recovery, capacity, stranded behavior, strike interruptions, delayed impacts, and disabled fields for both sides.
-- **Persistence and economy:** exercise old saves, reloads at each phase, repeated settlement, zero reserves, total aircraft loss, unaffordable plans, installed upgrades, and repeated purchase evaluation. Verify that evaluated but unselected commands spend nothing.
-- **Adaptation scenarios:** cover the evidence/response pairs above, including no response to hidden changes and reasonable continuation when no better legal option exists. Require recorded evidence for every claimed counterstrategy.
-- **Difficulty evaluation:** use identical budgets and paired seeds against fixed player policies for base rush, heavy defense, fighter cover, forward FOB staging, and recon denial. Report campaign outcomes, own-base survival, recovered intelligence, mission completion, illegal-order count, and planning work. Keep some seeds/scenarios out of tuning.
-- **Honest measurement:** target zero illegal orders and knowledge leaks at every tier. Measure uncertainty in difficulty comparisons; do not claim a strict win-rate ordering from a handful of campaigns or silently strengthen Hard's roster to obtain it.
+**Slice 3 — spatial competence and forward sequence**
+- Search and score placement hexes for incremental SAM coverage and feasible FOB *follow-on* missions. Add threat-aware release/route candidates; bounded hex/corridor search only when simple candidates are insufficient.
+- **Gate:** known SAM is bypassed when safer valid release exists; if not, suppression can outrank immediate attack; FOB is built and occupied *only when it demonstrably expands a valuable sortie option*; fuel/recovery and landing validation hold for both sides.
 
-The first pass is complete when all five milestones work together in a six-round campaign, the CPU retains its resources and knowledge, route and purchase choices support its goals, observed player behavior can cause a concrete counterplan, and the behavior remains reproducible through save/load. Document remaining balance assumptions and unsupported deception mechanics explicitly.
+**Slice 4 — adaptive behavior and measurable competition**
+- Track only legitimately observed approach bearings/sectors and mission results. Re-score each round with switching friction and remaining-round urgency.
+- Run reproducible paired-seed full six-round campaigns against scripted player policies: (i) direct base rush, (ii) flank attack, (iii) recon search then strike, (iv) heavy SAM defense, (v) FOB expansion, (vi) recon denial. Compare v1 vs v2 and Easy/Medium/Hard.
+- **Gate:** zero invalid orders, hidden-information leaks and duplicate settlements; v2 improves CPU win rate or credible offensive pressure against agreed opponents without regressing badly against others. Report outcomes, enemy-base damage, own-base damage, intel gains, SAM marginal coverage, FOB use, sortie recovery, budgets, and action decisions. Do not claim superiority from a single seed.
 
-## Decisions retained for later tuning
+## Explicit non-goals and code constraints
 
-Validate the existing one-fighter/two-aircraft-recon opening under persistent attrition before adding forces. Reassess upgrade prices or the deadline only as an explicit game-balance change. Define a symmetric player-intelligence effect before enabling CPU decoy purchases. Tune search budgets and adaptation weights from scenario evidence after the shared rules and information boundary are reliable.
+- No separate per-strategy tactical scripts, ML training, Monte Carlo opponent simulator, generic GOAP engine, continuously updated mid-flight campaign plan, or two-round game tree in v2.
+- No extra missions, unit types, combat modifiers, free information, or changed victory rules to make AI look smart.
+- No CPU decoy purchase until a symmetric in-engine benefit exists. Do not purchase Supply Depot for income-only ROI in a six-round game (cost 12; at most five subsequent +2 payouts after round one). Do not invent radar construction or base repair.
+- Preserve existing base-pressure strike authorization at 60 pending a separately approved mechanics decision. All difficulties share information gates, costs and combat rules.
+- Keep work isolated from unrelated development; run typecheck/unit tests after each slice and only claim a completed feature after a simulation test demonstrates its effect. Do not edit `GAMEPLAY_STATE.md` to describe planned work as shipped.
+
+## Definition of done
+
+A complete v2 CPU can combine reconnaissance, defense buildout, forward staging, known-threat avoidance and strikes *when those options are actually valuable*; it can counter observed direct/flank attacks; it never reads hidden player knowledge or violates the player's action constraints; it survives save/reload and six-round play; and its decisions and measured competitiveness are explainable from a compact developer trace. **Do not mark v2 complete for a difficulty dropdown, a set of score constants, or a list of new modules.**
