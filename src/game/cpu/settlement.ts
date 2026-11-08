@@ -27,7 +27,7 @@ export function settleCpuRound(state: MatchState, result: RoundResult): MatchSta
       strength: recovered.has(formation.id) ? flight?.strength ?? 0 : 0, morale: flight?.morale ?? formation.morale, status: recovered.has(formation.id) ? 'rtb' : 'destroyed' }
   })
   cpu.lastReconLost = cpu.plan?.orders.some(order => order.role === 'recon' && order.sortieOrdered !== false && !recovered.has(order.id) && !report.recoveryOutcomes?.some(o=>o.formationId===order.id&&o.outcome==='trapped')) ?? false
-  cpu.outcomes=[...(cpu.outcomes??[]),...(cpu.plan?.orders.filter(o=>o.sortieOrdered!==false).map(o=>({round:result.round,formationId:o.id,mission:o.mission,targetId:o.strikeTargetId,recovered:recovered.has(o.id)}))??[])].slice(-12)
+  cpu.outcomes=[...(cpu.outcomes??[]),...(cpu.plan?.orders.filter(o=>o.sortieOrdered!==false&&!report.recoveryOutcomes?.some(r=>r.formationId===o.id&&(r.reason==='not-launched'||r.outcome==='trapped'))).map(o=>({round:result.round,formationId:o.id,mission:o.mission,targetId:o.strikeTargetId,recovered:recovered.has(o.id),damage:recovered.has(o.id)?Math.max(0,(o.strength??100)-(result.enemyFlights.find(f=>f.id===o.id)?.strength??o.strength??100)):undefined}))??[])].slice(-12)
   cpu.searchIndex += 1
   cpu.traffic = [...cpu.traffic.filter(contact => result.round - contact.observedRound < 2), ...report.traffic].slice(-32)
   cpu.logistics += LOGISTICS_EFFECTS.baseIncome + (state.enemyAssets.find(a=>a.kind==='base')?.upgrades?.includes('supply-depot')?2:0) + report.sites.filter(site => !priorIds.has(site.id)).length * LOGISTICS_EFFECTS.intelRecovery + (report.confirmedKills??0)

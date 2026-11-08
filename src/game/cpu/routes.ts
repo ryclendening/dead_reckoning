@@ -122,27 +122,38 @@ export function orderRisk(view: CpuPlanningView, order: Squadron, sites=view.cpu
       const along=((p[0]-view.home[0])*dx+(p[1]-view.home[1])*dy)/length,lateral=Math.abs((p[0]-view.home[0])*dy-(p[1]-view.home[1])*dx)/length
       if(along>4.5&&along<length-5.5&&lateral<1.7)exposed+=distance(a,b)/n
     }}
-    const latest=[...new Map(sectors.sort((a,b)=>(a.observedAt??0)-(b.observedAt??0)).map(t=>[t.identity??t.trackId??t.position.join(','),t])).values()]
+    const latest=[...new Map(sectors.sort((a,b)=>a.observedRound-b.observedRound||(a.observedAt??0)-(b.observedAt??0)).map(t=>[t.identity??t.trackId??t.position.join(','),t])).values()]
     const power=latest.length?latest.reduce((n,t)=>n+Math.min(1,((t.strength??100)+25*Math.max(0,view.round-t.observedRound))/100),0)/latest.length:1
     airRisk=Math.max(airRisk,Math.min(1,exposed/4)*65*power)
+  }
+  if(base) {
+    // Coarse observed tracks can overlap a recovered operating field even when
+    // their quantized point falls outside it. Price the witnessed defensive
+    // capability there, rather than treating the quantized point as exact.
+    const nearby=sectors.filter(t=>distance(t.position,base.position)<=4.5+2+distance(t.position,view.home)*Math.sin(Math.PI/8))
+    const guards=[...new Map(nearby.sort((a,b)=>a.observedRound-b.observedRound||(a.observedAt??0)-(b.observedAt??0)).map(t=>[t.identity??t.trackId??t.position.join(','),t])).values()]
+    const power=guards.reduce((n,t)=>n+Math.min(100,(t.strength??100)+25*Math.max(0,view.round-t.observedRound)),0)
+    let exposed=0
+    for(let i=1;i<route.length;i++){const a=route[i-1],b=route[i],n=Math.max(1,Math.ceil(distance(a,b)/.5));for(let j=0;j<n;j++){const t=(j+.5)/n;if(distance([a[0]+(b[0]-a[0])*t,a[1]+(b[1]-a[1])*t],base.position)<=4.5)exposed+=distance(a,b)/n}}
+    airRisk=Math.max(airRisk,Math.min(1,exposed/3)*power*(order.role==='fighter'?.4:.2))
   }
   let uncertainty=0
   const outcome=(view.cpu.outcomes??[]).filter(o=>o.formationId===order.id).at(-1)
   const failed=outcome&&view.cpu.plan?.round===outcome.round?view.cpu.plan.orders.find(o=>o.id===order.id):undefined
-  if(outcome&&!outcome.recovered&&view.round-outcome.round<=1&&failed) {
-    // A failed assigned corridor is a reason to compare another approach, not
+  if(outcome&&view.round-outcome.round<=1&&failed&&(!outcome.recovered||(outcome.damage??0)>0&&failed.mission===order.mission&&failed.strikeTargetId===order.strikeTargetId)) {
+    // A failed or damaging assigned corridor justifies another approach, not
     // evidence of an invented enemy SAM or an exact loss position.
     const key=(p:Point)=>`${Math.round(p[0]/2)},${Math.round(p[1]/2)}`
     const cells=(path:Point[])=>{const result=new Set<string>();for(let i=1;i<path.length;i++){const a=path[i-1],b=path[i],n=Math.max(1,Math.ceil(distance(a,b)));for(let j=0;j<n;j++){const t=(j+.5)/n,p:Point=[a[0]+(b[0]-a[0])*t,a[1]+(b[1]-a[1])*t];if(distance(p,view.home)>5)result.add(key(p))}}return result}
     const old=cells(failed.route),next=cells(order.route)
-    uncertainty=2*[...next].filter(c=>old.has(c)).length/Math.max(1,next.size)
+    uncertainty=(outcome.recovered?outcome.damage??0:2)*[...next].filter(c=>old.has(c)).length/Math.max(1,next.size)
   }
   return cpuRouteRisk(route,order.role,sites)+Math.min(85,airRisk)+uncertainty
 }
 export function strikeOrders(view: CpuPlanningView, fighter: Squadron, target: CpuSiteReport, work: RouteWork): Squadron[] {
   const field=formationField(view.assets,fighter.id);if(!field)return []
   const from=field.position, length=distance(from,target.position), angle=Math.atan2(from[1]-target.position[1],from[0]-target.position[0])
-  const releases:Point[]=length<BASE_STRIKE_RANGE?[[from[0]+(target.position[0]-from[0])*.02,from[1]+(target.position[1]-from[1])*.02]]:CPU_PROFILES[view.cpu.difficulty].releases.map(a=>[target.position[0]+Math.cos(angle+a)*5.9,target.position[1]+Math.sin(angle+a)*5.9])
+  const releases:Point[]=length<=BASE_STRIKE_RANGE?[[from[0]+(target.position[0]-from[0])*.02,from[1]+(target.position[1]-from[1])*.02]]:CPU_PROFILES[view.cpu.difficulty].releases.map(a=>[target.position[0]+Math.cos(angle+a)*BASE_STRIKE_RANGE,target.position[1]+Math.sin(angle+a)*BASE_STRIKE_RANGE])
   if(length<.01)releases[0]=[from[0]+.05,from[1]]
   const all=releases.flatMap(p=>missionOrders(view,fighter,'base-strike',p,work)).map(o=>({...o,strikeTargetId:target.id})).filter(o=>validateStrikeGeometry(o,field,target)===undefined)
   const safe=[...all].sort((a,b)=>orderRisk(view,a)-orderRisk(view,b)||routeDistance(a.route)-routeDistance(b.route))

@@ -182,3 +182,19 @@ Material deviations from the original implementation bounds:
   bounded track-linked coarse samples. A derived public deployment prior and
   observed fighter corridors supplement tactical scoring. There is no persisted
   belief grid, opponent rollout, Monte Carlo policy, or campaign game tree.
+
+Current selection is a bounded, analytic comparison of shared packages. It does
+not estimate a calibrated probability of campaign victory. Return uncertainty
+combines the two own observers' possible reports, and aircraft-loss cost uses
+pips rather than equating a four-aircraft fighter with a two-aircraft recon.
+Maintenance may value a concrete reachable strike after the next authorized
+collection; it does not execute or simulate that future strike. Recovered own
+damage survives repairs as attempt memory. Missing flights disclose no final
+condition or hidden cause. Fuel-limited partial escort prefixes remain a CPU
+candidate-generation gap; ordinary benchmark layouts have not demonstrated FOB
+use, although the long-range build/Transit/strike acceptance scenario does.
+
+FOB valuation currently covers known-base reach and known ground-threat cost.
+Broader observed-air-route and reconnaissance staging value remains incomplete;
+the ordinary scripted cohort has no CPU FOB use. These limitations are not
+resolved by the successful long-range FOB capability fixture.

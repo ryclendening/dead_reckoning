@@ -44,7 +44,7 @@ export function validCpuState(v: unknown, validFormation: (v: unknown) => v is S
     || [v.lastSettledRound, v.lastAdaptedRound].some(n => n !== undefined && (!integer(n) || n > round))) return false
   if (v.mappedAreas !== undefined && (!Array.isArray(v.mappedAreas) || !v.mappedAreas.every(point))) return false
   if (v.intent !== undefined && !intent(v.intent) || v.adaptTrace !== undefined && !trace(v.adaptTrace)) return false
-  if (v.outcomes !== undefined && (!Array.isArray(v.outcomes) || !v.outcomes.every(o=>record(o)&&integer(o.round)&&o.round<=round&&text(o.formationId)&&['search-area','defensive-cap','base-strike','forward-patrol','transit'].includes(String(o.mission))&&typeof o.recovered==='boolean'))) return false
+  if (v.outcomes !== undefined && (!Array.isArray(v.outcomes) || !v.outcomes.every(o=>record(o)&&integer(o.round)&&o.round<=round&&text(o.formationId)&&['search-area','defensive-cap','base-strike','forward-patrol','transit'].includes(String(o.mission))&&typeof o.recovered==='boolean'&&(o.damage===undefined||number(o.damage)&&o.damage<=100)))) return false
   const formations = v.formations, sites = v.sites
   if (v.plan === undefined) return true
   const p = v.plan

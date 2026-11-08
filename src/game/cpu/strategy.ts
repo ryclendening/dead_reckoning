@@ -5,13 +5,13 @@ const intentions:CpuIntent[]=['discover','protect-base','expand-defense','forwar
 function advances(view:CpuPlanningView,intent:CpuIntent,p:TacticalPackage):boolean {
   const e=p.predicted, c=contribution(view,p)
   switch(intent) {
-    case 'discover':return e.informationGain>0&&e.baseDamage===0&&e.futureStrikeAccessGain===0&&c.survival<c.discovery
+    case 'discover':return e.informationGain>0&&e.baseDamage===0&&c.survival<c.discovery&&c.discovery>=c.access
     case 'protect-base':return e.ownBaseRiskReduced>0&&c.survival>=c.discovery&&e.baseDamage===0
     case 'expand-defense':return e.defenseCoverageGain>0
     case 'forward-position':return e.futureStrikeAccessGain>0&&(p.orders.some(o=>o.mission==='transit'&&o.sortieOrdered!==false)||p.purchases.some(c=>c.actionId==='build-fob'||c.actionId==='repair-fob'))
     case 'suppress-defenses':return e.futureStrikeAccessGain>0&&p.orders.some(o=>o.mission==='base-strike'&&e.baseDamage===0)
     case 'strike-base':return e.baseDamage>0
-    case 'contest-air':return p.orders.some(o=>o.mission==='forward-patrol'&&o.sortieOrdered!==false)||e.futureStrikeAccessGain>0&&p.purchases.some(c=>c.actionId==='build-sam'||c.actionId==='build-aaa')
+    case 'contest-air':return p.orders.some(o=>o.mission==='forward-patrol'&&o.sortieOrdered!==false)
   }
 }
 /** All goals use the same measured effects and common campaign contribution scale. */

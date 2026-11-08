@@ -1,4 +1,4 @@
-import type { Asset, CampaignWorld, MatchState, Point, Squadron } from './types'
+import type { Asset, CampaignWorld, DebugScenario, MatchState, Point, Squadron } from './types'
 import { snapToHex } from './hex'
 import { createStartingKnowledge, generateCampaignWorld } from './world'
 import { createEconomyState } from './economy'
@@ -40,8 +40,8 @@ export const initialPlayerAssets=friendlyAssetsFor(DEFAULT_WORLD)
 export const initialSquadrons=squadronsFor(DEFAULT_WORLD)
 export const initialAssets=enemyAssetsFor(DEFAULT_WORLD)
 
-export const createMatch=(seed=7301, difficulty:CpuDifficulty='medium',randomize=true):MatchState=>{
+export const createMatch=(seed=7301, difficulty:CpuDifficulty='medium',randomize=true,debugScenario?:DebugScenario):MatchState=>{
   const world=generateCampaignWorld(seed,randomize),knowledge=createStartingKnowledge(world)
-  return prepareCpuRound({round:1,phase:'plan',logistics:10,command:2,replacements:3,selectedId:'raven',squadrons:squadronsFor(world),enemyAssets:enemyAssetsFor(world),playerAssets:friendlyAssetsFor(world),playerBaseHealth:100,enemyBaseHealth:100,baseExposure:6,campaignScore:0,seed,world,mappedAreas:knowledge.mappedAreas,discoveredBoundaries:knowledge.discoveredBoundaries,economy:createEconomyState(),cpu:createCpuState(enemyBaseFor(world),difficulty,seed)})
+  return prepareCpuRound({debugScenario,round:1,phase:'plan',logistics:10,command:2,replacements:3,selectedId:'raven',squadrons:squadronsFor(world),enemyAssets:enemyAssetsFor(world),playerAssets:friendlyAssetsFor(world),playerBaseHealth:100,enemyBaseHealth:100,baseExposure:6,campaignScore:0,seed,world,mappedAreas:knowledge.mappedAreas,discoveredBoundaries:knowledge.discoveredBoundaries,economy:createEconomyState(),cpu:createCpuState(enemyBaseFor(world),difficulty,seed)})
 }
 export const createCampaignDraft=(seed=7301,difficulty:CpuDifficulty='medium'):MatchState=>({...createMatch(seed,difficulty),phase:'deploy',setup:createCampaignSetupState()})

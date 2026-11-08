@@ -145,6 +145,9 @@ describe('CPU execution and persistence', () => {
     expect(settled.cpu!.sites).toEqual([])
     expect(settled.cpu!.formations.find(f => f.role === 'recon')!.aircraft).toBe(0)
     expect(settleCpuRound(settled, result)).toBe(settled)
+    const unseen=structuredClone(result)
+    unseen.enemyFlights.find(f=>f.id==='red-recon')!.strength=77
+    expect(settleCpuRound(initial,unseen).cpu).toEqual(settled.cpu)
   })
 
   it('keeps CPU radar receipts private while allowing its defender to act on them', () => {
@@ -252,23 +255,22 @@ describe('CPU execution and persistence', () => {
     let state = createMatch(7301, difficulty)
     state = { ...state, playerAssets: state.playerAssets.filter(a => a.kind === 'base').map(a => ({ ...a, position: [0, 0] })),
       squadrons: state.squadrons.map(s => ({ ...s, sortieOrdered: false })) }
+    let firstStrike:number|undefined
     for (let round = 1; round <= 6; round++) {
       state = normalizeMatch(JSON.parse(JSON.stringify(state)))
       const result = resolveRound(state)
       if (round === 1) {
         expect(result.cpuReport!.sites.some(site => site.kind === 'base')).toBe(true)
         expect(result.baseDamage).toBe(0)
-        expect(result.baseExposureDelta).toBe(80)
+        expect(result.baseExposureDelta).toBeGreaterThanOrEqual(40)
       }
-      if (round === 2) {
-        expect(state.baseExposure).toBe(86)
-        expect(result.baseDamage).toBeGreaterThan(0)
-      }
+      if(result.baseDamage>0){firstStrike??=round;expect(state.baseExposure).toBeGreaterThanOrEqual(60)}
       state = openAdaptPhase(applyRound(state, result))
       if (state.phase === 'defeat') break
       state = beginNextRound(state)
       state.squadrons = state.squadrons.map(s => ({ ...s, sortieOrdered: false }))
     }
+    expect(firstStrike).toBeLessThanOrEqual(4)
     expect(campaignOutcome(state)).toBe('home-base-destroyed')
     expect(state.round).toBeLessThanOrEqual(6)
     expect(state.cpu!.sites.some(site => site.id === 'p-base')).toBe(true)

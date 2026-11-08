@@ -26,7 +26,11 @@ human competitive strength.
 
 The raw records include attempted strikes and launched missiles for both sides,
 base damage, recovered intelligence, construction, budgets, recovery, illegal
-orders and strategic decisions. The preserved v1 planner and maintenance policy provide paired-seed
+orders and strategic decisions. They also distinguish player recon sorties,
+recoveries, lost base reports and whether the player ever confirmed the CPU base;
+absence of a strike is not automatically labeled successful intelligence denial.
+Every v2 campaign checks repeated settlement and Adapt are no-ops. Source hashes
+cover all production game TypeScript, the harness, and the preserved baseline. The preserved v1 planner and maintenance policy provide paired-seed
 comparisons through the same current engine by default. This isolates planning
 from shared engine corrections. `CPU_BASELINE_ENGINE=historical` separately
 reproduces the original-engine comparison; do not pool the two rulesets. Raw
@@ -38,3 +42,15 @@ The original v2 evaluation remains in `results.json`; new runs write
 and `CPU_V2_ONLY` permit explicitly labeled diagnostic subsets. `CPU_TRACE=1`
 prints post-resolution diagnostic state and decision traces. No diagnostic
 state is fed into the CPU planning snapshot.
+
+## Script compatibility correction — 2026-11-08
+
+Policy version `fixed-policies-v2-compatible-recovery` validates all player orders
+as a package. The original scripts validated individual orders and could
+overbook a FOB. When their proposed orders conflict, the corrected script
+enumerates at most eight hold/order subsets and retains the highest-priority
+legal combination: unknown-base reconnaissance, strikes, staging, then patrol.
+It adds no information or resources. Both v1 and v2 face the corrected scripts,
+and raw rows count package adjustments. Older policy-version results that did
+not check collective player capacity remain historical, provisional evidence.
+The scripts still do not make midflight RTB decisions or adapt like a human.

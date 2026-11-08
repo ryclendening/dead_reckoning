@@ -19,6 +19,6 @@ export interface CpuState {
   logistics: number; reserves: number; sites: CpuSiteReport[]; traffic: CpuTraffic[]
   searchIndex: number; lastReconLost: boolean; lastSettledRound?: number; lastAdaptedRound?: number
   spending: Array<{ round: number; action: 'repair' | 'replace' | EconomyActionId; targetId: string; cost: number }>
-  intent?: CpuIntent; adaptTrace?: CpuDecisionTrace; outcomes?: Array<{ round: number; formationId: string; mission: Squadron['mission']; recovered: boolean; targetId?: string }>; mappedAreas?: Point[]; plan?: CpuPlan
+  intent?: CpuIntent; adaptTrace?: CpuDecisionTrace; outcomes?: Array<{ round: number; formationId: string; mission: Squadron['mission']; recovered: boolean; damage?: number; targetId?: string }>; mappedAreas?: Point[]; plan?: CpuPlan
 }
 export interface CpuRoundReport { sites: CpuSiteReport[]; traffic: CpuTraffic[]; recoveredIds: string[]; mappedAreas?: Point[]; recoveryOutcomes?: FormationRecoveryOutcome[]; confirmedKills?: number; strikes?: Array<{ targetId: string; damage: number; releasedAt: number; sourceId: string }> }

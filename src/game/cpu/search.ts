@@ -26,19 +26,30 @@ export function searchPrior(view:CpuPlanningView):Array<{point:Point;weight:numb
   }
   return points
 }
-export function collectionScorer(view:CpuPlanningView,prior=searchPrior(view)):(orders:Squadron[])=>number {
+export function collectionScorer(view:CpuPlanningView,prior=searchPrior(view)):(orders:Squadron[],confidence?:(order:Squadron)=>number)=>number {
   const base=view.cpu.sites.find(s=>s.kind==='base'&&s.health>0),total=prior.reduce((n,p)=>n+p.weight,0)
   const cache=new WeakMap<Squadron,boolean[]>()
-  return orders=>{
-    const flying=orders.filter(o=>o.sortieOrdered!==false)
+  return (orders,confidence=()=>1)=>{
+    const flying=orders.filter(o=>o.sortieOrdered!==false),probabilities=flying.map(o=>Math.max(0,Math.min(1,confidence(o))))
+    // Two own observers: analytically combine their possible returned reports.
+    // This is collection uncertainty, not a simulated opponent policy.
+    const expected=(effect:(returned:Squadron[])=>number)=>{
+      let value=0
+      for(let mask=0;mask<1<<flying.length;mask++) {
+        let probability=1;const returned:Squadron[]=[]
+        for(let i=0;i<flying.length;i++){const present=!!(mask&(1<<i));probability*=present?probabilities[i]:1-probabilities[i];if(present)returned.push(flying[i])}
+        value+=probability*effect(returned)
+      }
+      return value
+    }
     if(base) {
-      if(view.exposure<60)return Math.min(1,flying.filter(o=>covers(o.route,base.position,3.75)).reduce((n,o)=>n+(view.cpu.sites.some(s=>s.kind==='decoy'&&s.health>0&&covers(o.route,s.position))?20:40),0)/Math.max(1,60-view.exposure))
+      if(view.exposure<60)return expected(returned=>Math.min(1,returned.filter(o=>covers(o.route,base.position,3.75)).reduce((n,o)=>n+(view.cpu.sites.some(s=>s.kind==='decoy'&&s.health>0&&covers(o.route,s.position))?20:40),0)/Math.max(1,60-view.exposure)))
       const known=new Set(view.cpu.sites.filter(s=>['sam','aaa','radar'].includes(s.kind)).map(s=>s.kind)).size
       const interest=.08*Math.max(0,3-known)/3+.04*Math.min(1,Math.max(0,view.round-base.observedRound)/2)
       const sectors=Array.from({length:8},(_,i)=>[base.position[0]+Math.cos(i*Math.PI/4)*3.2,base.position[1]+Math.sin(i*Math.PI/4)*3.2] as Point)
-      return interest*sectors.filter(p=>flying.some(o=>covers(o.route,p))).length/sectors.length
+      return expected(returned=>interest*sectors.filter(p=>returned.some(o=>covers(o.route,p))).length/sectors.length)
     }
-    const coverage=flying.map(o=>{let result=cache.get(o);if(!result){result=prior.map(p=>covers(o.route,p.point));cache.set(o,result)}return result})
-    return total?prior.reduce((n,p,i)=>{const observers=coverage.filter(c=>c[i]).length;return n+p.weight*(observers>=2?1:observers===1?.45:0)},0)/total:0
+    for(const o of flying)if(!cache.has(o))cache.set(o,prior.map(p=>covers(o.route,p.point)))
+    return total?expected(returned=>prior.reduce((n,p,i)=>{const observers=returned.filter(o=>cache.get(o)![i]).length;return n+p.weight*(observers>=2?1:observers===1?.45:0)},0)/total):0
   }
 }

@@ -1,3 +1,4 @@
+import { BASE_STRIKE_RANGE } from '../campaign'
 import { SAM_MISSILES_PER_ROUND, SAM_COOLDOWN_SECONDS } from '../airDefense'
 import { axialToPoint } from '../hex'
 import { validateAssetPlacement } from '../sideEconomy'
@@ -24,9 +25,9 @@ function approachDamage(view:CpuPlanningView,point:Point,kind:'sam'|'aaa',angle:
   const along=dx*Math.cos(angle)+dy*Math.sin(angle), lateral=Math.abs(-dx*Math.sin(angle)+dy*Math.cos(angle))
   const radius=kind==='sam'?3.2:1.9
   if(lateral>radius)return 0
-  const reach=Math.sqrt(radius*radius-lateral*lateral),enter=Math.min(20,along+reach),exit=Math.max(6,along-reach)
-  const time=(enter-6)/(40/22),last=(enter-exit)/(40/22)
-  if(enter<6||time<(kind==='sam'?1.05:.34))return 0
+  const reach=Math.sqrt(radius*radius-lateral*lateral),enter=Math.min(20,along+reach),exit=Math.max(BASE_STRIKE_RANGE,along-reach)
+  const time=(enter-BASE_STRIKE_RANGE)/(40/22),last=(enter-exit)/(40/22)
+  if(enter<BASE_STRIKE_RANGE||time<(kind==='sam'?1.05:.34))return 0
   const shots=kind==='sam'?Math.min(SAM_MISSILES_PER_ROUND,1+Math.floor(Math.min(time-1.05,last)/SAM_COOLDOWN_SECONDS)):1
   return shots*(kind==='sam'?.64*38:.52*13)
 }
@@ -81,8 +82,8 @@ export function forwardValue(view: CpuPlanningView, point: Point): { gain: numbe
   if(!targets.length)return undefined // No infrastructure justified by an unnamed hypothetical target.
   let best:ReturnType<typeof forwardValue>
   for(const target of targets) {
-    const current=Math.max(0,distance(field.position,target.position)-5.9)*2, next=Math.max(0,distance(point,target.position)-5.9)*2
-    const release=(from:Point):Point=>{const d=Math.max(.001,distance(from,target.position)),t=Math.max(0,d-5.9)/d;return [from[0]+(target.position[0]-from[0])*t,from[1]+(target.position[1]-from[1])*t]}
+    const current=Math.max(0,distance(field.position,target.position)-BASE_STRIKE_RANGE)*2, next=Math.max(0,distance(point,target.position)-BASE_STRIKE_RANGE)*2
+    const release=(from:Point):Point=>{const d=Math.max(.001,distance(from,target.position)),t=Math.max(0,d-BASE_STRIKE_RANGE)/d;return [from[0]+(target.position[0]-from[0])*t,from[1]+(target.position[1]-from[1])*t]}
     const riskBefore=cpuRouteRisk([field.position,release(field.position),field.position],'fighter',view.cpu.sites),riskAfter=cpuRouteRisk([point,release(point),point],'fighter',view.cpu.sites)
     const effect=Math.min(1,60*(fighter.strength??100)/100/Math.max(1,target.health))
     const gain=current>40&&next<=40?effect:next<=40&&riskBefore-riskAfter>20?effect*(riskBefore-riskAfter)/100:0

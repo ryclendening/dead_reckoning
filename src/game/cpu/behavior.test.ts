@@ -9,6 +9,9 @@ import { formationField, validateRecoveryPackage } from '../forwardBasing'
 import { MAX_FLIGHT_DISTANCE } from '../flightRules'
 import { defenseCoverage } from './placement'
 import { executeCpuEconomyCommand } from './economy'
+import { generateActions } from './actions'
+import { covers, collectionScorer } from './search'
+import { campaignOutcome } from '../campaign'
 import { strikeOrders, orderRisk } from './routes'
 import type { Asset, MatchState, Point } from '../types'
 
@@ -39,6 +42,31 @@ describe('CPU v2 behavioral acceptance',()=>{
     expect(resolveRound(ready).baseDamage).toBe(60)
     expect(plan.trace!.observedEvidenceIds).toContain('site:p-base:r1')
   })
+  it('retains feasible collection opportunities on both sides of a dense search prior',()=>{
+    const s=setup([0,-12],[0,8]);s.phase='plan';s.round=1;s.baseExposure=6;s.cpu!.sites=[]
+    const packages=generateActions(cpuPlanningView(s)!,{expansions:0,rejected:[]})
+    // These are alternative unknown worlds, never inputs to candidate generation.
+    for(const position of [[-8,8],[8,8]] as Point[]) {
+      const candidate=packages.find(p=>p.orders.some(o=>o.sortieOrdered!==false&&covers(o.route,position)))
+      expect(candidate).toBeDefined()
+      const world={...s,playerAssets:s.playerAssets.map(a=>({...a,position})),cpu:{...s.cpu!,plan:{round:1,objective:'defend' as const,reason:'Inspect retained collection capability.',orders:candidate!.orders,candidates:[]}}}
+      legal(world)
+      expect(resolveRound(world).cpuReport!.sites.some(site=>site.id==='p-base')).toBe(true)
+    }
+  })
+
+  it('delivers a strike at the exact legal release and fuel boundary',()=>{
+    const s=setup([0,0],[26,0]);s.phase='plan';s.round=6
+    const ready=prepareCpuRound(s)
+    legal(ready)
+    expect(ready.cpu!.plan!.orders[0].strikeTargetId).toBe('p-base')
+    const release=ready.cpu!.plan!.orders[0].route.at(-1)!
+    expect(Math.hypot(release[0]-20,release[1])).toBeLessThan(1e-6)
+    const result=resolveRound(ready)
+    expect(result.baseDamage).toBe(60)
+    expect(result.cpuReport!.recoveredIds).toContain('red-fighter')
+  })
+
   it.each([0,Math.PI/2,-Math.PI/2])('builds marginal SAM coverage facing the observed approach %s',angle=>{
     const s=setup(),home=s.enemyAssets[0].position
     s.cpu!.sites=[];s.enemyAssets[0].health=40;s.enemyBaseHealth=40
@@ -104,6 +132,53 @@ describe('CPU v2 behavioral acceptance',()=>{
     expect(s.cpu!.plan!.orders[0].strikeTargetId).toBe('p-base')
     expect(resolveRound(s).baseDamage).toBe(60)
   })
+  it('restores a striker for a known attack that one more recovered observation will authorize',()=>{
+    const initial=setup();initial.round=1;initial.baseExposure=46;initial.cpu!.reserves=3
+    initial.cpu!.formations=initial.cpu!.formations.map(f=>f.role==='fighter'?{...f,aircraft:0,strength:0,status:'destroyed'}:f)
+    const blind=structuredClone(initial);blind.cpu!.sites=[]
+    expect(maintainCpu(blind).cpu!.formations[0].aircraft).toBe(0)
+    const adapted=maintainCpu(initial)
+    expect(adapted.cpu!.formations[0]).toMatchObject({aircraft:3,strength:75})
+    expect(adapted.cpu!.logistics).toBe(4)
+    expect(adapted.cpu!.reserves).toBe(0)
+    let s=beginNextRound(adapted)
+    for(let round=2;round<=6;round++) {
+      legal(s)
+      const result=resolveRound(s)
+      if(round===2){expect(result.baseDamage).toBe(0);expect(result.baseExposureDelta).toBeGreaterThanOrEqual(40)}
+      if(round===3)expect(result.baseDamage).toBe(45)
+      s=applyRound(s,result)
+      if(campaignOutcome(s))break
+      s=beginNextRound(openAdaptPhase(s))
+    }
+    expect(campaignOutcome(s)).toBe('home-base-destroyed')
+    expect(s.round).toBeLessThanOrEqual(5)
+  })
+
+  it('changes a damaging strike approach after repairs while retaining the same objective',()=>{
+    const s=setup();s.playerAssets[0].health=40;s.playerBaseHealth=40;s.cpu!.sites[0].health=40
+    const previous=planCpu(cpuPlanningView(s)!);previous.round=1
+    s.cpu!.plan=previous;s.cpu!.intent='strike-base'
+    s.cpu!.outcomes=[{round:1,formationId:'red-fighter',mission:'base-strike',targetId:'p-base',recovered:true,damage:22}]
+    const restored=normalizeMatch(JSON.parse(JSON.stringify(s)))
+    expect(restored.cpu!.outcomes![0].damage).toBe(22)
+    const v=cpuPlanningView(restored)!,chosen=planCpu(v)
+    expect(chosen.intent).toBe('strike-base')
+    expect(chosen.orders[0].route).not.toEqual(previous.orders[0].route)
+    expect(orderRisk(v,chosen.orders[0])).toBeLessThan(orderRisk(v,previous.orders[0]))
+    const ready={...s,phase:'plan' as const,cpu:{...s.cpu!,plan:chosen}}
+    legal(ready)
+    expect(resolveRound(ready).playerAssets.find(a=>a.id==='p-base')!.health).toBe(0)
+  })
+
+  it('does not credit a second targeting report from an observer that cannot return',()=>{
+    const v=cpuPlanningView(setup())!;v.exposure=6
+    const orders=v.cpu.formations.map(f=>({...f,sortieOrdered:true,route:[v.home,v.cpu.sites[0].position]}))
+    expect(collectionScorer(v)(orders,()=>1)).toBe(1)
+    expect(collectionScorer(v)(orders,o=>o.role==='recon'?1:0)).toBeCloseTo(40/54)
+    expect(collectionScorer({...v,exposure:46})(orders,o=>o.role==='recon'?1:0)).toBe(1)
+  })
+
   it('builds, transits and uses a FOB to enable a previously unreachable strike',()=>{
     let s=setup([0,0],[33,0]);s.round=1;s.cpu!.mappedAreas=[[9,0],[10,0]]
     expect(planCpu(cpuPlanningView(s)!).orders[0].strikeTargetId).toBeUndefined()
