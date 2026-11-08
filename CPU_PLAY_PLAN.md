@@ -308,3 +308,25 @@ unrepaired force. Repeated contribution calculations are cached per decision.
 With the symmetric one-report authorization rule, returned-report collection
 uses the exact coverage-union probability; deterministic exhaustive-subset
 checks verify the simplification for both discovery and intelligence refresh.
+
+
+### Release timing and terminal package valuation — 2026-11-08
+
+Known SAM/AAA forecasts now intersect planned ingress segments with recovered
+defense ranges and count only shots whose shared flight time can put damage
+before strike release. The engine's flight times, burst interval, damage and
+combat odds are unchanged. Whole-sortie recovery exposure remains a separate
+resource estimate. A package forecast to finish the known base immediately
+uses ingress losses and assigns no future information reward; other packages
+retain recovery losses. These forecasts are heuristics, not promised victories.
+
+Joint pruning preserves the fastest feasible strike per recovered target as
+well as individually scored safe candidates: a fast single-fighter action can
+become decisive only when combined with another fighter's payload. Executed
+fixtures check late versus early SAM/AAA impacts and a coordinated finisher;
+existing avoidance and suppression gates still pass.
+
+After the user's instruction against overfitting, freeze this general-mechanics
+candidate with the existing 64/180/420 route expansion and 4/8/12 search-sector
+budgets. Run registered fresh cohort 2 once and report its result, including a
+missed >70% gate. Do not tune further against that cohort.

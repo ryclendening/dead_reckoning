@@ -1,5 +1,5 @@
 import { SAM_MISSILES_PER_ROUND, SAM_COOLDOWN_SECONDS } from '../airDefense'
-import { defenseProfile, radarRange } from '../equipmentRules'
+import { defenseProfile, radarRange, SAM_FLIGHT_SECONDS, AAA_FLIGHT_SECONDS, AAA_BURST_INTERVAL } from '../equipmentRules'
 import { BASE_STRIKE_RANGE } from '../campaign'
 import { FLIGHT_SPEED, MAX_FLIGHT_DISTANCE, flightRangeFor, flightSpeedFor, routeDistance } from '../flightRules'
 import { deriveRecoveryPlanningView, formationField, isOperationalAirfield } from '../forwardBasing'
@@ -14,17 +14,52 @@ export const CPU_PROFILES = {
   medium: { offsets: [0, 2, -2, 4, -4, 7, -7], releases: [0, .3, -.3, .7, -.7, 1.3, -1.3], expansions: 180, sectors: 8, purchases: 4 },
   hard: { offsets: [0, 2, -2, 4, -4, 7, -7, 10, -10], releases: [0, .25, -.25, .5, -.5, 1, -1, 1.6, -1.6, 2.2, -2.2], expansions: 420, sectors: 12, purchases: 4 },
 } satisfies Record<CpuDifficulty, { offsets: number[]; releases: number[]; expansions: number; sectors: number; purchases: number }>
+/** Expected known-site hits that can arrive by the chosen release time.
+ * Geometry follows the planned ingress; no enemy orders or future rolls enter. */
+function defenseDamageBy(route:Point[],speed:number,site:CpuSiteReport,deadline:number):number {
+  const profile=defenseProfile(site)!
+  const windows:Array<[number,number]>=[]
+  let elapsed=0
+  for(let i=1;i<route.length;i++) {
+    const a=route[i-1],b=route[i],dx=b[0]-a[0],dy=b[1]-a[1],lengthSquared=dx*dx+dy*dy,duration=Math.sqrt(lengthSquared)/speed
+    if(lengthSquared>1e-10) {
+      const x=a[0]-site.position[0],y=a[1]-site.position[1],projection=x*dx+y*dy
+      const discriminant=projection*projection-lengthSquared*(x*x+y*y-profile.range*profile.range)
+      if(discriminant>0) {
+        const root=Math.sqrt(discriminant),enter=Math.max(0,(-projection-root)/lengthSquared),exit=Math.min(1,(-projection+root)/lengthSquared)
+        if(exit>enter)windows.push([elapsed+enter*duration,elapsed+exit*duration])
+      }
+    }
+    elapsed+=duration
+  }
+  let hits=0
+  if(site.kind==='aaa'&&windows.length) {
+    for(let shot=0;shot<profile.burstShots;shot++)if(windows[0][0]+shot*AAA_BURST_INTERVAL+AAA_FLIGHT_SECONDS<=deadline+1e-8)hits++
+  }else if(site.kind==='sam') {
+    let nextFire=0,launched=0
+    for(const [enter,exit] of windows) {
+      let fire=Math.max(enter,nextFire)
+      while(fire<=exit+1e-8&&launched<profile.magazine) {
+        if(fire+SAM_FLIGHT_SECONDS<=deadline+1e-8)hits++
+        launched++;nextFire=fire+Math.max(.01,profile.cooldown);fire=nextFire
+      }
+    }
+  }
+  return hits*profile.hitChance*profile.damage
+}
 /** Expected damage integrated along every segment, including the recovery reserve. */
-export function cpuRouteRisk(route: Point[], role: Squadron['role'], sites: CpuSiteReport[], configuration?:Pick<Squadron,'aircraftTypeId'|'upgrades'>|string): number {
+export function cpuRouteRisk(route: Point[], role: Squadron['role'], sites: CpuSiteReport[], configuration?:Pick<Squadron,'aircraftTypeId'|'upgrades'>|string,impactBy?:number): number {
   let risk = 0
   for (const site of sites.filter(s => s.health > 0 && ['sam','aaa','radar'].includes(s.kind))) {
     const profile=defenseProfile(site),radius=profile?.range??radarRange(site)
+    const speed=flightSpeedFor({role,...(typeof configuration==='string'?{aircraftTypeId:configuration}:configuration)})
+    if(profile&&impactBy!==undefined){risk+=defenseDamageBy(route,speed,site,impactBy);continue}
     let inside = 0
     for (let i=1;i<route.length;i++) {
       const a=route[i-1], b=route[i], length=distance(a,b), samples=Math.max(1,Math.ceil(length/.35))
       for (let j=0;j<samples;j++) { const t=(j+.5)/samples; if(distance([a[0]+(b[0]-a[0])*t,a[1]+(b[1]-a[1])*t],site.position)<=radius) inside+=length/samples }
     }
-    const seconds=inside/flightSpeedFor({role,...(typeof configuration==='string'?{aircraftTypeId:configuration}:configuration)})
+    const seconds=inside/speed
     // Three available rounds, site-wide cooldown; stale ammunition is conservatively replenished.
     risk += site.kind === 'sam' ? (seconds>0 ? Math.min(profile!.magazine,1+seconds/Math.max(.01,profile!.cooldown))*profile!.hitChance*profile!.damage : 0) : site.kind === 'aaa' ? (inside>0?profile!.hitChance*profile!.damage*profile!.burstShots:0) : seconds*1.5
   }
@@ -147,7 +182,7 @@ export function orderRisk(view: CpuPlanningView, order: Squadron, sites=view.cpu
     const old=cells(failed.route),next=cells(order.route)
     uncertainty=(outcome.recovered?outcome.damage??0:2)*[...next].filter(c=>old.has(c)).length/Math.max(1,next.size)
   }
-  return cpuRouteRisk(route,order.role,sites,order)+Math.min(85,airRisk)+uncertainty
+  return cpuRouteRisk(route,order.role,sites,order,includeRecovery?undefined:routeDistance(order.route)/flightSpeedFor(order))+Math.min(85,airRisk)+uncertainty
 }
 export function strikeOrders(view: CpuPlanningView, fighter: Squadron, target: CpuSiteReport, work: RouteWork): Squadron[] {
   const field=formationField(view.assets,fighter.id);if(!field||!isOperationalAirfield(field)||fighter.aircraft<=0||fighter.status==='trapped')return []

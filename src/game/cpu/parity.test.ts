@@ -8,7 +8,7 @@ import { openAdaptPhase } from '../economy'
 import { MAX_FLIGHT_DISTANCE } from '../flightRules'
 import { validateRecoveryPackage } from '../forwardBasing'
 import { cpuPlanningView, cpuReportAt, prepareCpuRound } from './planner'
-import { generateActions } from './actions'
+import { generateActions, estimateBaseAttack } from './actions'
 import { discoveryAttackValue } from './strategy'
 import { collectionScorer, covers } from './search'
 import type { Squadron } from '../types'
@@ -127,6 +127,31 @@ describe('symmetric campaign rules',()=>{
     expect(settled.cpu!.formations.find(f=>f.id==='red-fighter')!.ammo).toBe(72)
     expect(applyRound(settled,result)).toBe(settled)
     expect(normalizeMatch(JSON.parse(JSON.stringify(settled))).cpu).toEqual(settled.cpu)
+  })
+  it.each([['sam',17,true],['sam',8,false],['aaa',15.7,true],['aaa',8,false]] as const)('counts %s impacts at %s before release: late=%s',(kind,x,late)=>{
+    const s=strikeScenario()
+    const defense={...s.playerAssets[0],id:'p-defense',kind,position:[x,0] as [number,number],health:100,maxHealth:100}
+    s.playerAssets.push(defense);s.cpu!.sites.push(cpuReportAt(defense,1))
+    const fighter=s.cpu!.formations[0],order={...fighter,mission:'base-strike' as const,strikeTargetId:'p-base',sortieOrdered:true,route:[[0,0],[14,0]] as Array<[number,number]>,routeIngress:[[0,0],[14,0]] as Array<[number,number]>,plannedRecoveryFieldId:'e-base'}
+    s.cpu!.plan={round:2,objective:'strike',reason:'Verify ingress impact timing.',candidates:[],orders:s.cpu!.formations.map(f=>f.id===fighter.id?order:{...f,sortieOrdered:false})}
+    const forecast=estimateBaseAttack(cpuPlanningView(s)!,order)
+    const result=resolveRound(s),strike=result.weaponEffects.find(e=>e.kind==='air-to-ground-missile'&&e.sourceId===fighter.id)!
+    const shot=result.weaponEffects.find(e=>e.kind===kind&&e.targetId===fighter.id)!
+    expect(strike).toBeDefined();expect(shot).toBeDefined()
+    if(late){expect(shot.end).toBeGreaterThan(strike.start);expect(forecast.damageNow).toBe(60);expect(strike.damage).toBe(60)}
+    else {expect(shot.end).toBeLessThan(strike.start);expect(forecast.damageNow).toBeLessThan(60)}
+  })
+  it('retains fast coordinated finishers and values return losses after a decisive release separately',()=>{
+    const s=strikeScenario(),defense={...s.playerAssets[0],id:'p-sam',kind:'sam' as const,position:[17,0] as [number,number],health:100,maxHealth:100}
+    s.playerAssets.push(defense);s.cpu!.sites.push(cpuReportAt(defense,1))
+    const ready=prepareCpuRound(s),orders=ready.cpu!.plan!.orders.filter(o=>o.mission==='base-strike'&&o.sortieOrdered!==false)
+    expect(orders).toHaveLength(2)
+    for(const o of orders)expect(o.route.reduce((n,p,i)=>n+(i?Math.hypot(p[0]-o.route[i-1][0],p[1]-o.route[i-1][1]):0),0)).toBeCloseTo(14,4)
+    const effects=ready.cpu!.plan!.trace!.chosenEffects!
+    expect(effects.expectedAircraftLoss).toBeGreaterThan(effects.ingressAircraftLoss!)
+    const result=resolveRound(ready)
+    expect(result.baseDamage).toBe(100)
+    expect(campaignOutcome(applyRound(ready,result))).toBe('home-base-destroyed')
   })
   it('preserves a legacy two-formation save without granting aircraft, condition or money',()=>{
     const s=campaign()

@@ -48,6 +48,8 @@ function fighterActions(view: CpuPlanningView, work: RouteWork, fighter: Squadro
     const uncertain=o.sortieOrdered!==false&&!witnessedFighters&&militaryWeight?militaryRegion.reduce((n,p)=>n+(covers(o.route,p.point,4.5)?p.weight:0),0)/militaryWeight*(o.role==='fighter'?60:25):0
     risk=orderRisk(view,o)+uncertain;risks.set(o,risk)
   }return risk}
+  const ingressRisks=new WeakMap<Squadron,number>()
+  const ingressRisk=(o:Squadron)=>{let value=ingressRisks.get(o);if(value===undefined){value=orderRisk(view,o,view.cpu.sites,false);ingressRisks.set(o,value)}return value}
   const confidence=(o:Squadron)=>Math.max(0,1-riskOf(o)/Math.max(25,(o.strength??100)+20))
 
   const sectors=SEARCH_SECTORS.filter(p=>distance(p,view.home)>=10)
@@ -77,7 +79,7 @@ function fighterActions(view: CpuPlanningView, work: RouteWork, fighter: Squadro
     const check=validateRecoveryPackage({playerAssets:view.assets,squadrons:orders},flightRangeFor,ids)
     if(!check.valid){work.rejected.push(`${id}: ${check.reason}`);return}
     const protectedRisk=protectedRisks(view,orders,riskOf),returnConfidence=(o:Squadron)=>Math.max(0,1-protectedRisk(o)/Math.max(25,(o.strength??100)+20))
-    const effects={...emptyEffects(),informationGain:Math.min(1,collect(orders,returnConfidence))*Math.min(1,(remaining-1)/2),expectedAircraftLoss:orders.reduce((n,o)=>n+(o.sortieOrdered===false?0:Math.min(o.aircraft,protectedRisk(o)/100*o.maxAircraft)),0),...predicted}
+    const effects={...emptyEffects(),informationGain:Math.min(1,collect(orders,returnConfidence))*Math.min(1,(remaining-1)/2),expectedAircraftLoss:orders.reduce((n,o)=>n+(o.sortieOrdered===false?0:Math.min(o.aircraft,protectedRisk(o)/100*o.maxAircraft)),0),ingressAircraftLoss:orders.reduce((n,o)=>n+(o.sortieOrdered===false?0:Math.min(o.aircraft,(o.mission==='base-strike'?ingressRisk(o):protectedRisk(o))/100*o.maxAircraft)),0),...predicted}
     packages.push({id,summary,orders,purchases:[],baseAttack,predicted:effects,checks:['shared recovery / capacity / fuel','recovered targets','one order per formation']})
   }
   add('save','Hold aircraft and preserve cash.',hold(view,fighter),{},hold(view,recon))
@@ -174,6 +176,13 @@ export function generateActions(view:CpuPlanningView,work:RouteWork):TacticalPac
       if(!categories.has(category))categories.set(category,p)
     }
     const diverse=[...categories.values()].sort((a,b)=>score(b)-score(a)||a.id.localeCompare(b.id)).slice(0,8)
+    // A fast release can become the best option only when another fighter
+    // supplies the finishing payload. Preserve it before joint evaluation.
+    const strikeTargets=[...new Set(ranked.flatMap(p=>{const o=p.orders.find(o=>o.id===fighter.id)!;return o.sortieOrdered!==false&&o.mission==='base-strike'?[o.strikeTargetId]:[]}))]
+    for(const target of strikeTargets){
+      const fastest=ranked.filter(p=>{const o=p.orders.find(o=>o.id===fighter.id)!;return o.sortieOrdered!==false&&o.mission==='base-strike'&&o.strikeTargetId===target}).sort((a,b)=>routeDistance(a.orders.find(o=>o.id===fighter.id)!.route)-routeDistance(b.orders.find(o=>o.id===fighter.id)!.route))[0]
+      if(fastest&&!diverse.includes(fastest)&&diverse.length<12)diverse.push(fastest)
+    }
     // Independent scouts can cover different regions. Keep spatial alternatives
     // until joint collection is evaluated instead of collapsing all Transit
     // scouting routes into the same single-actor mission category.
@@ -191,6 +200,8 @@ export function generateActions(view:CpuPlanningView,work:RouteWork):TacticalPac
   const witnessed=view.cpu.traffic.some(t=>t.role==='fighter'&&view.round-t.observedRound<=2)
   const risks=new WeakMap<Squadron,number>()
   const risk=(o:Squadron)=>{let value=risks.get(o);if(value===undefined){value=orderRisk(view,o)+(o.sortieOrdered!==false&&!witnessed&&total?prior.reduce((n,p)=>n+(covers(o.route,p.point,4.5)?p.weight:0),0)/total*(o.role==='fighter'?60:25):0);risks.set(o,value)}return value}
+  const ingressRisks=new WeakMap<Squadron,number>()
+  const ingressRisk=(o:Squadron)=>{let value=ingressRisks.get(o);if(value===undefined){value=orderRisk(view,o,view.cpu.sites,false);ingressRisks.set(o,value)}return value}
   const keys=[...new Set(libraries[0].map(reconKey))]
   for(const key of keys)for(const a of shortlist(libraries[0],fighters[0],key))for(const b of shortlist(libraries[1],fighters[1],key)) {
     const orders=a.orders.map(o=>o.id===fighters[1].id?b.orders.find(f=>f.id===o.id)!:o)
@@ -203,7 +214,7 @@ export function generateActions(view:CpuPlanningView,work:RouteWork):TacticalPac
     result.push({id:`joint:${a.id}|${b.id}`,summary:`${fighters[0].callsign}: ${a.summary} ${fighters[1].callsign}: ${b.summary}`,orders,purchases:[],baseAttack,discoveryPayoff,
       predicted:{...emptyEffects(),informationGain:Math.min(1,collect(orders,confidence))*Math.min(1,(6-view.round)/2),baseDamage:Math.min(1,a.predicted.baseDamage+b.predicted.baseDamage),
         ownBaseRiskReduced:Math.min(1,a.predicted.ownBaseRiskReduced+b.predicted.ownBaseRiskReduced),futureStrikeAccessGain:Math.min(1,a.predicted.futureStrikeAccessGain+b.predicted.futureStrikeAccessGain),
-        expectedAircraftLoss:orders.reduce((n,o)=>n+(o.sortieOrdered===false?0:Math.min(o.aircraft,protectedRisk(o)/100*o.maxAircraft)),0),roundsUntilPayoff:Math.max(a.predicted.roundsUntilPayoff,b.predicted.roundsUntilPayoff)},checks:a.checks})
+        expectedAircraftLoss:orders.reduce((n,o)=>n+(o.sortieOrdered===false?0:Math.min(o.aircraft,protectedRisk(o)/100*o.maxAircraft)),0),ingressAircraftLoss:orders.reduce((n,o)=>n+(o.sortieOrdered===false?0:Math.min(o.aircraft,(o.mission==='base-strike'?ingressRisk(o):protectedRisk(o))/100*o.maxAircraft)),0),roundsUntilPayoff:Math.max(a.predicted.roundsUntilPayoff,b.predicted.roundsUntilPayoff)},checks:a.checks})
   }
   return result
 }

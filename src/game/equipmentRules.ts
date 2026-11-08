@@ -1,6 +1,10 @@
 import type { Asset } from './types'
 import { modifiedStat } from './upgrades'
 
+export const SAM_FLIGHT_SECONDS=1.05
+export const AAA_FLIGHT_SECONDS=.5
+export const AAA_BURST_INTERVAL=.14
+
 export interface DefenseProfile { range: number; hitChance: number; damage: number; magazine: number; burstShots: number; cooldown: number }
 
 const SAM_BASE: DefenseProfile = { range: 3.2, hitChance: .64, damage: 38, magazine: 3, burstShots: 1, cooldown: 3 }

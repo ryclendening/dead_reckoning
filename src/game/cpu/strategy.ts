@@ -57,18 +57,21 @@ export function contribution(view:CpuPlanningView,p:TacticalPackage):Record<stri
   // every remaining Logistics point on capacity beyond the immediate need.
   const protection=(1-Math.exp(-3*e.ownBaseRiskReduced))*(.6+.4*(100-health)/100)
   const operation=baseAttackValue(view,p)
+  const base=view.cpu.sites.find(s=>s.kind==='base'&&s.health>0)
+  const finishesNow=!!base&&e.baseDamage>0&&!!p.baseAttack&&p.baseAttack.damageNow>=base.health
+  const resourceLoss=finishesNow?(e.ingressAircraftLoss??e.expectedAircraftLoss):e.expectedAircraftLoss
   const collecting=p.baseAttack&&e.baseDamage===0&&!p.orders.some(o=>o.mission==='base-strike'&&o.sortieOrdered!==false)
   const components = {
     strike:e.baseDamage>0?operation:0,
     survival:protection,
-    discovery:e.informationGain*(view.cpu.sites.some(s=>s.kind==='base'&&s.health>0)?.85:(p.discoveryPayoff??discoveryAttackValue(view)))*horizon,
+    discovery:finishesNow?0:e.informationGain*(view.cpu.sites.some(s=>s.kind==='base'&&s.health>0)?.85:(p.discoveryPayoff??discoveryAttackValue(view)))*horizon,
     // A concrete base operation already includes the follow-through. Do not
     // count suppression's risk reduction again as an independent reward.
     access:p.baseAttack?collecting||e.baseDamage>0?0:operation:e.futureStrikeAccessGain*.85*horizon,
     // Concrete operations already lose value through ingress damage, reduced
     // follow-up capability or failed report recovery. Keep a residual resource
     // cost without charging the old full penalty a second time.
-    attrition:-e.expectedAircraftLoss*(p.baseAttack||view.round===6?.12:.26),
+    attrition:-resourceLoss*(p.baseAttack||view.round===6?.12:.26),
     spending:-e.logisticsSpent/Math.max(10,view.cpu.logistics)*.18,
     delay:-e.roundsUntilPayoff/Math.max(1,remaining)*.04,
   }

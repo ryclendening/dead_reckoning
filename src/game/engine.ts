@@ -12,7 +12,7 @@ import { validateGroundStrikeOrder, validateStrikeGeometry } from './routeTempla
 import { facingAfterMove } from './heading'
 import { aircraftAtStrength, EXECUTION_SECONDS, MAX_FLIGHT_DISTANCE, flightRangeFor, flightSpeedFor, missionDistance, routeDistance } from './flightRules'
 import { aircraftSensorRange, aircraftType } from './aircraftTypes'
-import { defenseProfile, radarRange, RADAR_BASE_RANGE } from './equipmentRules'
+import { defenseProfile, radarRange, RADAR_BASE_RANGE, SAM_FLIGHT_SECONDS, AAA_FLIGHT_SECONDS, AAA_BURST_INTERVAL } from './equipmentRules'
 import { cpuFlights, cpuReportAt } from './cpu/planner'
 import { settleCpuRound } from './cpu/settlement'
 import type { CpuSiteReport, CpuTraffic } from './cpu/types'
@@ -547,7 +547,7 @@ function* simulateRoundTicks(state:MatchState):Generator<RoundResult,RoundResult
       }
       const kind:WeaponKind=asset.kind,shots=profile.burstShots
       for(let shot=0;shot<shots;shot++){
-        const start=time+shot*.14,hit=rand(roll++)<profile.hitChance,amount=hit?kind==='sam'?profile.damage:Math.round(profile.damage-3+rand(roll++)*6):0,effect:WeaponEffect={id:`weapon-${effects.length}`,kind,sourceId:asset.id,targetId:target.id,start,end:start+(kind==='sam'?1.05:.5),from:[...asset.position],to:kind==='aaa'?[target.position[0]+(rand(roll++)-.5)*.55,target.position[1]+(rand(roll++)-.5)*.55]:[...target.position],hit,damage:amount}
+        const start=time+shot*AAA_BURST_INTERVAL,hit=rand(roll++)<profile.hitChance,amount=hit?kind==='sam'?profile.damage:Math.round(profile.damage-3+rand(roll++)*6):0,effect:WeaponEffect={id:`weapon-${effects.length}`,kind,sourceId:asset.id,targetId:target.id,start,end:start+(kind==='sam'?SAM_FLIGHT_SECONDS:AAA_FLIGHT_SECONDS),from:[...asset.position],to:kind==='aaa'?[target.position[0]+(rand(roll++)-.5)*.55,target.position[1]+(rand(roll++)-.5)*.55]:[...target.position],hit,damage:amount}
         effects.push(effect)
         const exchange:CombatExchange={id:`defense-${effects.length}`,time:effect.end,attackerId:asset.id,defenderId:target.id,weapon:kind,damage:amount,moraleDamage:hit?(kind==='sam'?amount*.45:8):0,hit,position:[...target.position],targetStrength:target.strength,targetMorale:target.morale}
         pendingImpacts.push({effect,impactTime:effect.end,exchange})

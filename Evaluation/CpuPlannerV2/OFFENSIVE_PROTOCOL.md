@@ -106,3 +106,29 @@ three-formation baseline; use the archived before-parity v2 rows for this test.
 All three difficulties and the non-attacking control remain reported. Run the
 registered fresh cohort only after development passes, without tuning the frozen
 candidate on those results. Opponents are fixed scripts, not human players.
+
+## Validation cohort 1 used for further development — 2026-11-08
+
+The frozen `36ed6f9` candidate scored 42/60 (70%) on Easy on the registered
+263–809 cohort, missing the strict >70% gate. Its complete results are retained;
+Medium scored 46/60 (76.7%) and Hard 44/60 (73.3%). This cohort now informs the next revision
+and must not be described as untouched validation for that revision.
+
+The next untouched cohort is registered before use: **853, 907, 953, 1009, 1061,
+1109, 1153, 1201, 1259, 1307, 1361, 1409**. Run every seed against every attacking
+policy on all three difficulties only after the revised candidate passes the
+expanded development comparison. Report failures and controls separately. Do
+not pool an exposed development cohort with the next untouched cohort to pass
+the gate.
+
+
+## Freeze after anti-overfitting instruction — 2026-11-08
+
+The user explicitly requested avoiding overoptimization to these cases. The
+release-timing/terminal-package candidate is frozen with unchanged difficulty
+budgets and seeded Easy choice. Registered cohort 2 is run exactly once, with
+all outcomes reported separately. Its result ends this evaluation regardless
+of whether every difficulty exceeds 70%. No further tuning, seed selection,
+opponent changes, or pooling is permitted to obtain a passing headline. An
+isolated Easy effort experiment was cancelled and never adopted; incomplete
+progress is not a measured rate.

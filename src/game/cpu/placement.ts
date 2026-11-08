@@ -1,4 +1,4 @@
-import { defenseProfile } from '../equipmentRules'
+import { defenseProfile, SAM_FLIGHT_SECONDS, AAA_FLIGHT_SECONDS, AAA_BURST_INTERVAL } from '../equipmentRules'
 import { flightRangeFor } from '../flightRules'
 import { BASE_STRIKE_RANGE } from '../campaign'
 import { SAM_MISSILES_PER_ROUND, SAM_COOLDOWN_SECONDS } from '../airDefense'
@@ -29,8 +29,8 @@ function approachDamage(view:CpuPlanningView,point:Point,kind:'sam'|'aaa',angle:
   if(lateral>radius)return 0
   const reach=Math.sqrt(radius*radius-lateral*lateral),enter=Math.min(20,along+reach),exit=Math.max(BASE_STRIKE_RANGE,along-reach)
   const time=(enter-BASE_STRIKE_RANGE)/(40/22),last=(enter-exit)/(40/22)
-  if(enter<BASE_STRIKE_RANGE||time<(kind==='sam'?1.05:.5))return 0
-  const shots=kind==='sam'?Math.min(profile.magazine,1+Math.floor(Math.min(time-1.05,last)/Math.max(.01,profile.cooldown))):Math.min(profile.burstShots,1+Math.floor((time-.5)/.14))
+  if(enter<BASE_STRIKE_RANGE||time<(kind==='sam'?SAM_FLIGHT_SECONDS:AAA_FLIGHT_SECONDS))return 0
+  const shots=kind==='sam'?Math.min(profile.magazine,1+Math.floor(Math.min(time-SAM_FLIGHT_SECONDS,last)/Math.max(.01,profile.cooldown))):Math.min(profile.burstShots,1+Math.floor((time-AAA_FLIGHT_SECONDS)/AAA_BURST_INTERVAL))
   return shots*profile.hitChance*profile.damage
 }
 function approachSurvival(view:CpuPlanningView,angle:number,extra?:{point:Point;kind:'sam'|'aaa'}):number {
