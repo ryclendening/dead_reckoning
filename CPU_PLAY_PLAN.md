@@ -285,3 +285,19 @@ The user explicitly requested equal CPU/player opening conditions and selected d
 The tactical library runs the same fighter capabilities for both fighters and combines a bounded diverse set into legal joint packages sharing one recon order. It supports coordinated strikes and simultaneous different missions, caps aggregate estimated damage at recovered target health, and validates the entire recovery package. Strategic goals and combat rules remain shared. No opponent simulation or difficulty combat bonuses were added.
 
 The before/after parity evaluation uses the same registered development seeds and unchanged competitive player scripts as the last routing comparison. This measures the combined effect of corrected starting conditions, equal strike eligibility and a planner capable of using the matching inventory; it does not isolate each change’s causal contribution. Draws are excluded from CPU wins. Fresh holdout seeds remain distinct from development seeds.
+
+### Joint capability and discovery follow-up
+
+Joint pruning retains different scouting regions, using the farthest point of a
+return loop rather than its home endpoint. Single and joint packages share the
+same escort coverage effect on air-threat collection risk; protection does not
+remove known ground-defense risk. Escort capabilities may compete against
+public opening-force uncertainty without manufacturing observed fighter data.
+The strategic discovery estimate uses currently surviving, operationally based
+fighter payload and discounted future completion before the deadline, rather
+than one fixed information reward. Observed fighter pressure can make early
+strike release valuable even at 100 home health. CPU recon may preserve itself
+on actual incoming fighter fire before impact, without inspecting its future
+hit or damage roll. A distant sighting alone need not end collection.
+These are planner/controller decisions using existing actions, not new combat
+rules. Their evaluation is separate from the frozen parity-only comparison.

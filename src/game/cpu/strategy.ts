@@ -1,3 +1,5 @@
+import { BASE_STRIKE_DAMAGE } from '../campaign'
+import { formationField, isOperationalAirfield } from '../forwardBasing'
 import type { CpuPlanningView } from './planningView'
 import type { CpuDecisionTrace, CpuIntent, TacticalPackage } from './types'
 
@@ -21,6 +23,20 @@ export function baseAttackValue(view:CpuPlanningView,p:TacticalPackage):number {
   // recovery does not delay the current payload; ingress time does.
   return value*(attack.confidence??1)/(1+attack.releaseSeconds/100)
 }
+/** Value a recovered discovery by the currently owned strike capability it
+ * could enable next round. Public opening geography is within fighter reach;
+ * a subsequently recovered outlying target still needs real routes/staging. */
+export function discoveryAttackValue(view:CpuPlanningView):number {
+  const payload=view.cpu.formations.filter(f=>f.role==='fighter'&&f.aircraft>0&&f.status!=='trapped'&&view.assets.some(a=>a.id===formationField(view.assets,f.id)?.id&&isOperationalAirfield(a)))
+    .reduce((n,f)=>n+Math.round(BASE_STRIKE_DAMAGE*(f.strength??100)/100),0)
+  let health=100,value=0
+  for(let offset=1;offset<7-view.round;offset++) {
+    const damage=Math.min(health,payload)
+    value+=damage/100*.72**offset;health-=damage
+    if(health<=0){value+=.75*.72**offset;break}
+  }
+  return value
+}
 function advances(view:CpuPlanningView,intent:CpuIntent,p:TacticalPackage):boolean {
   const e=p.predicted, c=contribution(view,p)
   switch(intent) {
@@ -30,7 +46,7 @@ function advances(view:CpuPlanningView,intent:CpuIntent,p:TacticalPackage):boole
     case 'forward-position':return e.futureStrikeAccessGain>0&&(p.orders.some(o=>o.mission==='transit'&&o.sortieOrdered!==false)||p.purchases.some(c=>c.actionId==='build-fob'||c.actionId==='repair-fob'))
     case 'suppress-defenses':return e.futureStrikeAccessGain>0&&p.orders.some(o=>o.mission==='base-strike'&&e.baseDamage===0)
     case 'strike-base':return e.baseDamage>0
-    case 'contest-air':return p.orders.some(o=>o.mission==='forward-patrol'&&o.sortieOrdered!==false)
+    case 'contest-air':return e.baseDamage===0&&p.orders.some(o=>o.mission==='forward-patrol'&&o.sortieOrdered!==false)
   }
 }
 /** All goals use the same measured effects and common campaign contribution scale. */
@@ -45,7 +61,7 @@ export function contribution(view:CpuPlanningView,p:TacticalPackage):Record<stri
   const components = {
     strike:e.baseDamage>0?operation:0,
     survival:protection,
-    discovery:e.informationGain*.85*horizon,
+    discovery:e.informationGain*(view.cpu.sites.some(s=>s.kind==='base'&&s.health>0)?.85:discoveryAttackValue(view))*horizon,
     // A concrete base operation already includes the follow-through. Do not
     // count suppression's risk reduction again as an independent reward.
     access:p.baseAttack?collecting||e.baseDamage>0?0:operation:e.futureStrikeAccessGain*.85*horizon,

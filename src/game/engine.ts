@@ -475,7 +475,8 @@ function* simulateRoundTicks(state:MatchState):Generator<RoundResult,RoundResult
       const fighterSeen=current.get(recon.id)?.some(contact=>contact.source==='visual'&&contact.target.role==='fighter')
       const usefulReport=[...(cpuSites.get(recon.id)?.values()??[])].some(site=>{const known=state.cpu!.sites.find(s=>s.id===site.id);return site.kind==='base'&&!known||!!state.cpu!.sites.find(s=>s.kind==='base')&&(!known||Math.abs(site.health-(known.health-(known.estimatedDamage??0)))>1)})
       const baseReport=[...(cpuSites.get(recon.id)?.values()??[])].some(site=>site.kind==='base'&&!state.cpu!.sites.some(s=>s.id===site.id))
-      if(baseReport||(fighterSeen&&(usefulReport||recon.strength<65))||recon.strength<40){recon.recoveryCommanded=true;const homeField=assets.find(a=>a.kind==='base'&&isOperationalAirfield(a));if(homeField&&distance(recon.position,homeField.position)<=MAX_FLIGHT_DISTANCE.recon-recon.traveled+.001){recon.recoveryFieldId=homeField.id;claim(recon,homeField.id)}transition(recon,'recovering',time,'cpu-preserve-recon')}
+      const incomingFighterFire=pendingImpacts.some(p=>p.effect.targetId===recon.id&&(p.effect.kind==='air-to-air-missile'||p.effect.kind==='gun'))
+      if(baseReport||(fighterSeen&&(usefulReport||recon.strength<65||incomingFighterFire))||recon.strength<40){recon.recoveryCommanded=true;const homeField=assets.find(a=>a.kind==='base'&&isOperationalAirfield(a));if(homeField&&distance(recon.position,homeField.position)<=MAX_FLIGHT_DISTANCE.recon-recon.traveled+.001){recon.recoveryFieldId=homeField.id;claim(recon,homeField.id)}transition(recon,'recovering',time,'cpu-preserve-recon')}
     }
     // 4-5: shared reaction priority, pursuit, and direct combat. A formation
     // may belong to only one engagement; independent pairs can fight at once.

@@ -9,6 +9,7 @@ import { MAX_FLIGHT_DISTANCE } from '../flightRules'
 import { validateRecoveryPackage } from '../forwardBasing'
 import { cpuPlanningView, cpuReportAt, prepareCpuRound } from './planner'
 import { generateActions } from './actions'
+import { discoveryAttackValue } from './strategy'
 import type { CpuDifficulty } from './types'
 
 function campaign(difficulty:CpuDifficulty='hard') {
@@ -60,6 +61,41 @@ describe('symmetric campaign rules',()=>{
     const packages=generateActions(view,{expansions:0,rejected:[]})
     expect(packages.some(p=>p.orders.some(o=>o.sortieOrdered!==false&&o.mission==='base-strike')&&p.orders.some(o=>o.role==='fighter'&&o.sortieOrdered!==false&&o.mission==='defensive-cap'))).toBe(true)
     for(const p of packages)expect(new Set(p.orders.map(o=>o.id)).size).toBe(3)
+  })
+  it('retains independent collection regions until the complete aircraft package is scored',()=>{
+    const s=strikeScenario();s.cpu!.sites=[]
+    const packages=generateActions(cpuPlanningView(s)!,{expansions:0,rejected:[]})
+    expect(packages.some(p=>{
+      const scouts=p.orders.filter(o=>o.role==='fighter'&&o.sortieOrdered!==false&&o.mission==='transit')
+      if(scouts.length!==2)return false
+      const station=(o:typeof scouts[number])=>o.route.reduce((a,b)=>Math.hypot(b[0],b[1])>Math.hypot(a[0],a[1])?b:a)
+      const a=station(scouts[0]),b=station(scouts[1])
+      return Math.hypot(a[0]-b[0],a[1]-b[1])>3.5
+    })).toBe(true)
+  })
+  it('values discovery by surviving strike capability and the remaining deadline',()=>{
+    const view=cpuPlanningView(strikeScenario())!;view.cpu.sites=[]
+    const coordinated=discoveryAttackValue(view)
+    view.cpu.formations=view.cpu.formations.filter(f=>f.id!=='red-fighter-2')
+    expect(discoveryAttackValue(view)).toBeLessThan(coordinated)
+    expect(discoveryAttackValue(view)).toBeGreaterThan(0)
+    view.round=6
+    expect(discoveryAttackValue(view)).toBe(0)
+    view.round=2;view.assets=view.assets.map(a=>({...a,health:0}))
+    expect(discoveryAttackValue(view)).toBe(0)
+  })
+  it('returns on an observed incoming fighter shot before impact without knowing its hit roll',()=>{
+    const s=strikeScenario();s.cpu!.sites=[]
+    s.playerAssets=s.playerAssets.map(a=>({...a,position:[30,0]}))
+    s.squadrons=s.squadrons.map(f=>({...f,sortieOrdered:f.id==='viper',mission:'forward-patrol',route:[[30,0],[8,0],[30,0]],routeIngress:[[30,0],[8,0]],plannedRecoveryFieldId:'p-base'}))
+    s.cpu!.plan={round:2,objective:'defend',reason:'Collect under a locally observed threat.',candidates:[],orders:s.cpu!.formations.map(f=>({...f,sortieOrdered:f.role==='recon',route:[[0,0],[20,0],[0,0]],routeIngress:[[0,0],[20,0]],plannedRecoveryFieldId:'e-base'}))}
+    const result=resolveRound(s)
+    const shot=result.weaponEffects.find(e=>e.kind==='air-to-air-missile'&&e.targetId==='red-recon')!
+    const retreat=result.behaviorIntervals.find(i=>i.unitId==='red-recon'&&i.reason==='cpu-preserve-recon')!
+    expect(shot).toBeDefined();expect(retreat).toBeDefined()
+    expect(retreat.start).toBeGreaterThan(shot.start)
+    expect(retreat.start).toBeLessThan(shot.end)
+    expect(result.cpuReport!.sites.some(s=>s.kind==='base')).toBe(false)
   })
   it('preserves a legacy two-formation save without granting aircraft, condition or money',()=>{
     const s=campaign()
