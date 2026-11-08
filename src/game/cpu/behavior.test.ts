@@ -184,6 +184,17 @@ describe('CPU v2 behavioral acceptance',()=>{
     expect(campaignOutcome(s)).toBe('home-base-destroyed')
     expect(s.round).toBeLessThanOrEqual(5)
   })
+  it('evaluates complete striker restoration even when useful SAM prefixes compete for the beam',()=>{
+    const s=setup();s.round=1;s.baseExposure=46;s.cpu!.reserves=3;s.cpu!.logistics=24
+    s.cpu!.formations[0]={...s.cpu!.formations[0],aircraft:0,strength:0,status:'destroyed'}
+    s.cpu!.mappedAreas=[[8,0],[10,0],[8,3]]
+    s.cpu!.traffic=[{identity:'VIPER 1',role:'fighter',position:[8,0],observedRound:1,source:'visual',strength:100,bearing:0}]
+    const adapted=maintainCpu(s)
+    expect(adapted.cpu!.formations[0]).toMatchObject({aircraft:3,strength:75})
+    expect(adapted.cpu!.spending.filter(c=>c.action==='replace-aircraft')).toHaveLength(3)
+    expect(adapted.cpu!.adaptTrace!.alternatives.some(a=>a.baseAttack?.followupDamage&&a.baseAttack.followupDamage>=40)).toBe(true)
+    expect(s.cpu!.formations[0].aircraft).toBe(0)
+  })
 
   it('changes a damaging strike approach after repairs while retaining the same objective',()=>{
     const s=setup();s.playerAssets[0].health=40;s.playerBaseHealth=40;s.cpu!.sites[0].health=40

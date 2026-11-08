@@ -94,7 +94,7 @@ export function playerRtbCommands(s:MatchState,live:RoundResult,nextTick:number)
     const frame=live.unitTracks.find(t=>t.unitId===f.id)?.frames.at(-1)
     if(!frame||['recovered','destroyed','grounded','trapped','recovering'].includes(frame.mode))continue
     const seenBase=live.assets.some(a=>a.kind==='base'&&distance(a.position,frame.position)<=FIXED_ASSET_OBSERVATION_RANGE)
-    const threatened=live.threatAlerts.some(t=>t.unitId===f.id)
+    const threatened=live.threatAlerts!.some(t=>t.unitId===f.id)
     if(seenBase||frame.strength<50||threatened&&frame.traveledDistance>8)commands.push({id:`script-rtb-r${s.round}-${f.id}`,unitId:f.id,type:'rtb',issuedAtTick:nextTick})
   }
   return commands

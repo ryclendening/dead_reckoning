@@ -223,3 +223,16 @@ from the historical fixed scripts. It includes fighter collection, online player
 recon RTB after legitimate local observation/threat, known-SAM strike avoidance,
 and approach-oriented paid SAM placement. These remain scripts, and a no-strike
 match is reported explicitly rather than assumed to prove competitive success.
+
+
+Purchase search also seeds each formation's up-to-four-command legal restoration
+sequence into the appropriate beam depths. These remain optional scored actions;
+they prevent an initially weak replacement from pruning a fully affordable,
+useful striker. Concrete attack estimates retain a reduced residual aircraft-loss
+penalty because payload/return capability already accounts for damage risk.
+
+Latest development results before the route-search revision: against
+`competitive-v1`, base kills are Easy 16/30, Medium 15/30, Hard 15/30. The prior
+v2 commit `f7f9998` scored 12/30, 11/30, 13/30 against the same opponents.
+The historical fixed suite scores 18/30, 20/30, 16/30. **The >70% gate is not met.**
+These are reused development seeds, not holdout evidence or human playtests.

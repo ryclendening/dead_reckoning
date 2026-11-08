@@ -51,7 +51,10 @@ export function contribution(view:CpuPlanningView,p:TacticalPackage):Record<stri
     // A concrete base operation already includes the follow-through. Do not
     // count suppression's risk reduction again as an independent reward.
     access:p.baseAttack?collecting||e.baseDamage>0?0:operation:e.futureStrikeAccessGain*.85*horizon,
-    attrition:-e.expectedAircraftLoss*(view.round===6?.12:.26),
+    // Concrete operations already lose value through ingress damage, reduced
+    // follow-up capability or failed report recovery. Keep a residual resource
+    // cost without charging the old full penalty a second time.
+    attrition:-e.expectedAircraftLoss*(p.baseAttack||view.round===6?.12:.26),
     spending:-e.logisticsSpent/Math.max(10,view.cpu.logistics)*.18,
     delay:-e.roundsUntilPayoff/Math.max(1,remaining)*.04,
   }

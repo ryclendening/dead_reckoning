@@ -31,8 +31,28 @@ export function planPurchases(view:CpuPlanningView):ReturnType<typeof choosePack
   const original=view, nextRound={...view,round:view.round+1}
   type Node={ctx:SidePlanningContext;commands:EconomyCommand[];coverage:number;forward:number}
   let beam:Node[]=[{ctx:view.context,commands:[],coverage:0,forward:0}]
+  // A dead formation may need several paid replacements before it has any
+  // useful mission. Preserve these few complete restoration candidates even
+  // when a cheap defensive prefix would evict them from the ordinary beam.
+  // They use the same quotes/commands and still compete on actual packages.
+  const serviceSeeds=new Map<number,Node[]>()
+  for(const formation of view.context.formations) {
+    let node=beam[0]
+    for(let count=1;count<=profile.purchases;count++) {
+      const quote=economyQuotesFor(node.ctx,{kind:'squadron',id:formation.id})
+        .filter(q=>q.eligible&&(q.id==='repair-formation'||q.id==='replace-aircraft')).sort((a,b)=>a.cost-b.cost||a.id.localeCompare(b.id))[0]
+      if(!quote)break
+      const command:EconomyCommand={actionId:quote.id,target:quote.target,expectedCost:quote.cost,expectedLogistics:node.ctx.logistics,expectedReserveAircraft:node.ctx.reserves}
+      const ctx=executeEconomyCommand(node.ctx,command)
+      if(ctx===node.ctx)break
+      node={...node,ctx,commands:[...node.commands,command]}
+      serviceSeeds.set(count,[...(serviceSeeds.get(count)??[]),node])
+    }
+  }
   const utility=(p:TacticalPackage)=>Object.values(contribution(nextRound,p)).reduce((a,b)=>a+b,0)
   for(let depth=0;depth<=profile.purchases;depth++) {
+    const seeds=serviceSeeds.get(depth)??[]
+    for(const seed of seeds)if(!beam.some(n=>JSON.stringify(n.commands)===JSON.stringify(seed.commands)))beam.push(seed)
     const scored:Array<{node:Node;score:number}>=[]
     for(const node of beam) {
       const current=withContext(nextRound,node.ctx)
