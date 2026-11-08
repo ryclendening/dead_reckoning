@@ -2,6 +2,7 @@ import type { ConstructibleAssetKind, EconomyActionId, EconomyActionQuote, Econo
 import { normalizeFormationBasing, formationField } from './forwardBasing'
 import { campaignOutcome, campaignOutcomePhase } from './campaign'
 import { maintainCpu, planNextCpuRound } from './cpu/settlement'
+import { modifiedStat } from './upgrades'
 import { LOGISTICS_EFFECTS } from './economyRules'
 import { sidePlanningContext, applySideContext } from './sideContext'
 import * as shared from './sideEconomy'
@@ -17,9 +18,9 @@ export function executeEconomyCommand(s: MatchState, c: EconomyCommand): MatchSt
   return ctx === next ? s : applySideContext(s, next)
 }
 export const purchaseEconomyAction = (s: MatchState, actionId: EconomyActionId, target: EconomyTarget) => executeEconomyCommand(s, { actionId, target })
-const hasUpgrade = (state: MatchState, id: string) => state.playerAssets.find(a => a.kind === 'base')?.upgrades?.includes(id as 'supply-depot')
+const baseAsset=(state:MatchState)=>state.playerAssets.find(a=>a.kind==='base')
 export function deriveLogisticsIncome(state: MatchState, result: Pick<RoundResult, 'enemyLosses' | 'intelReports'>): LogisticsIncome {
-  const base = LOGISTICS_EFFECTS.baseIncome + (hasUpgrade(state, 'supply-depot') ? LOGISTICS_EFFECTS.supplyDepotIncome : 0)
+  const base = modifiedStat(baseAsset(state), 'economy.baseIncome', LOGISTICS_EFFECTS.baseIncome)
   const intel = result.intelReports.filter(report => report.recovered).length * LOGISTICS_EFFECTS.intelRecovery
   const enemyAircraft = result.enemyLosses * LOGISTICS_EFFECTS.confirmedEnemyAircraft
   return { base, intel, enemyAircraft, total: base + intel + enemyAircraft }

@@ -1,9 +1,11 @@
+import { defenseProfile } from '../equipmentRules'
+import { flightRangeFor } from '../flightRules'
 import { BASE_STRIKE_RANGE } from '../campaign'
 import { SAM_MISSILES_PER_ROUND, SAM_COOLDOWN_SECONDS } from '../airDefense'
 import { axialToPoint } from '../hex'
 import { validateAssetPlacement } from '../sideEconomy'
 import { formationField, isOperationalAirfield } from '../forwardBasing'
-import type { ConstructibleAssetKind, Point } from '../types'
+import type { Asset, ConstructibleAssetKind, Point } from '../types'
 import type { CpuPlanningView } from './planningView'
 import { distance, cpuRouteRisk } from './routes'
 
@@ -20,19 +22,19 @@ export function observedThreat(view: CpuPlanningView): number {
 }
 /** Expected strength removed before a radial six-unit strike release. A site
  * beyond the release ring can deliver another volley; a late hit cannot stop it. */
-function approachDamage(view:CpuPlanningView,point:Point,kind:'sam'|'aaa',angle:number):number {
+function approachDamage(view:CpuPlanningView,point:Point,kind:'sam'|'aaa',angle:number,upgrades?:Asset['upgrades']):number {
   const dx=point[0]-view.home[0],dy=point[1]-view.home[1]
   const along=dx*Math.cos(angle)+dy*Math.sin(angle), lateral=Math.abs(-dx*Math.sin(angle)+dy*Math.cos(angle))
-  const radius=kind==='sam'?3.2:1.9
+  const profile=defenseProfile({kind,upgrades})!,radius=profile.range
   if(lateral>radius)return 0
   const reach=Math.sqrt(radius*radius-lateral*lateral),enter=Math.min(20,along+reach),exit=Math.max(BASE_STRIKE_RANGE,along-reach)
   const time=(enter-BASE_STRIKE_RANGE)/(40/22),last=(enter-exit)/(40/22)
-  if(enter<BASE_STRIKE_RANGE||time<(kind==='sam'?1.05:.34))return 0
-  const shots=kind==='sam'?Math.min(SAM_MISSILES_PER_ROUND,1+Math.floor(Math.min(time-1.05,last)/SAM_COOLDOWN_SECONDS)):1
-  return shots*(kind==='sam'?.64*38:.52*13)
+  if(enter<BASE_STRIKE_RANGE||time<(kind==='sam'?1.05:.5))return 0
+  const shots=kind==='sam'?Math.min(profile.magazine,1+Math.floor(Math.min(time-1.05,last)/Math.max(.01,profile.cooldown))):Math.min(profile.burstShots,1+Math.floor((time-.5)/.14))
+  return shots*profile.hitChance*profile.damage
 }
 function approachSurvival(view:CpuPlanningView,angle:number,extra?:{point:Point;kind:'sam'|'aaa'}):number {
-  const damage=view.assets.filter(a=>a.health>0&&a.operational!==false&&(a.kind==='sam'||a.kind==='aaa')).reduce((n,a)=>n+approachDamage(view,a.position,a.kind as 'sam'|'aaa',angle),0)+(extra?approachDamage(view,extra.point,extra.kind,angle):0)
+  const damage=view.assets.filter(a=>a.health>0&&a.operational!==false&&(a.kind==='sam'||a.kind==='aaa')).reduce((n,a)=>n+approachDamage(view,a.position,a.kind as 'sam'|'aaa',angle,a.upgrades),0)+(extra?approachDamage(view,extra.point,extra.kind,angle):0)
   // The opening opponent has two fighter formations. Coverage is shared capacity,
   // rather than assuming every missile protects against every aircraft at once.
   return Math.max(0,1-damage/200)
@@ -76,18 +78,20 @@ export function legalPlacements(view: CpuPlanningView, kind: ConstructibleAssetK
 /** Improvement to a named next sortie, after one real Transit round. */
 export function forwardValue(view: CpuPlanningView, point: Point): { gain: number; target: Point; name: string } | undefined {
   if(view.round>=5)return undefined // Adapt r4 -> transit r5 -> operation r6 is last useful build.
-  const fighter=view.cpu.formations.find(f=>f.role==='fighter')!, field=formationField(view.assets,fighter.id)
-  if(!field||!isOperationalAirfield(field)||fighter.aircraft<=0||distance(field.position,point)>40||distance(view.home,point)>40)return undefined
   const targets=view.cpu.sites.filter(s=>s.health>0&&s.kind==='base').map(s=>({position:s.position,name:s.id,health:s.health}))
   if(!targets.length)return undefined // No infrastructure justified by an unnamed hypothetical target.
   let best:ReturnType<typeof forwardValue>
-  for(const target of targets) {
+  for(const fighter of view.cpu.formations.filter(f=>f.role==='fighter'&&f.aircraft>0)) {
+    const field=formationField(view.assets,fighter.id),range=flightRangeFor(fighter)
+    if(!field||!isOperationalAirfield(field)||distance(field.position,point)>range||distance(view.home,point)>range)continue
+    for(const target of targets) {
     const current=Math.max(0,distance(field.position,target.position)-BASE_STRIKE_RANGE)*2, next=Math.max(0,distance(point,target.position)-BASE_STRIKE_RANGE)*2
     const release=(from:Point):Point=>{const d=Math.max(.001,distance(from,target.position)),t=Math.max(0,d-BASE_STRIKE_RANGE)/d;return [from[0]+(target.position[0]-from[0])*t,from[1]+(target.position[1]-from[1])*t]}
-    const riskBefore=cpuRouteRisk([field.position,release(field.position),field.position],'fighter',view.cpu.sites),riskAfter=cpuRouteRisk([point,release(point),point],'fighter',view.cpu.sites)
+    const riskBefore=cpuRouteRisk([field.position,release(field.position),field.position],'fighter',view.cpu.sites,fighter),riskAfter=cpuRouteRisk([point,release(point),point],'fighter',view.cpu.sites,fighter)
     const effect=Math.min(1,60*(fighter.strength??100)/100/Math.max(1,target.health))
-    const gain=current>40&&next<=40?effect:next<=40&&riskBefore-riskAfter>20?effect*(riskBefore-riskAfter)/100:0
+    const gain=current>range&&next<=range?effect:next<=range&&riskBefore-riskAfter>20?effect*(riskBefore-riskAfter)/100:0
     if(gain>0&&(!best||gain>best.gain))best={gain,target:target.position,name:target.name}
+  }
   }
   return best
 }

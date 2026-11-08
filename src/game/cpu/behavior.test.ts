@@ -258,20 +258,21 @@ describe('CPU v2 behavioral acceptance',()=>{
     expect(score(orders,o=>o.role==='recon'?.5:0)).toBe(.5)
   })
 
-  it('builds, transits and uses a FOB to enable a previously unreachable strike',()=>{
+  it.each(['red-fighter','red-fighter-2'])('builds, transits and uses a FOB for %s to enable a previously unreachable strike',fighterId=>{
     let s=setup([0,0],[33,0]);s.round=1;s.cpu!.mappedAreas=[[9,0],[10,0]]
-    expect(planCpu(cpuPlanningView(s)!).orders[0].strikeTargetId).toBeUndefined()
+    if(fighterId==='red-fighter-2'){s.cpu!.formations.push({...s.cpu!.formations[0],id:fighterId,callsign:'BOGEY 2'});s.cpu!.formations[0]={...s.cpu!.formations[0],aircraft:0,strength:0,status:'destroyed'};s.cpu!.reserves=0}
+    expect(planCpu(cpuPlanningView(s)!).orders.find(o=>o.id===fighterId)!.strikeTargetId).toBeUndefined()
     s=maintainCpu(s)
     const fob=s.enemyAssets.find(a=>a.kind==='fob')
     expect(fob).toBeDefined()
     s=beginNextRound(s)
-    expect(s.cpu!.plan!.orders[0].mission).toBe('transit')
+    expect(s.cpu!.plan!.orders.find(o=>o.id===fighterId)!.mission).toBe('transit')
     legal(s)
     const r=resolveRound(s);s=applyRound(s,r)
-    expect(formationField(s.enemyAssets,'red-fighter')!.id).toBe(fob!.id)
+    expect(formationField(s.enemyAssets,fighterId)!.id).toBe(fob!.id)
     s=beginNextRound(openAdaptPhase(s));legal(s)
-    expect(s.cpu!.plan!.orders[0].route[0]).toEqual(fob!.position)
-    expect(s.cpu!.plan!.orders[0].strikeTargetId).toBe('p-base')
+    expect(s.cpu!.plan!.orders.find(o=>o.id===fighterId)!.route[0]).toEqual(fob!.position)
+    expect(s.cpu!.plan!.orders.find(o=>o.id===fighterId)!.strikeTargetId).toBe('p-base')
     expect(resolveRound(s).baseDamage).toBe(60)
   })
 })

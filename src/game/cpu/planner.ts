@@ -12,7 +12,7 @@ export { CPU_PROFILES, cpuRouteRisk } from './routes'
 const copy=(p:Point):Point=>[...p]
 export function createCpuState(home: Point, difficulty: CpuDifficulty = 'medium', seed = 7301): CpuState {
   const formation = (id: string, callsign: string, role: Squadron['role'], condition: keyof typeof OPENING_CONDITION): Squadron => ({
-    id, callsign, role, ...OPENING_CONDITION[condition], mission: role === 'fighter' ? 'defensive-cap' : 'search-area',
+    id, callsign, role, ...OPENING_CONDITION[condition], aircraftTypeId:role==='fighter'?'f16':'recon',upgrades:[], mission: role === 'fighter' ? 'defensive-cap' : 'search-area',
     route: [copy(home)], routeIngress: [copy(home)],
   })
   return { version: 2, difficulty, seed, formations: [formation('red-fighter', 'BOGEY 1', 'fighter', 'fighter'), formation('red-recon', 'SPECTER', 'recon', 'recon'), formation('red-fighter-2', 'BOGEY 2', 'fighter', 'secondFighter')],
@@ -38,5 +38,5 @@ export function cpuFlights(state:MatchState):import('../types').EnemyFlight[] {
   return prepareCpuRound(state).cpu!.plan!.orders.map(order=>({...order,initialAircraft:order.aircraft,target:order.strikeTargetId?'base':'decoy',detectionWindows:[]}))
 }
 export function cpuReportAt(asset:Asset,round:number,observedAt?:number):CpuSiteReport {
-  return {id:asset.id,kind:asset.kind,position:copy(asset.position),health:asset.health,maxHealth:asset.maxHealth,observedRound:round,...(observedAt===undefined?{}:{observedAt})}
+  return {id:asset.id,kind:asset.kind,position:copy(asset.position),health:asset.health,maxHealth:asset.maxHealth,observedRound:round,...(observedAt===undefined?{}:{observedAt}),...(asset.upgrades?.length?{upgrades:[...asset.upgrades]}:{})}
 }

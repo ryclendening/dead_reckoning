@@ -81,12 +81,12 @@ describe('mission planning shelf', () => {
       onRosterMode={noop} onMission={noop} onPickProtectTarget={noop} onProtectFlight={noop} onClear={noop} onCommit={noop}
       step="route" onClose={noop} reviewedIds={new Set([match.squadrons.find(item=>item.role==='recon')!.id])} reviewedCount={1} totalCount={4} selectingProtectTarget
     />)
-    expect(markup).toContain('Tap a friendly site or map point.')
+    expect(markup).toContain('Tap a site or map point.')
     expect(markup).toContain('DEFEND AREA')
     expect(markup).toContain('ESCORT FLIGHT')
     expect(markup).toContain('RAVEN 3')
     expect(markup).not.toContain('GHOST 4')
-    expect(markup).not.toContain('NEXT AIRCRAFT')
+    expect(markup).toContain('aria-label="Next aircraft"')
     expect(markup).not.toContain('class="shelf-primary"')
     expect(markup).not.toContain('AREA SIZE')
   })
@@ -118,7 +118,7 @@ describe('mission planning shelf', () => {
 
     expect(markup).toContain('SEARCH AREA')
     expect(markup).toContain('BUILD ROUTE')
-    expect(markup).not.toContain('NEXT AIRCRAFT')
+    expect(markup).toContain('aria-label="Next aircraft"')
     expect(markup).not.toContain('CHOOSE TASK')
     expect(markup).not.toContain('DEEP PROBE')
     expect(markup).not.toContain('CUSTOM RECON')

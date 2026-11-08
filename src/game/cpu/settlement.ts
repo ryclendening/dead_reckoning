@@ -1,4 +1,5 @@
 import { isCampaign } from '../campaign'
+import { modifiedStat } from '../upgrades'
 import { LOGISTICS_EFFECTS } from '../economyRules'
 import type { MatchState, RoundResult } from '../types'
 import { applyRecoveryOutcomesToBasing } from '../forwardBasing'
@@ -24,13 +25,13 @@ export function settleCpuRound(state: MatchState, result: RoundResult): MatchSta
     const outcome = report.recoveryOutcomes?.find(item => item.formationId === formation.id)
     if (!ordered || outcome?.reason === 'not-launched' || outcome?.outcome === 'trapped') return { ...formation, status: outcome?.outcome === 'trapped' ? 'trapped' as const : formation.status }
     return { ...formation, aircraft: recovered.has(formation.id) ? flight?.aircraft ?? 0 : 0,
-      strength: recovered.has(formation.id) ? flight?.strength ?? 0 : 0, morale: flight?.morale ?? formation.morale, status: recovered.has(formation.id) ? 'rtb' : 'destroyed' }
+      strength: recovered.has(formation.id) ? flight?.strength ?? 0 : 0, morale: flight?.morale ?? formation.morale, readiness:flight?.readiness??formation.readiness,ammo:flight?.ammo??formation.ammo,status: recovered.has(formation.id) ? 'rtb' : 'destroyed' }
   })
   cpu.lastReconLost = cpu.plan?.orders.some(order => order.role === 'recon' && order.sortieOrdered !== false && !recovered.has(order.id) && !report.recoveryOutcomes?.some(o=>o.formationId===order.id&&o.outcome==='trapped')) ?? false
   cpu.outcomes=[...(cpu.outcomes??[]),...(cpu.plan?.orders.filter(o=>o.sortieOrdered!==false&&!report.recoveryOutcomes?.some(r=>r.formationId===o.id&&(r.reason==='not-launched'||r.outcome==='trapped'))).map(o=>({round:result.round,formationId:o.id,mission:o.mission,targetId:o.strikeTargetId,recovered:recovered.has(o.id),damage:recovered.has(o.id)?Math.max(0,(o.strength??100)-(result.enemyFlights.find(f=>f.id===o.id)?.strength??o.strength??100)):undefined}))??[])].slice(-12)
   cpu.searchIndex += 1
   cpu.traffic = [...cpu.traffic.filter(contact => result.round - contact.observedRound < 2), ...report.traffic].slice(-32)
-  cpu.logistics += LOGISTICS_EFFECTS.baseIncome + (state.enemyAssets.find(a=>a.kind==='base')?.upgrades?.includes('supply-depot')?2:0) + report.sites.filter(site => !priorIds.has(site.id)).length * LOGISTICS_EFFECTS.intelRecovery + (report.confirmedKills??0)
+  cpu.logistics += modifiedStat(state.enemyAssets.find(a=>a.kind==='base'),'economy.baseIncome',LOGISTICS_EFFECTS.baseIncome) + report.sites.filter(site => !priorIds.has(site.id)).length * LOGISTICS_EFFECTS.intelRecovery + (report.confirmedKills??0)
   cpu.mappedAreas = [...(cpu.mappedAreas ?? [])]
   for (const point of report.mappedAreas ?? []) if (!cpu.mappedAreas.some(p => Math.hypot(p[0]-point[0],p[1]-point[1]) < 1)) cpu.mappedAreas.push(point)
   cpu.lastSettledRound = result.round

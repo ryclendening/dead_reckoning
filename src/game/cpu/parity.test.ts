@@ -11,6 +11,7 @@ import { cpuPlanningView, cpuReportAt, prepareCpuRound } from './planner'
 import { generateActions } from './actions'
 import { discoveryAttackValue } from './strategy'
 import { collectionScorer, covers } from './search'
+import type { Squadron } from '../types'
 import type { CpuDifficulty } from './types'
 
 function campaign(difficulty:CpuDifficulty='hard') {
@@ -102,7 +103,7 @@ describe('symmetric campaign rules',()=>{
     const view=cpuPlanningView(strikeScenario())!
     const ends:Array<[number,number]>=[[12,0],[12,6],[12,-6]]
     const orders=view.cpu.formations.map((f,i)=>({...f,sortieOrdered:true,route:[[0,0] as [number,number],ends[i],[0,0] as [number,number]]}))
-    const probabilities=[.2,.45,.9],confidence=(o:typeof orders[number])=>probabilities[orders.indexOf(o)]
+    const probabilities=[.2,.45,.9],confidence=(o:Squadron)=>probabilities[orders.findIndex(f=>f.id===o.id)]
     for(const refresh of [false,true]) {
       view.cpu.sites=refresh?[{id:'p-base',kind:'base',position:[12,0],health:100,maxHealth:100,observedRound:1}]:[]
       const points=refresh?Array.from({length:8},(_,i)=>({point:[12+Math.cos(i*Math.PI/4)*3.2,Math.sin(i*Math.PI/4)*3.2] as [number,number],weight:1})):[{point:[8,0] as [number,number],weight:1},{point:[10,4] as [number,number],weight:2},{point:[12,-4] as [number,number],weight:3}]
@@ -115,6 +116,17 @@ describe('symmetric campaign rules',()=>{
       }
       expect(collectionScorer(view,points)(orders,confidence)).toBeCloseTo(exhaustive*(refresh?.1:1),12)
     }
+  })
+  it('charges both sides the same sortie readiness and ammunition and settles that condition once',()=>{
+    const s=strikeScenario()
+    s.squadrons=s.squadrons.map(f=>({...f,mission:f.role==='fighter'?'transit':'search-area',sortieOrdered:true,route:[[20,0],[21,0],[20,0]],routeIngress:[[20,0],[21,0]],plannedRecoveryFieldId:'p-base'}))
+    s.cpu!.plan={round:2,objective:'defend',reason:'Symmetric local sorties.',candidates:[],orders:s.cpu!.formations.map(f=>({...f,mission:f.role==='fighter'?'transit':'search-area',sortieOrdered:true,route:[[0,0],[-1,0],[0,0]],routeIngress:[[0,0],[-1,0]],plannedRecoveryFieldId:'e-base'}))}
+    const result=resolveRound(s),settled=applyRound(s,result)
+    const conditions=(list:Squadron[])=>list.map(f=>[f.role,f.readiness,f.ammo]).sort()
+    expect(conditions(settled.cpu!.formations)).toEqual(conditions(settled.squadrons))
+    expect(settled.cpu!.formations.find(f=>f.id==='red-fighter')!.ammo).toBe(72)
+    expect(applyRound(settled,result)).toBe(settled)
+    expect(normalizeMatch(JSON.parse(JSON.stringify(settled))).cpu).toEqual(settled.cpu)
   })
   it('preserves a legacy two-formation save without granting aircraft, condition or money',()=>{
     const s=campaign()
@@ -139,5 +151,9 @@ describe('symmetric campaign rules',()=>{
     const loaded=normalizeMatch(JSON.parse(JSON.stringify(oldEnding)))
     expect(loaded.phase).toBe('draw')
     expect(loaded.cpu).toEqual(oldEnding.cpu)
+    const legacyDefeat={...oldEnding,cpu:{...oldEnding.cpu!,reserves:0,formations:oldEnding.cpu!.formations.map(f=>({...f,aircraft:0,strength:0}))}}
+    const migrated=normalizeMatch(JSON.parse(JSON.stringify(legacyDefeat)))
+    expect(migrated.phase).toBe('victory')
+    expect(migrated.cpu).toEqual(legacyDefeat.cpu)
   })
 })

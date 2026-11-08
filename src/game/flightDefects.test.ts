@@ -127,7 +127,7 @@ describe('confirmed flight and combat defects',()=>{
       state.playerAssets=state.playerAssets.map(asset=>asset.kind==='base'?{...asset,basedFormationIds:(asset.basedFormationIds??[]).filter(id=>id!=='viper')}:asset)
     }else{
       const aaa=state.playerAssets.find(asset=>asset.kind==='aaa')!
-      state.playerAssets.push(...Array.from({length:16},(_,index)=>({...aaa,id:`p-test-aaa-${index}`,health:100,position:ahead(.9)})))
+      state.playerAssets.push(...Array.from({length:32},(_,index)=>({...aaa,id:`p-test-aaa-${index}`,health:100,position:ahead(.9)})))
     }
     const result=resolveRound(state)
     const missile=result.weaponEffects.find(effect=>effect.kind==='air-to-air-missile')!

@@ -1,5 +1,5 @@
 import { BASE_STRIKE_DAMAGE, BASE_STRIKE_RANGE } from '../campaign'
-import { FLIGHT_SPEED, MAX_FLIGHT_DISTANCE, routeDistance } from '../flightRules'
+import { FLIGHT_SPEED, MAX_FLIGHT_DISTANCE, flightRangeFor, flightSpeedFor, routeDistance } from '../flightRules'
 import { formationField, isOperationalAirfield, validateRecoveryPackage } from '../forwardBasing'
 import { estimateEscortCoverage } from '../missionResponsibility'
 import type { Squadron, Point } from '../types'
@@ -14,7 +14,7 @@ export const SEARCH_SECTORS:Point[]=[[0,0],[-6,8],[0,8],[6,8],[-6,0],[6,0],[-6,-
 export function estimateBaseAttack(view:CpuPlanningView,order:Squadron,sites:CpuSiteReport[]=view.cpu.sites):BaseAttackEstimate {
   const strength=order.strength??100,ingress=orderRisk(view,order,sites,false),whole=orderRisk(view,order,sites)
   const delivered=(condition:number)=>Math.round(BASE_STRIKE_DAMAGE*condition/100)*Math.max(0,1-ingress/Math.max(1,condition))
-  return {damageNow:delivered(strength),followupDamage:delivered(Math.max(0,strength-whole)),preparationRounds:0,releaseSeconds:routeDistance(order.route)/FLIGHT_SPEED.fighter}
+  return {damageNow:delivered(strength),followupDamage:delivered(Math.max(0,strength-whole)),preparationRounds:0,releaseSeconds:routeDistance(order.route)/flightSpeedFor(order)}
 }
 /** Escort coverage reduces the air-threat part of collection risk, never SAM
  * exposure. Both single and joint packages use this same capability estimate. */
@@ -25,8 +25,8 @@ function protectedRisks(view:CpuPlanningView,orders:Squadron[],riskOf:(o:Squadro
     if(!target)continue
     const field=view.assets.find(a=>a.id===escort.plannedRecoveryFieldId),recovery=view.assets.find(a=>a.id===target.plannedRecoveryFieldId)
     if(!field)continue
-    const coverage=estimateEscortCoverage({escortRoute:escort.route,protectedRoute:[...target.route,recovery?.position??view.home],escortSpeed:FLIGHT_SPEED.fighter,protectedSpeed:FLIGHT_SPEED.recon,recoveryPoint:field.position,maxDistance:40})
-    const ground=cpuRouteRisk([...target.route,recovery?.position??view.home],target.role,view.cpu.sites)
+    const coverage=estimateEscortCoverage({escortRoute:escort.route,protectedRoute:[...target.route,recovery?.position??view.home],escortSpeed:flightSpeedFor(escort),protectedSpeed:flightSpeedFor(target),recoveryPoint:field.position,maxDistance:flightRangeFor(escort)})
+    const ground=cpuRouteRisk([...target.route,recovery?.position??view.home],target.role,view.cpu.sites,target)
     const risk=riskOf(target),protectedRisk=risk-Math.max(0,risk-ground)*coverage.percent/100*.6
     adjusted.set(target,Math.min(adjusted.get(target)??risk,protectedRisk))
   }
@@ -62,7 +62,7 @@ function fighterActions(view: CpuPlanningView, work: RouteWork, fighter: Squadro
     if(searches.every(selected=>distance(point,selected)>3.5))searches.push(point)
     if(searches.length>=profile.sectors)break
   }
-  const reconOptions=[hold(view,recon),...searches.slice(0,profile.sectors).flatMap(p=>[...missionOrders(view,recon,'search-area',p,work,cpu.lastReconLost?48:64),...(cpu.traffic.some(t=>t.role==='fighter')?missionOrders(view,recon,'search-area',p,work,36):[])])]
+  const reconOptions=[hold(view,recon),...searches.slice(0,profile.sectors).flatMap(p=>[...missionOrders(view,recon,'search-area',p,work,cpu.lastReconLost?Math.min(48,flightRangeFor(recon)):flightRangeFor(recon)),...(cpu.traffic.some(t=>t.role==='fighter')?missionOrders(view,recon,'search-area',p,work,36):[])])]
   function information(order:Squadron):number {
     if(order.sortieOrdered===false)return 0
     return collect([order],confidence)*Math.min(1,(remaining-1)/2)
@@ -74,7 +74,7 @@ function fighterActions(view: CpuPlanningView, work: RouteWork, fighter: Squadro
   const add=(id:string,summary:string,order:Squadron,predicted:Partial<PredictedEffects>,reconOrder?:Squadron,baseAttack?:BaseAttackEstimate):void=>{
     if(!reconOrder){add(id+':recon-hold',summary,order,predicted,hold(view,recon),baseAttack);reconOrder=usefulRecon}
     const orders=cpu.formations.map(f=>f.id===order.id?order:f.id===reconOrder.id?reconOrder:hold(view,f)),ids=new Set(orders.filter(o=>o.sortieOrdered!==false).map(o=>o.id))
-    const check=validateRecoveryPackage({playerAssets:view.assets,squadrons:orders},MAX_FLIGHT_DISTANCE,ids)
+    const check=validateRecoveryPackage({playerAssets:view.assets,squadrons:orders},flightRangeFor,ids)
     if(!check.valid){work.rejected.push(`${id}: ${check.reason}`);return}
     const protectedRisk=protectedRisks(view,orders,riskOf),returnConfidence=(o:Squadron)=>Math.max(0,1-protectedRisk(o)/Math.max(25,(o.strength??100)+20))
     const effects={...emptyEffects(),informationGain:Math.min(1,collect(orders,returnConfidence))*Math.min(1,(remaining-1)/2),expectedAircraftLoss:orders.reduce((n,o)=>n+(o.sortieOrdered===false?0:Math.min(o.aircraft,protectedRisk(o)/100*o.maxAircraft)),0),...predicted}
@@ -106,7 +106,7 @@ function fighterActions(view: CpuPlanningView, work: RouteWork, fighter: Squadro
   for(const r of sortedRecon.filter(o=>o.sortieOrdered!==false)) {
     const field=formationField(view.assets,fighter.id),rfield=view.assets.find(a=>a.id===r.plannedRecoveryFieldId)
     if(!field)continue
-    const coverage=estimateEscortCoverage({escortRoute:[field.position],protectedRoute:[...r.route,rfield?.position??view.home],escortSpeed:FLIGHT_SPEED.fighter,protectedSpeed:FLIGHT_SPEED.recon,recoveryPoint:field.position,maxDistance:40})
+    const coverage=estimateEscortCoverage({escortRoute:[field.position],protectedRoute:[...r.route,rfield?.position??view.home],escortSpeed:flightSpeedFor(fighter),protectedSpeed:flightSpeedFor(r),recoveryPoint:field.position,maxDistance:flightRangeFor(fighter)})
     if(coverage.recoveryFeasible&&coverage.percent>0) {
       // Draw the canonical feasible escort extent, never assign the longer recon sweep as a fighter route.
       const route:Point[]=[field.position,...r.route.slice(1)]
@@ -128,7 +128,7 @@ function fighterActions(view: CpuPlanningView, work: RouteWork, fighter: Squadro
       const witnessed=traffic.some(t=>t.role==='fighter')
       const urgency=witnessed?observedThreat(view):0
       const threatTime=base?Math.max(0,distance(view.home,base.position)-BASE_STRIKE_RANGE)/FLIGHT_SPEED.fighter+.6:Infinity
-      const releaseTime=routeDistance(order.route)/FLIGHT_SPEED.fighter
+      const releaseTime=routeDistance(order.route)/flightSpeedFor(order)
       const timely=1-urgency+urgency/(1+Math.exp((releaseTime-threatTime)/.5))
       const baseDamage=site.kind==='base'?Math.min(1,attack.damageNow/site.health)*timely:0
       const suppressionTurns=Math.ceil(site.health/Math.max(1,attack.damageNow)), payoff=suppressionTurns+1
@@ -195,7 +195,7 @@ export function generateActions(view:CpuPlanningView,work:RouteWork):TacticalPac
   for(const key of keys)for(const a of shortlist(libraries[0],fighters[0],key))for(const b of shortlist(libraries[1],fighters[1],key)) {
     const orders=a.orders.map(o=>o.id===fighters[1].id?b.orders.find(f=>f.id===o.id)!:o)
     const ids=new Set(orders.filter(o=>o.sortieOrdered!==false).map(o=>o.id))
-    if(!validateRecoveryPackage({playerAssets:view.assets,squadrons:orders},MAX_FLIGHT_DISTANCE,ids).valid)continue
+    if(!validateRecoveryPackage({playerAssets:view.assets,squadrons:orders},flightRangeFor,ids).valid)continue
     const protectedRisk=protectedRisks(view,orders,risk),confidence=(o:Squadron)=>Math.max(0,1-protectedRisk(o)/Math.max(25,(o.strength??100)+20))
     const attacks=[a.baseAttack,b.baseAttack].filter((v):v is BaseAttackEstimate=>!!v)
     const cap=base?.health??100

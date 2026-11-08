@@ -1,4 +1,5 @@
-import type { Asset, AssetUpgradeId, ConstructibleAssetKind, EconomyActionId, EconomyActionQuote, EconomyCommand, EconomyEffect, EconomyState, EconomyTarget, LogisticsIncome, LogisticsStatementEntry, Squadron } from './types'
+import type { Asset, ConstructibleAssetKind, EconomyActionId, EconomyActionQuote, EconomyCommand, EconomyEffect, EconomyState, EconomyTarget, LogisticsIncome, LogisticsStatementEntry, Squadron } from './types'
+import { UPGRADE_CATALOG, modifiedStat, upgradeDefinition } from './upgrades'
 import { MAPPED_RADIUS } from './fog'
 import { FOB_MIN_CAPACITY, formationField, normalizeFormationBasing } from './forwardBasing'
 import { friendlyTerritoryForAssets, territoryContains, territoryRegions } from './territory'
@@ -12,8 +13,7 @@ export const FOB_PLACEMENT_MAX_TERRITORY_GAP = 7
 
 export const createEconomyState = (): EconomyState => ({ statement: [] })
 
-const upgradesFor = (asset: Asset | undefined) => asset?.upgrades ?? []
-const hasUpgrade = (state: SidePlanningContext, upgrade: AssetUpgradeId) => upgradesFor(state.assets.find(asset => asset.kind === 'base')).includes(upgrade)
+const baseAsset = (state:SidePlanningContext)=>state.assets.find(a=>a.kind==='base')
 const formationCapacity = (squadron: Squadron) => Math.min(100, squadron.aircraft / Math.max(1, squadron.maxAircraft) * 100)
 const strengthOf = (squadron: Squadron) => squadron.strength ?? formationCapacity(squadron)
 export const economyTargetsEqual = (left: EconomyTarget, right: EconomyTarget) => left.kind === right.kind && left.id === right.id
@@ -42,17 +42,7 @@ export const PROCUREMENT_CATALOG: readonly ProcurementDefinition[] = [
   { actionId: 'build-sam', kind: 'sam', cost: LOGISTICS_COSTS.samConstruction, maxHealth: 100, detail: 'Missile defense with a 3.2-unit engagement radius.' },
 ]
 
-interface AirfieldUpgradeDefinition {
-  actionId: Extract<EconomyActionId, `install-${string}`>
-  upgrade: AssetUpgradeId
-  label: string
-  detail: string
-}
-
-export const AIRFIELD_UPGRADE_CATALOG: readonly AirfieldUpgradeDefinition[] = [
-  { actionId: 'install-maintenance-wing', upgrade: 'maintenance-wing', label: 'MAINTENANCE WING', detail: 'Formation repair and replacement cost 1 less.' },
-  { actionId: 'install-supply-depot', upgrade: 'supply-depot', label: 'SUPPLY DEPOT', detail: `Future completed rounds gain +${LOGISTICS_EFFECTS.supplyDepotIncome} Logistics.` },
-]
+export const AIRFIELD_UPGRADE_CATALOG = UPGRADE_CATALOG.filter(upgrade=>upgrade.targets.includes('base'))
 
 export interface FobPlacementValidation { valid: boolean; reason?: string }
 export function validateAssetPlacement(state: SidePlanningContext, kind: ConstructibleAssetKind, placement: [number, number] | undefined): FobPlacementValidation {
@@ -98,7 +88,7 @@ const ACTIONS: readonly EconomyActionDefinition[] = [
       if (!squadron) return undefined
       const before = strengthOf(squadron); const after = Math.min(formationCapacity(squadron), before + LOGISTICS_EFFECTS.formationRepair)
       if (after <= before + .01) return undefined
-      const cost = Math.max(0, LOGISTICS_COSTS.formationRepair - (hasUpgrade(state, 'maintenance-wing') ? 1 : 0))
+      const cost = modifiedStat(baseAsset(state),'economy.formationRepairCost',LOGISTICS_COSTS.formationRepair)
       return createQuote(state, 'repair-formation', target, 'REPAIR FORMATION', `Strength ${Math.round(before)} → ${Math.round(after)} (+${Math.round(after - before)}).`, cost, { kind: 'formation-strength', before, after })
     },
     apply: (state, target) => target.kind === 'squadron' ? { ...state, formations: state.formations.map(squadron => squadron.id !== target.id ? squadron : { ...squadron, strength: Math.min(formationCapacity(squadron), strengthOf(squadron) + LOGISTICS_EFFECTS.formationRepair) }) } : undefined,
@@ -109,7 +99,7 @@ const ACTIONS: readonly EconomyActionDefinition[] = [
       if (target.kind !== 'squadron') return undefined
       const squadron = state.formations.find(item => item.id === target.id)
       if (!squadron || squadron.aircraft >= squadron.maxAircraft) return undefined
-      const cost = Math.max(0, LOGISTICS_COSTS.aircraftReplacement - (hasUpgrade(state, 'maintenance-wing') ? 1 : 0))
+      const cost = modifiedStat(baseAsset(state),'economy.aircraftReplacementCost',LOGISTICS_COSTS.aircraftReplacement)
       const strengthBefore = strengthOf(squadron); const strengthAfter = Math.min(100, strengthBefore + 100 / squadron.maxAircraft)
       const effect: EconomyEffect = { kind: 'aircraft-replacement', aircraftBefore: squadron.aircraft, aircraftAfter: squadron.aircraft + 1, strengthBefore, strengthAfter }
       return createQuote(state, 'replace-aircraft', target, 'REPLACE AIRCRAFT', `Aircraft ${squadron.aircraft} → ${squadron.aircraft + 1} · Strength ${Math.round(strengthBefore)} → ${Math.round(strengthAfter)}.`, cost, effect, 1)
@@ -130,7 +120,7 @@ const ACTIONS: readonly EconomyActionDefinition[] = [
     quote: (state, target) => {
       if (target.kind !== 'asset') return undefined
       const asset = state.assets.find(item => item.id === target.id)
-      if (!asset || !['radar', 'sam', 'aaa'].includes(asset.kind)) return undefined
+      if (!asset || !['radar', 'aaa'].includes(asset.kind)) return undefined
       const before = asset.health; const after = Math.min(asset.maxHealth, before + LOGISTICS_EFFECTS.defenseRepair)
       if (after <= before + .01) return undefined
       return createQuote(state, 'repair-defense', target, `REPAIR ${asset.kind.toUpperCase()}`, `Health ${Math.round(before)} → ${Math.round(after)} (+${Math.round(after - before)}).`, LOGISTICS_COSTS.defenseRepair, { kind: 'asset-health', before, after })
@@ -153,16 +143,25 @@ const ACTIONS: readonly EconomyActionDefinition[] = [
       return { ...state, assets: state.assets.map(asset => asset.id === fob.id ? { ...asset, operational: true, health: asset.maxHealth } : asset), formations: state.formations.map(squadron => based.has(squadron.id) && squadron.status === 'trapped' ? { ...squadron, status: 'rtb' } : squadron) }
     },
   },
-  ...AIRFIELD_UPGRADE_CATALOG.map<EconomyActionDefinition>(definition => {
+  ...UPGRADE_CATALOG.map<EconomyActionDefinition>(definition => {
     return {
-      id: definition.actionId,
+      id: `install-${definition.id}`,
       quote: (state, target) => {
-        if (target.kind !== 'asset') return undefined
-        const asset = state.assets.find(item => item.id === target.id)
-        if (!asset || asset.kind !== 'base' || upgradesFor(asset).length) return undefined
-        return createQuote(state, definition.actionId, target, definition.label, definition.detail, LOGISTICS_COSTS.upgrade, { kind: 'airfield-upgrade', upgrade: definition.upgrade })
+        const instance = target.kind === 'squadron' ? state.formations.find(item => item.id === target.id)
+          : target.kind === 'asset' ? state.assets.find(item => item.id === target.id) : undefined
+        const targetKind = target.kind === 'squadron' ? 'squadron' : target.kind === 'asset' && instance ? (instance as Asset).kind : undefined
+        if (!instance || !targetKind || !definition.targets.includes(targetKind)) return undefined
+        const installed = instance.upgrades ?? []
+        if (installed.includes(definition.id)) return undefined
+        if (definition.group && installed.some(id => upgradeDefinition(id)?.group === definition.group)) return undefined
+        const quote = createQuote(state, `install-${definition.id}`, target, definition.label, definition.detail, definition.cost, { kind: 'upgrade-installation', upgradeId: definition.id })
+        return { ...quote, upgradeId: definition.id }
       },
-      apply: (state, target) => target.kind === 'asset' ? { ...state, assets: state.assets.map(asset => asset.id !== target.id ? asset : { ...asset, upgrades: [definition.upgrade] }) } : undefined,
+      apply: (state, target) => target.kind === 'squadron'
+        ? { ...state, formations: state.formations.map(squadron => squadron.id !== target.id ? squadron : { ...squadron, upgrades: [...(squadron.upgrades ?? []), definition.id] }) }
+        : target.kind === 'asset'
+          ? { ...state, assets: state.assets.map(asset => asset.id !== target.id ? asset : { ...asset, upgrades: [...(asset.upgrades ?? []), definition.id] }) }
+          : undefined,
     }
   }),
   ...PROCUREMENT_CATALOG.map<EconomyActionDefinition>(definition => ({
@@ -194,22 +193,24 @@ export function economyQuotesFor(state: SidePlanningContext, target: EconomyTarg
 export function economyAttentionTargets(state: SidePlanningContext): EconomyTarget[] {
   const targets: EconomyTarget[] = [
     ...state.formations.map(squadron => ({ kind: 'squadron' as const, id: squadron.id })),
-    ...state.assets.filter(asset => ['radar', 'sam', 'aaa'].includes(asset.kind) || asset.kind === 'fob' && asset.operational === false).map(asset => ({ kind: 'asset' as const, id: asset.id })),
+    ...state.assets.filter(asset => ['radar', 'aaa'].includes(asset.kind) || asset.kind === 'fob' && asset.operational === false).map(asset => ({ kind: 'asset' as const, id: asset.id })),
   ]
   return targets.filter(target => economyQuotesFor(state, target).some(quote => quote.id === 'repair-formation' || quote.id === 'replace-aircraft' || quote.id === 'repair-defense' || quote.id === 'repair-fob'))
 }
 
-export function findMatchingEconomyQuote(quotes: EconomyActionQuote[], pending: Pick<EconomyCommand, 'actionId' | 'target'> | undefined) {
-  return pending ? quotes.find(item => item.id === pending.actionId && economyTargetsEqual(item.target, pending.target)) : undefined
+export function findMatchingEconomyQuote(quotes: EconomyActionQuote[], pending: Pick<EconomyCommand, 'actionId' | 'target' | 'upgradeId'> | undefined) {
+  return pending ? quotes.find(item => item.id === pending.actionId && item.upgradeId === pending.upgradeId && economyTargetsEqual(item.target, pending.target)) : undefined
 }
 
 export function economyCommandForQuote(state: SidePlanningContext, selected: EconomyActionQuote): EconomyCommand {
-  return { actionId: selected.id, target: selected.target, expectedCost: selected.cost, expectedReserveCost: selected.reserveCost ?? 0, expectedLogistics: state.logistics, expectedReserveAircraft: state.reserves }
+  return { actionId: selected.id, target: selected.target, ...(selected.upgradeId?{upgradeId:selected.upgradeId}:{}), expectedCost: selected.cost, expectedReserveCost: selected.reserveCost ?? 0, expectedLogistics: state.logistics, expectedReserveAircraft: state.reserves }
 }
 
 export function executeEconomyCommand(state: SidePlanningContext, command: EconomyCommand): SidePlanningContext {
   const action = ACTIONS.find(item => item.id === command.actionId)
   const current = action?.quote(state, command.target, command)
+  const requestedUpgrade=command.upgradeId??(command.actionId.startsWith('install-')?command.actionId.slice('install-'.length):undefined)
+  if(command.actionId.startsWith('install-')&&(!requestedUpgrade||current?.upgradeId!==requestedUpgrade))return state
   if (!action || !current?.eligible) return state
   if (command.expectedCost !== undefined && command.expectedCost !== current.cost) return state
   if (command.expectedReserveCost !== undefined && command.expectedReserveCost !== (current.reserveCost ?? 0)) return state

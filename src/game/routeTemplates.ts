@@ -1,5 +1,6 @@
 import type { Asset, MatchState, MissionId, Point, Role, Squadron } from './types'
 import { missionDistance } from './flightRules'
+import { flightRangeFor } from './flightRules'
 import { BASE_STRIKE_RANGE, selectedStrikeTarget } from './campaign'
 import { formationField } from './forwardBasing'
 
@@ -28,7 +29,7 @@ export function buildGroundStrikeRoute(state:MatchState,squadronId:string,target
   const travel=d<=BASE_STRIKE_RANGE?Math.min(.25,d):d-(BASE_STRIKE_RANGE-.1)
   const release:Point=d>.001?[origin[0]+(target.position[0]-origin[0])*travel/d,origin[1]+(target.position[1]-origin[1])*travel/d]:[origin[0]+.05,origin[1]]
   const route:Point[]=[[...origin],release]
-  return missionDistance(route,origin)<=40+.001?route:undefined
+  return missionDistance(route,origin)<=flightRangeFor(squadron)+.001?route:undefined
 }
 
 /** Preserve both mission anchors while replacing only optional ingress waypoints. */
@@ -45,7 +46,7 @@ export function validateStrikeGeometry(squadron:Squadron,launch:Asset|undefined,
   const route=squadron.route
   if(route.length<2||route.length>7||distance(route[0],launch.position)>.001)return 'KEEP THE FIXED TAKEOFF POINT'
   if(distance(route.at(-1)!,target.position)>BASE_STRIKE_RANGE+.001)return 'KEEP THE STRIKE POINT INSIDE THE 6-UNIT RELEASE CIRCLE'
-  if(missionDistance(route,launch.position)>40+.001)return 'GROUND STRIKE ROUTE EXCEEDS AVAILABLE RANGE'
+  if(missionDistance(route,launch.position)>flightRangeFor(squadron)+.001)return 'GROUND STRIKE ROUTE EXCEEDS AVAILABLE RANGE'
   return undefined
 }
 export function validateGroundStrikeOrder(state:MatchState,squadron:Squadron):string|undefined {

@@ -1,3 +1,4 @@
+import { isKnownUpgradeId } from '../upgrades'
 import type { Squadron } from '../types'
 import type { CpuRoundReport, CpuState } from './types'
 
@@ -8,6 +9,7 @@ const text = (v: unknown): v is string => typeof v === 'string' && v.length > 0
 const point = (v: unknown) => Array.isArray(v) && v.length === 2 && v.every(n => typeof n === 'number' && Number.isFinite(n))
 const site = (v: unknown) => record(v) && text(v.id) && ['base', 'fob', 'sam', 'aaa', 'radar', 'decoy'].includes(String(v.kind))
   && point(v.position) && number(v.health) && number(v.maxHealth) && v.maxHealth > 0 && v.health <= v.maxHealth && integer(v.observedRound) && v.observedRound > 0
+  && (v.upgrades === undefined || Array.isArray(v.upgrades) && v.upgrades.every(isKnownUpgradeId))
   && (v.observedAt === undefined || number(v.observedAt)) && (v.estimatedDamage === undefined || number(v.estimatedDamage) && v.estimatedDamage <= v.health)
 const traffic = (v: unknown) => record(v) && point(v.position) && ['fighter', 'recon', 'unknown'].includes(String(v.role)) && integer(v.observedRound) && (v.trackId===undefined||text(v.trackId))
   && (v.observedAt === undefined || number(v.observedAt))

@@ -7,6 +7,7 @@ import { createCampaignSetupState } from './campaignSetup'
 import { createCpuState, prepareCpuRound } from './cpu/planner'
 import type { CpuDifficulty } from './cpu/types'
 import { campaignEnemySites, campaignEnemyStart } from './campaignLayout'
+import { aircraftType } from './aircraftTypes'
 
 const add=(origin:Point,offset:Point):Point=>snapToHex([origin[0]+offset[0],origin[1]+offset[1]])
 const route=(...points:Point[])=>points
@@ -29,10 +30,10 @@ export function enemyAssetsFor(world:CampaignWorld):Asset[]{const base=enemyBase
 ]}
 
 export function squadronsFor(world:CampaignWorld):Squadron[]{const base=world.friendlyTerritory.center,at=(offset:Point)=>add(base,offset);return [
-  {id:'viper',callsign:'VIPER 1',role:'fighter',mission:'defensive-cap',...OPENING_CONDITION.fighter,routeIngress:route(base,at([-1.5,-3.2]),at([-3.8,-5.6])),route:route(base,at([-1.5,-3.2]),at([-3.8,-5.6]),at([-1.5,-3.2]),base)},
-  {id:'falcon',callsign:'FALCON 2',role:'fighter',mission:'defensive-cap',...OPENING_CONDITION.secondFighter,routeIngress:route(base,at([2.4,-3.1]),at([5.2,-6.4])),route:route(base,at([2.4,-3.1]),at([5.2,-6.4]),at([2.4,-3.1]),base)},
-  {id:'raven',callsign:'RAVEN 3',role:'recon',mission:'search-area',...OPENING_CONDITION.recon,routeIngress:route(base,at([-1.5,-4]),at([1.5,-8.2]),at([4.8,-11.2])),route:route(base,at([-1.5,-4]),at([1.5,-8.2]),at([4.8,-11.2]),at([1.5,-8.2]),base)},
-  {id:'ghost',callsign:'GHOST 4',role:'recon',mission:'search-area',aircraft:4,maxAircraft:4,damaged:0,readiness:94,ammo:100,strength:100,morale:90,routeIngress:route(base,at([-4.8,-2.2]),at([-6.1,-6.6])),route:route(base,at([-4.8,-2.2]),at([-6.1,-6.6]),at([-4.8,-2.2]),base)},
+  {id:'viper',callsign:'VIPER 1',role:'fighter',mission:'defensive-cap',...OPENING_CONDITION.fighter,maxAircraft:aircraftType('f16','fighter').maxAircraft,aircraftTypeId:'f16',upgrades:[],routeIngress:route(base,at([-1.5,-3.2]),at([-3.8,-5.6])),route:route(base,at([-1.5,-3.2]),at([-3.8,-5.6]),at([-1.5,-3.2]),base)},
+  {id:'falcon',callsign:'FALCON 2',role:'fighter',mission:'defensive-cap',...OPENING_CONDITION.secondFighter,maxAircraft:aircraftType('f16','fighter').maxAircraft,aircraftTypeId:'f16',upgrades:[],routeIngress:route(base,at([2.4,-3.1]),at([5.2,-6.4])),route:route(base,at([2.4,-3.1]),at([5.2,-6.4]),at([2.4,-3.1]),base)},
+  {id:'raven',callsign:'RAVEN 3',role:'recon',mission:'search-area',...OPENING_CONDITION.recon,maxAircraft:aircraftType('recon','recon').maxAircraft,aircraftTypeId:'recon',upgrades:[],routeIngress:route(base,at([-1.5,-4]),at([1.5,-8.2]),at([4.8,-11.2])),route:route(base,at([-1.5,-4]),at([1.5,-8.2]),at([4.8,-11.2]),at([1.5,-8.2]),base)},
+  {aircraftTypeId:'recon',upgrades:[],id:'ghost',callsign:'GHOST 4',role:'recon',mission:'search-area',aircraft:4,maxAircraft:4,damaged:0,readiness:94,ammo:100,strength:100,morale:90,routeIngress:route(base,at([-4.8,-2.2]),at([-6.1,-6.6])),route:route(base,at([-4.8,-2.2]),at([-6.1,-6.6]),at([-4.8,-2.2]),base)},
 ]}
 
 const DEFAULT_WORLD=generateCampaignWorld(7301)

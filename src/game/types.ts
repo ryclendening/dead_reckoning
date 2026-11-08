@@ -29,6 +29,10 @@ export interface Squadron {
   protectedTargetId?: string; protectedPoint?: Point
   /** Explicit recovered enemy ground target; base-strike is the legacy Ground Strike mission ID. */
   strikeTargetId?: string
+  /** Optional catalog key; older saves resolve to the role's default airframe. */
+  aircraftTypeId?: string
+  /** Installed equipment and airframe upgrades. */
+  upgrades?: UpgradeId[]
 }
 export interface DetectionWindow {
   start: number; end: number; source: 'radar' | 'visual'; observer?: string
@@ -39,20 +43,24 @@ export interface DefenseCue {
 }
 export interface EnemyFlight {
   id: string; callsign: string; role: Role; aircraft: number; initialAircraft: number
-  strength?: number; morale?: number; status?: ExecutionStatus
+  strength?: number; morale?: number; status?: ExecutionStatus; readiness?:number; ammo?:number
   route: Point[]; detectionWindows: DetectionWindow[]; identityLearnedAt?: number; target: 'base' | 'decoy'
   mission?: MissionId; routeIngress?: Point[]; maxAircraft?: number; sortieOrdered?: boolean
   plannedRecoveryFieldId?: string; strikeTargetId?: string; protectedPoint?: Point; protectedTargetId?: string
+  aircraftTypeId?: string; upgrades?: UpgradeId[]
 }
 export type AssetKind = 'base' | 'fob' | 'decoy' | 'radar' | 'sam' | 'aaa'
 export type ConstructibleAssetKind = 'fob' | 'decoy' | 'sam' | 'aaa'
 export interface Asset {
   id: string; kind: AssetKind; position: Point
   intel: IntelLevel; confidence: number; health: number; maxHealth: number; hidden: boolean; struck: boolean
-  name?: string; operational?: boolean; capacity?: number; basedFormationIds?: string[]; upgrades?: AssetUpgradeId[]
+  name?: string; operational?: boolean; capacity?: number; basedFormationIds?: string[]; upgrades?: UpgradeId[]
 }
-export type AssetUpgradeId = 'maintenance-wing' | 'supply-depot'
-export type EconomyActionId = 'repair-formation' | 'replace-aircraft' | 'repair-defense' | 'repair-fob' | 'install-maintenance-wing' | 'install-supply-depot' | 'build-fob' | 'build-decoy' | 'build-sam' | 'build-aaa'
+/** String IDs are catalog-backed so new upgrade entries do not require widening this union. */
+export type UpgradeId = string
+/** @deprecated Use UpgradeId; retained for save and import compatibility. */
+export type AssetUpgradeId = UpgradeId
+export type EconomyActionId = 'repair-formation' | 'replace-aircraft' | 'repair-defense' | 'repair-fob' | `install-${string}` | 'build-fob' | 'build-decoy' | 'build-sam' | 'build-aaa'
 export type EconomyTarget = { kind: 'campaign'; id: 'campaign' } | { kind: 'squadron' | 'asset'; id: string }
 export type CampaignSetupStage = 'allocate' | 'place' | 'review'
 export interface CampaignSetupState {
@@ -66,11 +74,12 @@ export type EconomyEffect =
   | { kind: 'aircraft-replacement'; aircraftBefore: number; aircraftAfter: number; strengthBefore: number; strengthAfter: number }
   | { kind: 'asset-health'; before: number; after: number }
   | { kind: 'asset-operational'; before: boolean; after: boolean }
-  | { kind: 'airfield-upgrade'; upgrade: AssetUpgradeId }
+  | { kind: 'upgrade-installation'; upgradeId: UpgradeId }
   | { kind: 'asset-construction'; assetKind: ConstructibleAssetKind; name: string; capacity?: number }
 export interface EconomyProjection { logistics: number; reserveAircraft: number }
 export interface EconomyCommand {
   actionId: EconomyActionId; target: EconomyTarget
+  upgradeId?: UpgradeId
   placement?: Point
   expectedCost?: number; expectedReserveCost?: number; expectedLogistics?: number; expectedReserveAircraft?: number
 }
@@ -82,6 +91,7 @@ export interface LogisticsStatementEntry {
 export interface EconomyState { lastSettledRound?: number; statement: LogisticsStatementEntry[] }
 export interface EconomyActionQuote {
   id: EconomyActionId; target: EconomyTarget; label: string; detail: string; cost: number
+  upgradeId?: UpgradeId
   reserveCost?: number; effect: EconomyEffect; projected: EconomyProjection; eligible: boolean; reason?: string
 }
 export interface CombatEvent {
@@ -150,7 +160,7 @@ interface CombatSequenceBase {
   moraleBreakReason?: string
 }
 export interface FighterCombatSequence extends CombatSequenceBase {kind:'dogfight';engagement:FighterEngagementRecord}
-export interface OtherCombatSequence extends CombatSequenceBase {kind:'pursuit'|'strike'|'defense';engagement?:never}
+export interface OtherCombatSequence extends CombatSequenceBase {kind:'pursuit'|'strike'|'defense'|'flyby';engagement?:never}
 export type CombatSequence = FighterCombatSequence | OtherCombatSequence
 /** Current-only dogfight presentation summary; excludes exchanges and outcomes. */
 export interface ActiveDogfightPresentation {

@@ -57,7 +57,7 @@ describe('SAM and ground strike controls',()=>{
     expect(choose).not.toContain('OR CHOOSE FROM LIST')
     expect(choose).not.toContain('ground-target-list')
     const route=renderToStaticMarkup(<CommandShelf {...props} step="route"/>)
-    expect(route).toContain('Drag S or a waypoint to move it; tap map to add.')
+    expect(route).toContain('Drag S or waypoints; tap map to add.')
     expect(route).toContain('CLEAR WAYPOINTS')
     expect(route).toContain('CHANGE TARGET')
     expect(route).toContain('SAM ALPHA')
