@@ -344,7 +344,7 @@ export default function App(){
       {match.phase==='plan'?<CommandShelf squadrons={match.squadrons} bases={match.playerAssets} activeBaseId={activePlanningBaseId} rosterMode={planningRosterMode} squadron={selected} routeDistance={recoveryView?.missionDistance??missionDistance(selected.route,playerBase)} maxDistance={MAX_FLIGHT_DISTANCE[selected.role]} routeNotice={routeNotice} protectSummary={protectSummary} recoverySummary={recoveryView?.summary} onSelect={selectPlanningFormation} onBaseSelect={selectPlanningBase} onRosterMode={mode=>{setPlanningRosterMode(mode);if(mode!=='closed'){setPlanningStep('idle');setSelectingProtectTarget(false)}}} onMission={selectMission} onPickProtectTarget={()=>{setSelectingProtectTarget(true);setRouteNotice(undefined)}} onProtectFlight={selectProtectFlight} onRecoverHome={()=>routeToAirfield('p-base',true)} onClear={()=>{setRouteNotice(undefined);if(selectingProtectTarget)setSelectingProtectTarget(false);else setRoute([])}} onBack={()=>{setPlanningStep('mission');setSelectingProtectTarget(false);setRouteNotice(undefined)}} onCommit={commit} step={planningStep} onClose={()=>{if(planningStep==='route'&&selected.route.length>=2&&!selectingProtectTarget&&!confirmPlanningOrder(selected))return;setPlanningStep('idle');setSelectingProtectTarget(false)}} reviewedIds={reviewedIds} reviewedCount={reviewedCount} totalCount={viableFormationIds.length} groundTargets={groundTargets} onChangeGroundTarget={changeGroundTarget} strikeUnlocked={groundTargets.length>0} strikeDisabledReason="RECOVER GROUND TARGET INTELLIGENCE FIRST" selectingProtectTarget={selectingProtectTarget}/>:null}
       {match.phase==='debrief'&&match.lastResult?<Debrief match={match} onFocus={point=>{setFollowId(undefined);setFocusPoint([...point] as Point)}} onAdapt={enterAdapt}/>:null}
       {match.phase==='adapt'?<AdaptPanel match={match} selectedTarget={economyTarget} onSelectTarget={selectEconomyTarget} onCloseTarget={()=>selectEconomyTarget({kind:'campaign',id:'campaign'})} onPurchase={purchaseEconomy} onNextRound={nextRound} procurementMode={procurementMode} procurementActionId={procurementActionId} onProcurementMode={changeProcurementMode} onProcurementAction={selectProcurementAction} hasPlacementPreview={Boolean(procurementPlacement)} onConfirmPlacement={confirmProcurementPlacement} onCancelPlacement={()=>setProcurementPlacement(undefined)}/>:null}
-      {(match.phase==='victory'||match.phase==='defeat')?<EndState victory={match.phase==='victory'} round={match.round} outcome={campaignOutcome(match)} onRestart={()=>setMenuOpen(true)}/>:null}
+      {(match.phase==='victory'||match.phase==='defeat'||match.phase==='draw')?<EndState victory={match.phase==='victory'} round={match.round} outcome={campaignOutcome(match)} onRestart={()=>setMenuOpen(true)}/>:null}
     </div>
   </main>
 }
@@ -376,7 +376,7 @@ export function Debrief({match,onFocus,onAdapt}:{match:MatchState;onFocus:(point
     <header><div><small>MISSION COMPLETE</small><h2>AFTER ACTION</h2></div>{message?<strong className="debrief-outcome">{message.title}</strong>:null}</header>
     <div className="debrief-metrics"><div><strong>{result.friendlyLosses}</strong><span>FRIENDLY LOST</span></div><div><strong>{result.enemyLosses}</strong><span>ENEMY LOST</span></div><div><strong>{intel.length}</strong><span>INTEL RECOVERED</span></div><div><strong>+{result.logisticsIncome.total}</strong><span>LOGISTICS</span></div></div>
     {orders.length?<div className="debrief-orders" aria-label="Mission orders and results"><small>ORDERS & RESULTS</small>{orders.map(order=><p key={order.id}><b>{order.callsign} · {order.purpose}</b><span>{order.result}</span></p>)}</div>:null}
-    {isCampaign(match)?<div className="debrief-campaign"><span>HOME BASE <b>{match.playerBaseHealth}%</b></span><span>EXPOSURE <b>{result.baseExposure}%</b></span>{result.enemyBaseDamage>0?<span>ENEMY BASE <b>−{result.enemyBaseDamage}</b></span>:null}</div>:null}
+    {isCampaign(match)?<div className="debrief-campaign"><span>HOME BASE <b>{match.playerBaseHealth}%</b></span>{result.enemyBaseDamage>0?<span>ENEMY BASE <b>−{result.enemyBaseDamage}</b></span>:null}</div>:null}
     {message?<p className="debrief-message">{message.message}</p>:null}
     {losses.length||intel.length?<details className="debrief-details"><summary>VIEW FORMATION & INTEL DETAILS</summary><div>{losses.map(item=><p key={item.id}>{item.callsign}: {item.startAircraft} → {item.endAircraft} AIRCRAFT · {item.endStrength}% STRENGTH</p>)}{intel.map(asset=><button key={asset.id} onClick={()=>onFocus(asset.position)}>NEW INTEL · {asset.kind.toUpperCase()} · FOCUS MAP</button>)}</div></details>:null}
     <button className="debrief-continue" onClick={onAdapt}>{message?'VIEW OUTCOME':'OPEN ADAPT'} <ChevronRight/></button>
@@ -387,13 +387,17 @@ export function campaignOutcomeMessage(outcome:NonNullable<ReturnType<typeof cam
   switch(outcome){
     case 'enemy-base-destroyed':return{title:'ENEMY BASE DESTROYED',message:'Your strike destroyed the enemy base.'}
     case 'home-base-destroyed':return{title:'HOME BASE DESTROYED',message:'Enemy strikes destroyed your home base.'}
-    case 'deadline':return{title:'DEADLINE REACHED',message:'The six-round campaign ended before the enemy base was destroyed.'}
+    case 'deadline':return{title:'DEADLINE REACHED',message:'Draw. Both bases survived the six-round campaign.'}
+    case 'mutual-destruction':return{title:'DRAW',message:'Draw. Both bases were destroyed in the same round.'}
+    case 'mutual-forces-lost':return{title:'DRAW',message:'Draw. Both sides lost all formations and reserve aircraft.'}
+    case 'enemy-forces-lost':return{title:'ENEMY FORCES LOST',message:'All enemy formations and reserve aircraft have been lost.'}
     case 'forces-lost':return{title:'FORCES LOST',message:'All available formations and reserve aircraft have been lost.'}
   }
 }
 
 export function EndState({victory,round,outcome,onRestart}:{victory:boolean;round:number;outcome:ReturnType<typeof campaignOutcome>;onRestart:()=>void}){
-  const title=outcome==='deadline'?'DEADLINE REACHED':outcome==='forces-lost'?'FORCES LOST':victory?'BREAKTHROUGH':'COMMAND LOST'
+  const draw=outcome==='deadline'||outcome==='mutual-destruction'||outcome==='mutual-forces-lost'
+  const title=draw?'DRAW':outcome==='forces-lost'?'FORCES LOST':victory?'BREAKTHROUGH':'COMMAND LOST'
   const message=outcome?campaignOutcomeMessage(outcome).message:victory?'Enemy command aviation has been destroyed.':'Your home base has been rendered inoperable.'
-  return <section className={`end-state ${victory?'win':'loss'}`}><div className="end-icon">{victory?<ShieldCheck/>:<AlertTriangle/>}</div><small>CAMPAIGN ENDED · ROUND {String(round).padStart(2,'0')}</small><h1>{title}</h1><p>{message}</p><button onClick={onRestart}><RotateCcw/> NEW CAMPAIGN</button></section>
+  return <section className={`end-state ${draw?'draw':victory?'win':'loss'}`}><div className="end-icon">{victory?<ShieldCheck/>:<AlertTriangle/>}</div><small>CAMPAIGN ENDED · ROUND {String(round).padStart(2,'0')}</small><h1>{title}</h1><p>{message}</p><button onClick={onRestart}><RotateCcw/> NEW CAMPAIGN</button></section>
 }

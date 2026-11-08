@@ -1,6 +1,6 @@
 import type { ConstructibleAssetKind, EconomyActionId, EconomyActionQuote, EconomyCommand, EconomyTarget, MatchState, Point, RoundResult, LogisticsIncome, LogisticsStatementEntry } from './types'
 import { normalizeFormationBasing, formationField } from './forwardBasing'
-import { campaignOutcome } from './campaign'
+import { campaignOutcome, campaignOutcomePhase } from './campaign'
 import { maintainCpu, planNextCpuRound } from './cpu/settlement'
 import { LOGISTICS_EFFECTS } from './economyRules'
 import { sidePlanningContext, applySideContext } from './sideContext'
@@ -39,7 +39,7 @@ export function settleLogisticsIncome(state: MatchState, result: RoundResult): M
 export const openAdaptPhase = (state: MatchState): MatchState => {
   if (state.phase !== 'debrief') return state
   const outcome = campaignOutcome(state)
-  if (outcome) return { ...state, phase: outcome === 'enemy-base-destroyed' ? 'victory' : 'defeat' }
+  if (outcome) return { ...state, phase: campaignOutcomePhase(outcome) }
   return maintainCpu({ ...state, phase: 'adapt' })
 }
 export const beginNextRound = (state: MatchState): MatchState => {

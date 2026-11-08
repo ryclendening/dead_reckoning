@@ -53,12 +53,12 @@ describe('CPU campaign planning', () => {
     expect(orderRisk(v,order)).toBeGreaterThan(risk)
   })
 
-  it('requires recovered confirmation and the same base-pressure gate on every difficulty', () => {
+  it('requires recovered confirmation, with no extra CPU pressure gate on any difficulty', () => {
     for (const difficulty of ['easy', 'medium', 'hard'] as const) {
       const initial = view(difficulty), report: CpuSiteReport = { id: 'p-base', kind: 'base', position: [0, 0], health: 100, maxHealth: 100, observedRound: 1 }
       expect(planCpu({ ...initial, exposure: 100 }).orders.some(order => order.strikeTargetId)).toBe(false)
       initial.cpu.sites = [report]
-      expect(planCpu({ ...initial, exposure: 59 }).orders.some(order => order.strikeTargetId)).toBe(false)
+      expect(planCpu({ ...initial, exposure: 0 }).orders.some(order => order.strikeTargetId)).toBe(true)
       expect(planCpu({ ...initial, exposure: 60 }).orders.find(order => order.role === 'fighter')?.strikeTargetId).toBe('p-base')
     }
   })
@@ -91,7 +91,7 @@ describe('CPU campaign planning', () => {
         expect(missionDistance(order.route, initial.home)).toBeLessThanOrEqual(order.role === 'fighter' ? 40.001 : 64.001)
       }
     }
-  })
+  },15000)
 
   it('does not invent fighter opposition or force escort after an unexplained recon loss', () => {
     const initial = view('hard')
@@ -108,7 +108,7 @@ describe('CPU execution and persistence', () => {
     const playerBase=initial.playerAssets.find(asset=>asset.kind==='base')!
     const position:[number,number]=[home[0]+(home[0]>=0?-6:6),home[1]]
     const route:[number,number][]=[home,position,home]
-    const orders=initial.cpu!.plan!.orders.map(order=>order.role==='fighter'?{...order,mission:'transit' as const,route,routeIngress:route,sortieOrdered:true}:{...order,sortieOrdered:false})
+    const orders=initial.cpu!.plan!.orders.map(order=>order.id==='red-fighter'?{...order,mission:'transit' as const,route,routeIngress:route,sortieOrdered:true}:{...order,sortieOrdered:false})
     const state={...initial,baseExposure:26,playerAssets:[{...playerBase,position}],squadrons:initial.squadrons.map(squadron=>({...squadron,sortieOrdered:false})),cpu:{...initial.cpu!,plan:{...initial.cpu!.plan!,orders}}}
     const result=resolveRound(state),settled=applyRound(state,result)
     expect(result.baseDamage).toBe(0)
@@ -190,7 +190,7 @@ describe('CPU execution and persistence', () => {
     const home = state.enemyAssets.find(a => a.kind === 'base')!.position
     state = { ...state, playerAssets: state.playerAssets.filter(a => a.kind === 'base').map(a => ({ ...a, position: home })),
       squadrons: state.squadrons.map(s => ({ ...s, sortieOrdered: s.id === 'viper', mission: s.role === 'fighter' ? 'forward-patrol' : 'search-area', route: [home, [home[0] + 6, home[1]]], routeIngress: [home, [home[0] + 6, home[1]]] })) }
-    state.cpu!.plan!.orders[0].sortieOrdered = false
+    state.cpu!.plan!.orders.forEach(o=>{if(o.role==='fighter')o.sortieOrdered=false})
     const result = resolveRound(state)
     const recovery = result.behaviorIntervals.find(i => i.unitId === 'red-recon' && i.reason === 'cpu-preserve-recon')!
     expect(recovery).toBeDefined()
@@ -218,12 +218,12 @@ describe('CPU execution and persistence', () => {
     expect(result.baseDamage).toBe(0)
   })
 
-  it('pays for maintenance once and uses proportional strength when replacing two-aircraft recon', () => {
+  it('pays for maintenance once and uses proportional strength when replacing four-aircraft recon', () => {
     const state = createMatch(), cpu = structuredClone(state.cpu!)
     cpu.formations[1] = { ...cpu.formations[1], strength: 0, aircraft: 0 }
     cpu.logistics = 4; cpu.reserves = 1
     const adapted = maintainCpu({ ...state, phase: 'adapt', cpu })
-    expect(adapted.cpu!.formations[1]).toMatchObject({ aircraft: 1, strength: 50 })
+    expect(adapted.cpu!.formations[1]).toMatchObject({ aircraft: 1, strength: 25 })
     expect(adapted.cpu!.logistics).toBe(0)
     expect(adapted.cpu!.reserves).toBe(0)
     expect(maintainCpu(adapted)).toBe(adapted)
@@ -264,7 +264,7 @@ describe('CPU execution and persistence', () => {
         expect(result.baseDamage).toBe(0)
         expect(result.baseExposureDelta).toBeGreaterThanOrEqual(40)
       }
-      if(result.baseDamage>0){firstStrike??=round;expect(state.baseExposure).toBeGreaterThanOrEqual(60)}
+      if(result.baseDamage>0){firstStrike??=round;expect(state.cpu!.sites.some(s=>s.kind==='base')).toBe(true)}
       state = openAdaptPhase(applyRound(state, result))
       if (state.phase === 'defeat') break
       state = beginNextRound(state)

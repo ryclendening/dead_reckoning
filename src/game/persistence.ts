@@ -1,6 +1,6 @@
 import { createCampaignDraft, createMatch } from './data'
 import { SETUP_FORMATION_IDS, SETUP_REQUIRED_ASSET_IDS } from './campaignSetup'
-import { campaignOutcome } from './campaign'
+import { campaignOutcome, campaignOutcomePhase } from './campaign'
 import { createEconomyState } from './economy'
 import { normalizeFormationBasing } from './forwardBasing'
 import type { Asset, CampaignSetupState, DebugScenario, EconomyState, MatchState, MissionId, Point, RoundResult, Squadron } from './types'
@@ -8,7 +8,7 @@ import { DEBUG_SCENARIOS } from './scenarios'
 import { createCpuState, prepareCpuRound } from './cpu/planner'
 import { validCpuReport, validCpuState } from './cpu/persistence'
 
-const phases = new Set(['deploy', 'plan', 'execute', 'debrief', 'adapt', 'victory', 'defeat'])
+const phases = new Set(['deploy', 'plan', 'execute', 'debrief', 'adapt', 'victory', 'defeat', 'draw'])
 const roles = new Set(['fighter', 'recon'])
 const missions = new Set(['defensive-cap', 'forward-patrol', 'transit', 'search-area', 'base-strike'])
 const assetKinds = new Set(['base', 'fob', 'decoy', 'radar', 'sam', 'aaa'])
@@ -226,10 +226,10 @@ export function normalizeMatch(input: unknown): MatchState {
   if (input.phase === 'debrief' || input.lastResult !== undefined) {
     if (!validResult(input.lastResult) || input.lastResult.round !== input.round) return fallback(input)
   }
-  if (input.phase === 'victory' || input.phase === 'defeat') {
+  if (input.phase === 'victory' || input.phase === 'defeat' || input.phase === 'draw') {
     if (!validResult(input.lastResult)) return fallback(input)
     const outcome = campaignOutcome(input as unknown as MatchState)
-    if (input.phase === 'victory' ? outcome !== 'enemy-base-destroyed' : !outcome || outcome === 'enemy-base-destroyed') return fallback(input)
+    if (!outcome || campaignOutcomePhase(outcome)!==input.phase && !(input.phase==='defeat'&&campaignOutcomePhase(outcome)==='draw')) return fallback(input)
   }
 
   const normalizedSquadrons = squadrons.map(squadron => {
@@ -254,7 +254,8 @@ export function normalizeMatch(input: unknown): MatchState {
   const synchronizedAssets = basedAssets.map(asset => asset.kind === 'base'
     ? { ...asset, operational: savedBase.operational ?? asset.health > 0 }
     : asset)
-  const phase = input.phase === 'execute' ? 'plan' : input.phase
+  const savedOutcome=campaignOutcome(input as unknown as MatchState)
+  const phase = ['victory','defeat','draw'].includes(String(input.phase))&&savedOutcome?campaignOutcomePhase(savedOutcome):input.phase === 'execute' ? 'plan' : input.phase
   const cpu = input.cpu as MatchState['cpu'] ?? createCpuState(enemyBase.position, 'medium', input.seed as number)
   const normalized: MatchState = {
     ...fresh,

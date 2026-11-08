@@ -19,7 +19,7 @@ const traffic = (v: unknown) => record(v) && point(v.position) && ['fighter', 'r
   && (v.sector === undefined || integer(v.sector) && v.sector < 8)
 
 const intent = (v: unknown) => ['discover','protect-base','expand-defense','forward-position','suppress-defenses','strike-base','contest-air'].includes(String(v))
-const baseAttack = (v: unknown) => record(v) && number(v.damageNow) && v.damageNow<=60 && number(v.followupDamage) && v.followupDamage<=60 && integer(v.preparationRounds) && number(v.releaseSeconds) && (v.confidence===undefined||number(v.confidence)&&v.confidence<=1)
+const baseAttack = (v: unknown) => record(v) && number(v.damageNow) && v.damageNow<=120 && number(v.followupDamage) && v.followupDamage<=120 && integer(v.preparationRounds) && number(v.releaseSeconds) && (v.confidence===undefined||number(v.confidence)&&v.confidence<=1)
 const trace = (v: unknown) => record(v) && integer(v.round) && intent(v.selected) && text(v.chosenPackageSummary)
   && Array.isArray(v.observedEvidenceIds) && v.observedEvidenceIds.every(text) && Array.isArray(v.rejected) && v.rejected.every(text)
   && Array.isArray(v.alternatives) && v.alternatives.every(a=>record(a)&&intent(a.intent)&&typeof a.bestPackageScore==='number'&&Number.isFinite(a.bestPackageScore)&&text(a.reason)&&record(a.components)&&Object.values(a.components).every(n=>typeof n==='number'&&Number.isFinite(n))&&(a.baseAttack===undefined||baseAttack(a.baseAttack)))
@@ -28,7 +28,7 @@ const trace = (v: unknown) => record(v) && integer(v.round) && intent(v.selected
   && (v.work.routeSearches===undefined||integer(v.work.routeSearches)) && (v.work.optimalRouteSearches===undefined||integer(v.work.optimalRouteSearches))
 export function validCpuReport(v: unknown): v is CpuRoundReport {
   return record(v) && Array.isArray(v.sites) && v.sites.every(site) && Array.isArray(v.traffic) && v.traffic.every(traffic)
-    && Array.isArray(v.recoveredIds) && v.recoveredIds.every(id => id === 'red-fighter' || id === 'red-recon')
+    && Array.isArray(v.recoveredIds) && v.recoveredIds.every(id => id === 'red-fighter' || id === 'red-fighter-2' || id === 'red-recon')
     && (v.mappedAreas === undefined || Array.isArray(v.mappedAreas) && v.mappedAreas.every(point))
     && (v.confirmedKills === undefined || integer(v.confirmedKills))
     && (v.recoveryOutcomes === undefined || Array.isArray(v.recoveryOutcomes) && v.recoveryOutcomes.every(o=>record(o)&&text(o.formationId)&&text(o.launchFieldId)&&text(o.plannedFieldId)&&['recovered','diverted','lost','destroyed','trapped'].includes(String(o.outcome))))
@@ -38,9 +38,12 @@ export function validCpuReport(v: unknown): v is CpuRoundReport {
 export function validCpuState(v: unknown, validFormation: (v: unknown) => v is Squadron, round: number): v is CpuState {
   if (!record(v) || (v.version !== 1 && v.version !== 2) || !['easy', 'medium', 'hard'].includes(String(v.difficulty)) || !Number.isInteger(v.seed)
     || !integer(v.reserves) || !number(v.logistics) || !integer(v.searchIndex) || typeof v.lastReconLost !== 'boolean'
-    || !Array.isArray(v.formations) || v.formations.length !== 2 || !v.formations.every(validFormation)
+    || !Array.isArray(v.formations) || ![2,3].includes(v.formations.length) || !v.formations.every(validFormation)
     || !v.formations.some(f => f.id === 'red-fighter' && f.role === 'fighter' && f.maxAircraft === 4)
-    || !v.formations.some(f => f.id === 'red-recon' && f.role === 'recon' && f.maxAircraft === 2)
+    || !v.formations.some(f => f.id === 'red-recon' && f.role === 'recon' && [2,4].includes(f.maxAircraft))
+    || new Set(v.formations.map(f=>f.id)).size !== v.formations.length
+    || v.formations.some(f=>!['red-fighter','red-fighter-2','red-recon'].includes(f.id))
+    || v.formations.length===3 && !v.formations.some(f=>f.id==='red-fighter-2'&&f.role==='fighter'&&f.maxAircraft===4)
     || !Array.isArray(v.sites) || !v.sites.every(s => site(s) && (s as { observedRound: number }).observedRound <= round)
     || !Array.isArray(v.traffic) || !v.traffic.every(t => traffic(t) && (t as { observedRound: number }).observedRound <= round)
     || !Array.isArray(v.spending) || !v.spending.every(s => record(s) && integer(s.round) && s.round <= round && text(s.targetId) && number(s.cost) && ['repair', 'replace', 'repair-defense', 'repair-formation', 'replace-aircraft', 'repair-fob', 'build-sam', 'build-aaa', 'build-fob', 'install-maintenance-wing', 'install-supply-depot'].includes(String(s.action)))
@@ -52,8 +55,8 @@ export function validCpuState(v: unknown, validFormation: (v: unknown) => v is S
   if (v.plan === undefined) return true
   const p = v.plan
   if (!record(p) || !integer(p.round) || p.round > round || !['defend', 'escort', 'patrol', 'strike'].includes(String(p.objective)) || !text(p.reason)
-    || !Array.isArray(p.orders) || p.orders.length !== 2 || !p.orders.every(validFormation)
-    || new Set(p.orders.map(order => order.id)).size !== 2
+    || !Array.isArray(p.orders) || p.orders.length !== formations.length || !p.orders.every(validFormation)
+    || new Set(p.orders.map(order => order.id)).size !== formations.length
     || !Array.isArray(p.candidates) || !p.candidates.every(c => record(c) && typeof c.score === 'number' && Number.isFinite(c.score) && text(c.reason) && ['defend', 'escort', 'patrol', 'strike'].includes(String(c.objective)))) return false
   if (p.intent !== undefined && !intent(p.intent) || p.trace !== undefined && !trace(p.trace)) return false
   return p.orders.every(order => formations.some(f => f.id === order.id && f.role === order.role && f.maxAircraft === order.maxAircraft)

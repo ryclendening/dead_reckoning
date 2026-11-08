@@ -64,13 +64,13 @@ describe('side-aware infrastructure gate', () => {
     expect(settled.cpu!.logistics-ready.cpu!.logistics).toBe(7)
     expect(applyRound(settled,result)).toBe(settled)
   })
-  it('does not construct on player-only mapping and restores a lost two-aircraft recon proportionally', () => {
+  it('does not construct on player-only mapping and restores a lost four-aircraft recon proportionally', () => {
     const { s } = fixture()
     const context = sidePlanningContext(s, 'cpu')
     expect(validateAssetPlacement(context, 'sam', [900, 900]).valid).toBe(false)
     s.cpu!.formations[1] = { ...s.cpu!.formations[1], aircraft: 0, strength: 0 }
     const restored = executeCpuEconomyCommand(s, { actionId: 'replace-aircraft', target: { kind: 'squadron', id: 'red-recon' } })
-    expect(restored.cpu!.formations[1]).toMatchObject({ aircraft: 1, strength: 50 })
+    expect(restored.cpu!.formations[1]).toMatchObject({ aircraft: 1, strength: 25 })
   })
 })
 

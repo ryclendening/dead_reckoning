@@ -276,3 +276,12 @@ enemy-base damage rose from 59.13 to 61.13 HP; no campaign outcome changed.
 See `Evaluation/CpuPlannerV2/ROUTING_RESULTS.md` and fingerprinted raw records.
 The route algorithm is validated independently; the competitive gate remains
 unpassed and the fresh validation cohort remains unused.
+
+
+## User-authorized symmetric rules revision — 2026-11-08
+
+The user explicitly requested equal CPU/player opening conditions and selected draws for both round-six survival and simultaneous base destruction. This supersedes the original requirements above to retain the asymmetric opening, CPU-only 60-pressure gate and deadline advantage. Normal deployed campaigns now share two four-aircraft fighters, four recon aircraft, corresponding condition, 10 Logistics, three reserves, full-health base/radar/SAM/AAA and no opening decoy. Recovered confirmed coordinates authorize either side’s strike. Force elimination is symmetric as well. Legacy saves retain their actual inventory and resources. Legacy scripted/debug pressure telemetry remains compatible but does not gate ordinary CPU actions.
+
+The tactical library runs the same fighter capabilities for both fighters and combines a bounded diverse set into legal joint packages sharing one recon order. It supports coordinated strikes and simultaneous different missions, caps aggregate estimated damage at recovered target health, and validates the entire recovery package. Strategic goals and combat rules remain shared. No opponent simulation or difficulty combat bonuses were added.
+
+The before/after parity evaluation uses the same registered development seeds and unchanged competitive player scripts as the last routing comparison. This measures the combined effect of corrected starting conditions, equal strike eligibility and a planner capable of using the matching inventory; it does not isolate each change’s causal contribution. Draws are excluded from CPU wins. Fresh holdout seeds remain distinct from development seeds.

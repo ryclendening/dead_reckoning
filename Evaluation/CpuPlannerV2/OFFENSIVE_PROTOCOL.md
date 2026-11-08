@@ -86,3 +86,23 @@ establish strength against an attacking human. Keep all policy/seed failures.
 Run both the original v1 and the immediately previous CPU v2 (`f7f9998`) against
 the same new opponents when assessing this revision. The registered fresh seeds
 remain untouched until the candidate passes development validation.
+
+## Equal-rules comparison — 2026-11-08
+
+The user has explicitly authorized changing the previously unequal opening
+forces, site condition, strike-authorization gate and campaign endings. This is
+a gameplay correction, superseding the earlier no-force-change constraint for
+this comparison. It is not evidence of improvement from strategy weights alone.
+The candidate uses the matching player opening, plans both fighters through the
+same capability library, requires recovered coordinates for either side, and
+counts deadline survival and mutual destruction as draws. Offensive wins require
+exclusive player-base destruction; mutual destruction is excluded.
+
+Compare the unchanged `competitive-v1` scripts on seeds 3, 11, 29, 47, 71, 89
+against the preserved `route-search-results.json`. New rows are labeled
+`symmetric-current`; do not pool them with the old `shared-current` ruleset.
+The historical v1 planner assumes two CPU formations and is not a symmetric
+three-formation baseline; use the archived before-parity v2 rows for this test.
+All three difficulties and the non-attacking control remain reported. Run the
+registered fresh cohort only after development passes, without tuning the frozen
+candidate on those results. Opponents are fixed scripts, not human players.

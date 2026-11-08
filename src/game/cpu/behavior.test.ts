@@ -20,6 +20,8 @@ function setup(home:Point=[0,0],target:Point=[20,0]) {
   let s=createMatch(7301,'hard')
   s={...s,phase:'adapt',round:2,baseExposure:80,enemyBaseHealth:100,enemyAssets:s.enemyAssets.filter(a=>a.kind==='base').map(a=>({...a,position:home,health:100})),
     playerAssets:s.playerAssets.filter(a=>a.kind==='base').map(a=>({...a,position:target})),squadrons:s.squadrons.map(u=>({...u,sortieOrdered:false})),cpu:{...s.cpu!,plan:undefined,intent:undefined,logistics:16,mappedAreas:[],traffic:[]}}
+  // Single-striker geometry fixture also covers continued legacy campaigns.
+  s.cpu!.formations=s.cpu!.formations.filter(f=>f.id!=='red-fighter-2').map(f=>f.role==='recon'?{...f,maxAircraft:2,aircraft:2}:f)
   s.cpu!.formations=s.cpu!.formations.map(f=>({...f,route:[home],routeIngress:[home]}))
   s.cpu!.sites=s.playerAssets.map(a=>cpuReportAt(a,1))
   // Geometry fixtures disclose only the owned base and recovered target, with a broad execution world.
@@ -193,7 +195,7 @@ describe('CPU v2 behavioral acceptance',()=>{
     expect(s.cpu!.plan!.orders[0].strikeTargetId).toBe('p-base')
     expect(resolveRound(s).baseDamage).toBe(60)
   })
-  it('restores a striker for a known attack that one more recovered observation will authorize',()=>{
+  it('restores a striker for an already recovered target without waiting for pressure',()=>{
     const initial=setup();initial.round=1;initial.baseExposure=46;initial.cpu!.reserves=3
     initial.cpu!.formations=initial.cpu!.formations.map(f=>f.role==='fighter'?{...f,aircraft:0,strength:0,status:'destroyed'}:f)
     const blind=structuredClone(initial);blind.cpu!.sites=[]
@@ -206,7 +208,7 @@ describe('CPU v2 behavioral acceptance',()=>{
     for(let round=2;round<=6;round++) {
       legal(s)
       const result=resolveRound(s)
-      if(round===2){expect(result.baseDamage).toBe(0);expect(result.baseExposureDelta).toBeGreaterThanOrEqual(40)}
+      if(round===2)expect(result.baseDamage).toBe(45)
       if(round===3)expect(result.baseDamage).toBe(45)
       s=applyRound(s,result)
       if(campaignOutcome(s))break
@@ -223,7 +225,7 @@ describe('CPU v2 behavioral acceptance',()=>{
     const adapted=maintainCpu(s)
     expect(adapted.cpu!.formations[0]).toMatchObject({aircraft:3,strength:75})
     expect(adapted.cpu!.spending.filter(c=>c.action==='replace-aircraft')).toHaveLength(3)
-    expect(adapted.cpu!.adaptTrace!.alternatives.some(a=>a.baseAttack?.followupDamage&&a.baseAttack.followupDamage>=40)).toBe(true)
+    expect(adapted.cpu!.adaptTrace!.alternatives.some(a=>a.baseAttack?.damageNow&&a.baseAttack.damageNow>0)).toBe(true)
     expect(s.cpu!.formations[0].aircraft).toBe(0)
   })
 
@@ -243,12 +245,14 @@ describe('CPU v2 behavioral acceptance',()=>{
     expect(resolveRound(ready).playerAssets.find(a=>a.id==='p-base')!.health).toBe(0)
   })
 
-  it('does not credit a second targeting report from an observer that cannot return',()=>{
-    const v=cpuPlanningView(setup())!;v.exposure=6
-    const orders=v.cpu.formations.map(f=>({...f,sortieOrdered:true,route:[v.home,v.cpu.sites[0].position]}))
-    expect(collectionScorer(v)(orders,()=>1)).toBe(1)
-    expect(collectionScorer(v)(orders,o=>o.role==='recon'?1:0)).toBeCloseTo(40/54)
-    expect(collectionScorer({...v,exposure:46})(orders,o=>o.role==='recon'?1:0)).toBe(1)
+  it('credits discovery only when an observer can return, without a second-report requirement',()=>{
+    const v=cpuPlanningView(setup())!;v.cpu.sites=[]
+    const prior=[{point:[20,0] as Point,weight:1}]
+    const orders=v.cpu.formations.map(f=>({...f,sortieOrdered:true,route:[v.home,prior[0].point]}))
+    const score=collectionScorer(v,prior)
+    expect(score(orders,()=>0)).toBe(0)
+    expect(score(orders,o=>o.role==='recon'?1:0)).toBe(1)
+    expect(score(orders,o=>o.role==='recon'?.5:0)).toBe(.5)
   })
 
   it('builds, transits and uses a FOB to enable a previously unreachable strike',()=>{

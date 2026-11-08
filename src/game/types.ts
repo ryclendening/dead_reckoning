@@ -1,5 +1,5 @@
 import type { CpuRoundReport, CpuState } from './cpu/types'
-export type Phase = 'deploy' | 'plan' | 'execute' | 'debrief' | 'adapt' | 'victory' | 'defeat'
+export type Phase = 'deploy' | 'plan' | 'execute' | 'debrief' | 'adapt' | 'victory' | 'defeat' | 'draw'
 export type Role = 'fighter' | 'recon'
 export type MissionId = 'defensive-cap' | 'forward-patrol' | 'transit' | 'search-area' | 'base-strike'
 export type IntelLevel = 'unknown' | 'suspected' | 'probable' | 'confirmed'

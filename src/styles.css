@@ -258,3 +258,5 @@
   .mission-step .mission-effect{margin-top:5px}
   .mission-step .shelf-route button{min-height:38px}
 }
+
+.end-state.draw{background:radial-gradient(circle at 50% 36%,#333b40,#0a0c0a 64%)}.draw .end-icon{border-color:#aaa995}.draw .end-icon svg{color:#aaa995}

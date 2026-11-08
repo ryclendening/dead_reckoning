@@ -1,4 +1,3 @@
-import { ENEMY_TARGETING_THRESHOLD } from '../campaign'
 import type { CpuPlanningView } from './planningView'
 import type { CpuDecisionTrace, CpuIntent, TacticalPackage } from './types'
 
@@ -43,11 +42,10 @@ export function contribution(view:CpuPlanningView,p:TacticalPackage):Record<stri
   const protection=(1-Math.exp(-3*e.ownBaseRiskReduced))*(.6+.4*(100-health)/100)
   const operation=baseAttackValue(view,p)
   const collecting=p.baseAttack&&e.baseDamage===0&&!p.orders.some(o=>o.mission==='base-strike'&&o.sortieOrdered!==false)
-  const authorizing=view.exposure<ENEMY_TARGETING_THRESHOLD&&view.cpu.sites.some(s=>s.kind==='base'&&s.health>0)
   const components = {
     strike:e.baseDamage>0?operation:0,
     survival:protection,
-    discovery:authorizing?(collecting?operation:0):e.informationGain*.85*horizon,
+    discovery:e.informationGain*.85*horizon,
     // A concrete base operation already includes the follow-through. Do not
     // count suppression's risk reduction again as an independent reward.
     access:p.baseAttack?collecting||e.baseDamage>0?0:operation:e.futureStrikeAccessGain*.85*horizon,

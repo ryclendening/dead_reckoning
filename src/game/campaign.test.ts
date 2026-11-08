@@ -8,17 +8,17 @@ import { createScenario } from './scenarios'
 import type { MatchState } from './types'
 
 describe('campaign outcomes',()=>{
-  it('keeps debug fixtures isolated, gives home-base loss tie precedence, and waits for the settled deadline',()=>{
+  it('keeps debug fixtures isolated, draws simultaneous destruction, and waits for the settled deadline',()=>{
     const state=createMatch()
     expect(isCampaign(state)).toBe(true)
     expect(isCampaign({...state,debugScenario:'fighter-duel'})).toBe(false)
-    expect(campaignOutcome({...state,enemyBaseHealth:0,playerBaseHealth:0})).toBe('home-base-destroyed')
+    expect(campaignOutcome({...state,enemyBaseHealth:0,playerBaseHealth:0})).toBe('mutual-destruction')
     expect(campaignOutcome({...state,squadrons:state.squadrons.map(squadron=>({...squadron,aircraft:0})),replacements:0})).toBe('forces-lost')
     expect(campaignOutcome({...state,round:CAMPAIGN_ROUND_LIMIT})).toBeUndefined()
     const settled={...state,round:CAMPAIGN_ROUND_LIMIT,lastResult:{round:CAMPAIGN_ROUND_LIMIT} as MatchState['lastResult']}
     expect(campaignOutcome(settled)).toBe('deadline')
     expect(campaignOutcome({...settled,debugScenario:'fighter-duel',enemyBaseHealth:0})).toBeUndefined()
-    expect(openAdaptPhase({...settled,phase:'debrief'}).phase).toBe('defeat')
+    expect(openAdaptPhase({...settled,phase:'debrief'}).phase).toBe('draw')
     expect(beginNextRound({...settled,phase:'adapt'}).round).toBe(CAMPAIGN_ROUND_LIMIT)
   })
 

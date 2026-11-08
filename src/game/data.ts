@@ -1,4 +1,5 @@
 import type { Asset, CampaignWorld, DebugScenario, MatchState, Point, Squadron } from './types'
+import { OPENING_CONDITION, OPENING_LOGISTICS, OPENING_RESERVES } from './openingForces'
 import { snapToHex } from './hex'
 import { createStartingKnowledge, generateCampaignWorld } from './world'
 import { createEconomyState } from './economy'
@@ -22,15 +23,15 @@ export function enemyBaseFor(world:CampaignWorld):Point{if(world.layoutVersion==
 export function enemyAssetsFor(world:CampaignWorld):Asset[]{const base=enemyBaseFor(world),sites=world.layoutVersion===1?campaignEnemySites(world.seed,world.bounds,base):undefined;return [
   {id:'e-base',kind:'base',position:base,intel:'unknown',confidence:0,health:100,maxHealth:100,hidden:true,struck:false},
   {id:'e-decoy',kind:'decoy',position:sites?.decoy??add(base,[-3.1,1.8]),intel:'unknown',confidence:0,health:50,maxHealth:50,hidden:true,struck:false},
-  {id:'e-radar',kind:'radar',position:sites?.radar??add(base,[1.9,3.3]),intel:'unknown',confidence:0,health:70,maxHealth:70,hidden:true,struck:false},
-  {id:'e-sam',kind:'sam',position:sites?.sam??add(base,[-2.4,3.5]),intel:'unknown',confidence:0,health:65,maxHealth:65,hidden:true,struck:false},
-  {id:'e-aaa',kind:'aaa',position:sites?.aaa??add(base,[3.1,1.5]),intel:'unknown',confidence:0,health:55,maxHealth:55,hidden:true,struck:false},
+  {id:'e-radar',kind:'radar',position:sites?.radar??add(base,[1.9,3.3]),intel:'unknown',confidence:0,health:100,maxHealth:100,hidden:true,struck:false},
+  {id:'e-sam',kind:'sam',position:sites?.sam??add(base,[-2.4,3.5]),intel:'unknown',confidence:0,health:100,maxHealth:100,hidden:true,struck:false},
+  {id:'e-aaa',kind:'aaa',position:sites?.aaa??add(base,[3.1,1.5]),intel:'unknown',confidence:0,health:100,maxHealth:100,hidden:true,struck:false},
 ]}
 
 export function squadronsFor(world:CampaignWorld):Squadron[]{const base=world.friendlyTerritory.center,at=(offset:Point)=>add(base,offset);return [
-  {id:'viper',callsign:'VIPER 1',role:'fighter',mission:'defensive-cap',aircraft:4,maxAircraft:4,damaged:0,readiness:92,ammo:100,strength:100,morale:86,routeIngress:route(base,at([-1.5,-3.2]),at([-3.8,-5.6])),route:route(base,at([-1.5,-3.2]),at([-3.8,-5.6]),at([-1.5,-3.2]),base)},
-  {id:'falcon',callsign:'FALCON 2',role:'fighter',mission:'defensive-cap',aircraft:4,maxAircraft:4,damaged:0,readiness:89,ammo:100,strength:100,morale:78,routeIngress:route(base,at([2.4,-3.1]),at([5.2,-6.4])),route:route(base,at([2.4,-3.1]),at([5.2,-6.4]),at([2.4,-3.1]),base)},
-  {id:'raven',callsign:'RAVEN 3',role:'recon',mission:'search-area',aircraft:4,maxAircraft:4,damaged:0,readiness:96,ammo:100,strength:100,morale:84,routeIngress:route(base,at([-1.5,-4]),at([1.5,-8.2]),at([4.8,-11.2])),route:route(base,at([-1.5,-4]),at([1.5,-8.2]),at([4.8,-11.2]),at([1.5,-8.2]),base)},
+  {id:'viper',callsign:'VIPER 1',role:'fighter',mission:'defensive-cap',...OPENING_CONDITION.fighter,routeIngress:route(base,at([-1.5,-3.2]),at([-3.8,-5.6])),route:route(base,at([-1.5,-3.2]),at([-3.8,-5.6]),at([-1.5,-3.2]),base)},
+  {id:'falcon',callsign:'FALCON 2',role:'fighter',mission:'defensive-cap',...OPENING_CONDITION.secondFighter,routeIngress:route(base,at([2.4,-3.1]),at([5.2,-6.4])),route:route(base,at([2.4,-3.1]),at([5.2,-6.4]),at([2.4,-3.1]),base)},
+  {id:'raven',callsign:'RAVEN 3',role:'recon',mission:'search-area',...OPENING_CONDITION.recon,routeIngress:route(base,at([-1.5,-4]),at([1.5,-8.2]),at([4.8,-11.2])),route:route(base,at([-1.5,-4]),at([1.5,-8.2]),at([4.8,-11.2]),at([1.5,-8.2]),base)},
   {id:'ghost',callsign:'GHOST 4',role:'recon',mission:'search-area',aircraft:4,maxAircraft:4,damaged:0,readiness:94,ammo:100,strength:100,morale:90,routeIngress:route(base,at([-4.8,-2.2]),at([-6.1,-6.6])),route:route(base,at([-4.8,-2.2]),at([-6.1,-6.6]),at([-4.8,-2.2]),base)},
 ]}
 
@@ -42,6 +43,6 @@ export const initialAssets=enemyAssetsFor(DEFAULT_WORLD)
 
 export const createMatch=(seed=7301, difficulty:CpuDifficulty='medium',randomize=true,debugScenario?:DebugScenario):MatchState=>{
   const world=generateCampaignWorld(seed,randomize),knowledge=createStartingKnowledge(world)
-  return prepareCpuRound({debugScenario,round:1,phase:'plan',logistics:10,command:2,replacements:3,selectedId:'raven',squadrons:squadronsFor(world),enemyAssets:enemyAssetsFor(world),playerAssets:friendlyAssetsFor(world),playerBaseHealth:100,enemyBaseHealth:100,baseExposure:6,campaignScore:0,seed,world,mappedAreas:knowledge.mappedAreas,discoveredBoundaries:knowledge.discoveredBoundaries,economy:createEconomyState(),cpu:createCpuState(enemyBaseFor(world),difficulty,seed)})
+  return prepareCpuRound({debugScenario,round:1,phase:'plan',logistics:OPENING_LOGISTICS,command:2,replacements:OPENING_RESERVES,selectedId:'raven',squadrons:squadronsFor(world),enemyAssets:enemyAssetsFor(world).filter(a=>a.kind!=='decoy'||debugScenario!==undefined&&debugScenario!=='campaign'),playerAssets:friendlyAssetsFor(world),playerBaseHealth:100,enemyBaseHealth:100,baseExposure:6,campaignScore:0,seed,world,mappedAreas:knowledge.mappedAreas,discoveredBoundaries:knowledge.discoveredBoundaries,economy:createEconomyState(),cpu:createCpuState(enemyBaseFor(world),difficulty,seed)})
 }
 export const createCampaignDraft=(seed=7301,difficulty:CpuDifficulty='medium'):MatchState=>({...createMatch(seed,difficulty),phase:'deploy',setup:createCampaignSetupState()})
