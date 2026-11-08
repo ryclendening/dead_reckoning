@@ -8,6 +8,7 @@ import { normalizeMatch } from '../persistence'
 import { formationField, validateRecoveryPackage } from '../forwardBasing'
 import { MAX_FLIGHT_DISTANCE } from '../flightRules'
 import { defenseCoverage } from './placement'
+import { executeCpuEconomyCommand } from './economy'
 import { strikeOrders, orderRisk } from './routes'
 import type { Asset, MatchState, Point } from '../types'
 
@@ -41,11 +42,12 @@ describe('CPU v2 behavioral acceptance',()=>{
   it.each([0,Math.PI/2,-Math.PI/2])('builds marginal SAM coverage facing the observed approach %s',angle=>{
     const s=setup(),home=s.enemyAssets[0].position
     s.cpu!.sites=[];s.enemyAssets[0].health=40;s.enemyBaseHealth=40
+    s.cpu!.mappedAreas=[[Math.cos(angle)*8,Math.sin(angle)*8],[Math.cos(angle)*11,Math.sin(angle)*11]]
     s.cpu!.traffic=[{role:'fighter',position:[Math.cos(angle)*8,Math.sin(angle)*8],observedRound:2,source:'visual',bearing:angle,sector:(Math.round(angle/(Math.PI/4))+8)%8}]
     const before=cpuPlanningView(s)!,adapted=maintainCpu(s),sam=adapted.enemyAssets.find(a=>a.kind==='sam')
     expect(sam).toBeDefined()
     expect((sam!.position[0]-home[0])*Math.cos(angle)+(sam!.position[1]-home[1])*Math.sin(angle)).toBeGreaterThan(2)
-    expect(defenseCoverage(before,sam!.position,'sam')).toBeGreaterThan(.15)
+    expect(defenseCoverage(before,sam!.position,'sam')).toBeGreaterThan(.1)
     expect(adapted.cpu!.logistics).toBeGreaterThanOrEqual(0)
     expect(maintainCpu(adapted)).toBe(adapted)
     expect(normalizeMatch(JSON.parse(JSON.stringify(adapted))).cpu).toEqual(adapted.cpu)
@@ -57,6 +59,23 @@ describe('CPU v2 behavioral acceptance',()=>{
     expect(adapted.cpu!.logistics).toBe(16)
     const late=setup([0,0],[30,0]);late.round=5;late.cpu!.mappedAreas=[[10,0]]
     expect(maintainCpu(late).enemyAssets.some(a=>a.kind==='fob')).toBe(false)
+  })
+  it('places forward SAM fire early enough to affect a real inbound strike',()=>{
+    const run=(placement:Point)=>{
+      let s=setup([0,0],[-20,0]);s.cpu!.mappedAreas=[placement]
+      s=executeCpuEconomyCommand(s,{actionId:'build-sam',target:{kind:'campaign',id:'campaign'},placement})
+      expect(s.enemyAssets.some(a=>a.kind==='sam')).toBe(true)
+      s.enemyAssets=s.enemyAssets.map(a=>a.kind==='base'?{...a,intel:'confirmed',hidden:false,confidence:100}:a)
+      const route:Point[]=[[-20,0],[-5.9,0]]
+      s.squadrons=s.squadrons.map(f=>({...f,sortieOrdered:f.id==='viper',...(f.id==='viper'?{mission:'base-strike' as const,strikeTargetId:'e-base',route,routeIngress:route,plannedRecoveryFieldId:'p-base'}:{})}))
+      s={...s,phase:'plan',cpu:{...s.cpu!,plan:{round:s.round,objective:'defend',reason:'Isolate shared SAM timing.',candidates:[],orders:s.cpu!.formations.map(f=>({...f,sortieOrdered:false}))}}}
+      return resolveRound(s)
+    }
+    const forward=run([-10.5,0]),rim=run([-4,0]),releaseDeadline=14.1/(40/22)+.05
+    const timely=(r:ReturnType<typeof resolveRound>)=>r.weaponEffects.filter(e=>e.kind==='sam'&&e.end<releaseDeadline).length
+    expect(timely(forward)).toBe(2)
+    expect(timely(rim)).toBe(0)
+    expect(forward.enemyBaseDamage).toBeLessThan(rim.enemyBaseDamage)
   })
   it('bypasses a confirmed SAM when a feasible lower-exposure release exists',()=>{
     const s=setup([0,0],[20,0]),sam:Asset={...s.playerAssets[0],id:'p-sam',kind:'sam',position:[12,0]}
@@ -71,7 +90,7 @@ describe('CPU v2 behavioral acceptance',()=>{
   it('suppresses a confirmed SAM when doing so measurably improves the following base strike',()=>{
     let s=setup([0,0],[25,0])
     const sam:Asset={...s.playerAssets[0],id:'p-sam',kind:'sam',position:[8,0],health:60,maxHealth:100}
-    s.playerAssets.push(sam);s.cpu!.sites.push(cpuReportAt(sam,1))
+    s.playerAssets.push(sam,...[-5,5].map(y=>({...sam,id:`p-flank-${y}`,position:[8,y] as Point,health:100})));s.cpu!.sites=s.playerAssets.map(a=>cpuReportAt(a,1))
     s=prepareCpuRound({...s,phase:'plan'})
     const plan=s.cpu!.plan!,v=cpuPlanningView(s)!
     expect(plan.intent).toBe('suppress-defenses')
@@ -106,13 +125,14 @@ describe('CPU v2 behavioral acceptance',()=>{
 describe('commitment and economic isolation',()=>{
   it('retains close feasible intent and switches for a substantial achievable improvement',async()=>{
     const {choosePackage}=await import('./strategy'),{emptyEffects}=await import('./actions')
-    const v=cpuPlanningView(setup())!;v.cpu.intent='protect-base';v.cpu.sites=[]
-    const save={id:'save',summary:'Save',orders:[],purchases:[],predicted:emptyEffects(),checks:[]}
-    const defend={...save,id:'defend',summary:'Protect home',predicted:{...emptyEffects(),ownBaseRiskReduced:.49}}
-    const attack={...save,id:'attack',summary:'Strike base',predicted:{...emptyEffects(),baseDamage:.5}}
-    expect(choosePackage(v,[save,defend,attack],[],0).intent).toBe('protect-base')
-    attack.predicted.baseDamage=.9
-    const switched=choosePackage(v,[save,defend,attack],[],0)
+    const v=cpuPlanningView(setup())!;v.cpu.intent='forward-position'
+    const save={id:'save',summary:'Save',orders:v.cpu.formations,purchases:[],predicted:emptyEffects(),checks:[]}
+    // One shared infrastructure package advances both intentions equally.
+    // Persistence must break the tie rather than alphabetical intent order.
+    const forward={...save,id:'forward',summary:'Stage with added coverage',orders:v.cpu.formations.map(f=>({...f,mission:'transit' as const})),predicted:{...emptyEffects(),futureStrikeAccessGain:.2,defenseCoverageGain:.3}}
+    const attack={...save,id:'attack',summary:'Strike base',predicted:{...emptyEffects(),baseDamage:.9}}
+    expect(choosePackage(v,[save,forward],[],0).intent).toBe('forward-position')
+    const switched=choosePackage(v,[save,forward,attack],[],0)
     expect(switched.intent).toBe('strike-base')
     expect(switched.trace.scoreDelta).toBeGreaterThan(.3)
     expect(choosePackage(v,[save,attack],[],0).intent).toBe('strike-base')

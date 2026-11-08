@@ -49,6 +49,21 @@ describe('side-aware infrastructure gate', () => {
     expect(result.squadrons.find(u => u.id === shot.targetId)).toBeDefined()
     expect(shot.end).toBeGreaterThan(shot.start)
   })
+  it('credits confirmed SAM attrition without requiring an airborne returning observer',()=>{
+    const {s,h}=fixture(),placement:Point=[h[0],h[1]+3]
+    const built=executeCpuEconomyCommand({...s,enemyAssets:s.enemyAssets.filter(a=>a.kind==='base')},{actionId:'build-sam',target:{kind:'campaign',id:'campaign'},placement})
+    const start:Point=[placement[0]+1,placement[1]]
+    const route:Point[]=[start,...Array.from({length:24},(_,i)=>[start[0]+Math.cos(i*Math.PI/2)*.8,start[1]+Math.sin(i*Math.PI/2)*.8] as Point),start]
+    const ready:MatchState={...built,phase:'plan',playerAssets:built.playerAssets.filter(a=>a.kind==='base').map(a=>({...a,position:start})),
+      cpu:{...built.cpu!,plan:{...built.cpu!.plan!,orders:built.cpu!.formations.map(f=>({...f,sortieOrdered:false,route:[h],routeIngress:[h]}))}},
+      squadrons:built.squadrons.map(f=>({...f,sortieOrdered:f.id==='raven',...(f.id==='raven'?{aircraft:1,strength:25,route,routeIngress:route,plannedRecoveryFieldId:'p-base'}:{})}))}
+    const result=resolveRound(ready)
+    expect(result.cpuReport!.sites).toEqual([])
+    expect(result.cpuReport!.confirmedKills,JSON.stringify({shots:result.weaponEffects.filter(e=>e.kind==='sam'),squadrons:result.squadrons.map(s=>({id:s.id,aircraft:s.aircraft,strength:s.strength})),sequences:result.combatSequences})).toBe(1)
+    const settled=applyRound(ready,result)
+    expect(settled.cpu!.logistics-ready.cpu!.logistics).toBe(7)
+    expect(applyRound(settled,result)).toBe(settled)
+  })
   it('does not construct on player-only mapping and restores a lost two-aircraft recon proportionally', () => {
     const { s } = fixture()
     const context = sidePlanningContext(s, 'cpu')

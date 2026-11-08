@@ -40,22 +40,30 @@ export function planPurchases(view:CpuPlanningView):ReturnType<typeof choosePack
         summary:`${node.commands.length?node.commands.map(c=>`${c.actionId}${c.placement?` at ${c.placement.map(n=>n.toFixed(1))}`:''}`).join(', ')+'. ':''}${p.summary}`,
         predicted:{...p.predicted,logisticsSpent:original.cpu.logistics-node.ctx.logistics,defenseCoverageGain:node.coverage,
           ownBaseRiskReduced:Math.min(1,p.predicted.ownBaseRiskReduced+node.coverage*observedThreat(original)*1.6),
-          futureStrikeAccessGain:p.predicted.futureStrikeAccessGain+node.forward,
+          futureStrikeAccessGain:Math.max(p.predicted.futureStrikeAccessGain,node.forward),
           roundsUntilPayoff:node.forward>0?2:p.predicted.roundsUntilPayoff}}))
       all.push(...options)
       scored.push({node,score:Math.max(...options.map(utility))})
     }
     if(depth===profile.purchases)break
-    beam=scored.sort((a,b)=>b.score-a.score).slice(0,view.cpu.difficulty==='hard'?4:2).flatMap(({node})=>{
+    const successors=scored.sort((a,b)=>b.score-a.score).slice(0,view.cpu.difficulty==='hard'?4:view.cpu.difficulty==='medium'?3:2).flatMap(({node})=>{
       const current=withContext(view,node.ctx)
       return commands(current).flatMap(command=>{
         const next=executeEconomyCommand(node.ctx,command);if(next===node.ctx)return []
         const kind=command.actionId==='build-sam'?'sam':command.actionId==='build-aaa'?'aaa':undefined
         const coverage=kind&&command.placement?defenseCoverage(current,command.placement,kind):0
         const forward=command.actionId==='build-fob'&&command.placement?forwardValue(current,command.placement)?.gain??0:0
-        return [{ctx:next,commands:[...node.commands,command],coverage:node.coverage+coverage,forward:node.forward+forward}]
+        return [{ctx:next,commands:[...node.commands,command],coverage:node.coverage+coverage,forward:Math.max(node.forward,forward)}]
       })
-    }).slice(0,view.cpu.difficulty==='hard'?14:8)
+    })
+    // Equivalent purchase permutations must not consume all beam slots. Keep
+    // every bounded successor until its actual tactical package is evaluated.
+    const unique=new Map<string,Node>()
+    for(const node of successors){
+      const key=JSON.stringify([node.ctx.logistics,node.ctx.reserves,node.ctx.formations.map(f=>[f.id,f.aircraft,f.strength,f.status]),node.ctx.assets.map(a=>[a.kind,a.position,a.health,a.operational,a.upgrades]).sort((a,b)=>JSON.stringify(a).localeCompare(JSON.stringify(b)))])
+      if(!unique.has(key))unique.set(key,node)
+    }
+    beam=[...unique.values()]
   }
   // Preserve an explicit save alternative even when all useful aircraft are grounded.
   const save=all.find(p=>p.purchases.length===0&&p.orders.every(o=>o.sortieOrdered===false))!

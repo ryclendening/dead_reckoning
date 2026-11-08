@@ -9,7 +9,7 @@ export type CpuObjective = 'defend' | 'patrol' | 'escort' | 'strike'
 export interface CpuSiteReport {
   id: string; kind: AssetKind; position: Point; health: number; maxHealth: number; observedRound: number; observedAt?: number; estimatedDamage?: number
 }
-export interface CpuTraffic { position: Point; role: Role | 'unknown'; observedRound: number; source?: 'visual' | 'radar'; observedAt?: number; bearing?: number; sector?: number }
+export interface CpuTraffic { trackId?: string; identity?: string; strength?: number; aircraft?: number; position: Point; role: Role | 'unknown'; observedRound: number; source?: 'visual' | 'radar'; observedAt?: number; bearing?: number; sector?: number }
 export interface CpuPlan {
   intent?: CpuIntent; trace?: CpuDecisionTrace; round: number; objective: CpuObjective; reason: string; orders: Squadron[]
   candidates: Array<{ objective: CpuObjective; score: number; reason: string }>

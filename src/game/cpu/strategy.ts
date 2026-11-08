@@ -11,19 +11,23 @@ function advances(view:CpuPlanningView,intent:CpuIntent,p:TacticalPackage):boole
     case 'forward-position':return e.futureStrikeAccessGain>0&&(p.orders.some(o=>o.mission==='transit'&&o.sortieOrdered!==false)||p.purchases.some(c=>c.actionId==='build-fob'||c.actionId==='repair-fob'))
     case 'suppress-defenses':return e.futureStrikeAccessGain>0&&p.orders.some(o=>o.mission==='base-strike'&&e.baseDamage===0)
     case 'strike-base':return e.baseDamage>0
-    case 'contest-air':return p.orders.some(o=>o.mission==='forward-patrol'&&o.sortieOrdered!==false)
+    case 'contest-air':return p.orders.some(o=>o.mission==='forward-patrol'&&o.sortieOrdered!==false)||e.futureStrikeAccessGain>0&&p.purchases.some(c=>c.actionId==='build-sam'||c.actionId==='build-aaa')
   }
 }
 /** All goals use the same measured effects and common campaign contribution scale. */
 export function contribution(view:CpuPlanningView,p:TacticalPackage):Record<string,number> {
   const e=p.predicted,remaining=7-view.round, horizon=Math.max(0,(remaining-e.roundsUntilPayoff)/remaining)
   const base=view.cpu.sites.find(s=>s.kind==='base'&&s.health>0)
-  const health=view.homeHealth, danger=health<=60?1.4:1
-  const decisive=base&&e.baseDamage>=.99?1.5:1
+  const health=view.homeHealth
+  // The second useful defensive layer can matter; saturation prevents spending
+  // every remaining Logistics point on capacity beyond the immediate need.
+  const protection=(1-Math.exp(-3*e.ownBaseRiskReduced))*(.6+.4*(100-health)/100)
+  const payload=Math.round(60*(p.orders.find(f=>f.role==='fighter')?.strength??0)/100)
+  const decisive=base&&payload>=base.health?1.5:1
   const components = {
-    strike:e.baseDamage*decisive,
-    survival:e.ownBaseRiskReduced*danger,
-    discovery:e.informationGain*.38*horizon,
+    strike:e.baseDamage*decisive*Math.min(1.5,Math.max(1,remaining/2)),
+    survival:protection,
+    discovery:e.informationGain*.85*horizon,
     access:e.futureStrikeAccessGain*.85*horizon,
     attrition:-e.expectedAircraftLoss*(view.round===6?.12:.26),
     spending:-e.logisticsSpent/Math.max(10,view.cpu.logistics)*.18,

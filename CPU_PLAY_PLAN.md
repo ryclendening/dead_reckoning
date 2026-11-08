@@ -156,3 +156,29 @@ Retain recovered stationary-site coordinates (and observation date), current aut
 ## Definition of done
 
 A complete v2 CPU can combine reconnaissance, defense buildout, forward staging, known-threat avoidance and strikes *when those options are actually valuable*; it can counter observed direct/flank attacks; it never reads hidden player knowledge or violates the player's action constraints; it survives save/reload and six-round play; and its decisions and measured competitiveness are explainable from a compact developer trace. **Do not mark v2 complete for a difficulty dropdown, a set of score constants, or a list of new modules.**
+
+
+## Implementation notes — 2026-11-08
+
+The architecture is implemented; the user's subsequent >70% offensive-victory
+target remains an explicit, unpassed validation gate while tuning continues.
+`Evaluation/CpuPlannerV2/OFFENSIVE_PROTOCOL.md` defines that gate and the fresh
+validation cohort. Do not count survival wins or non-attacking controls.
+
+Material deviations from the original implementation bounds:
+
+- Adapt evaluates up to four canonical purchase commands rather than two. The
+  two-command bound excluded already-affordable combinations of construction,
+  repair and replacement. The search remains a bounded beam over shared legal
+  commands and removes equivalent purchase permutations. Costs, finite reserves
+  and once-only execution are unchanged.
+- Fighter collection can use a Transit route that returns to its owned field
+  through a flank waypoint. This uses the existing player-legal waypoint,
+  mission, fuel and recovery rules; it adds no mission or interception exception.
+- CPU kill income now uses the same resolved-fire attrition confirmation as
+  player income. The earlier recovered-observer-only implementation omitted
+  legitimate ground-defense income. This does not grant hidden site reports.
+- Private memory adds optional recovered visual strength/aircraft counts and
+  bounded track-linked coarse samples. A derived public deployment prior and
+  observed fighter corridors supplement tactical scoring. There is no persisted
+  belief grid, opponent rollout, Monte Carlo policy, or campaign game tree.

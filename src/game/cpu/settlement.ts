@@ -29,7 +29,7 @@ export function settleCpuRound(state: MatchState, result: RoundResult): MatchSta
   cpu.lastReconLost = cpu.plan?.orders.some(order => order.role === 'recon' && order.sortieOrdered !== false && !recovered.has(order.id) && !report.recoveryOutcomes?.some(o=>o.formationId===order.id&&o.outcome==='trapped')) ?? false
   cpu.outcomes=[...(cpu.outcomes??[]),...(cpu.plan?.orders.filter(o=>o.sortieOrdered!==false).map(o=>({round:result.round,formationId:o.id,mission:o.mission,targetId:o.strikeTargetId,recovered:recovered.has(o.id)}))??[])].slice(-12)
   cpu.searchIndex += 1
-  cpu.traffic = [...cpu.traffic.filter(contact => result.round - contact.observedRound < 2), ...report.traffic].slice(-12)
+  cpu.traffic = [...cpu.traffic.filter(contact => result.round - contact.observedRound < 2), ...report.traffic].slice(-32)
   cpu.logistics += LOGISTICS_EFFECTS.baseIncome + (state.enemyAssets.find(a=>a.kind==='base')?.upgrades?.includes('supply-depot')?2:0) + report.sites.filter(site => !priorIds.has(site.id)).length * LOGISTICS_EFFECTS.intelRecovery + (report.confirmedKills??0)
   cpu.mappedAreas = [...(cpu.mappedAreas ?? [])]
   for (const point of report.mappedAreas ?? []) if (!cpu.mappedAreas.some(p => Math.hypot(p[0]-point[0],p[1]-point[1]) < 1)) cpu.mappedAreas.push(point)

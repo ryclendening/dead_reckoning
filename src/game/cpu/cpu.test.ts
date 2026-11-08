@@ -6,7 +6,8 @@ import { beginNextRound, openAdaptPhase } from '../economy'
 import { aircraftAtStrength, missionDistance } from '../flightRules'
 import { normalizeMatch } from '../persistence'
 import { cpuPlanningView, cpuReportAt, cpuRouteRisk, planCpu, prepareCpuRound } from './planner'
-import { strikeOrders } from './routes'
+import { strikeOrders, orderRisk } from './routes'
+import { observedThreat } from './placement'
 import { maintainCpu, settleCpuRound } from './settlement'
 import type { CpuDifficulty, CpuSiteReport } from './types'
 
@@ -30,11 +31,26 @@ describe('CPU campaign planning', () => {
     expect(changed.cpu!.plan).toEqual(state.cpu!.plan)
   })
 
-  it('changes from patrol to home defense after its own base is damaged', () => {
+  it('allocates the fighter to home defense after its own base is damaged', () => {
     const initial = view()
     initial.cpu.traffic = []; initial.cpu.lastReconLost = false
     expect(planCpu(initial).intent).toBe('discover')
-    expect(planCpu({ ...initial, homeHealth: 30 }).intent).toBe('protect-base')
+    const defensive=planCpu({...initial,homeHealth:30}).orders[0]
+    expect(defensive.mission).toBe('defensive-cap')
+    expect(Math.hypot(defensive.protectedPoint![0]-initial.home[0],defensive.protectedPoint![1]-initial.home[1])).toBeLessThanOrEqual(4.5)
+  })
+
+  it('does not turn repeated sightings of one fighter into multiple enemy formations',()=>{
+    const v=view('hard'),contact={role:'fighter' as const,source:'visual' as const,identity:'Observed fighter',trackId:'cpu-r1-track-1',strength:100,position:[v.home[0]+8,v.home[1]] as [number,number],observedRound:1}
+    v.cpu.traffic=[contact]
+    const threat=observedThreat(v),order={...v.cpu.formations[0],sortieOrdered:true,route:[v.home,contact.position]}
+    const risk=orderRisk(v,order)
+    v.cpu.traffic=Array.from({length:32},()=>({...contact}))
+    expect(observedThreat(v)).toBe(threat)
+    expect(orderRisk(v,order)).toBe(risk)
+    v.cpu.traffic.push({...contact,identity:'Second fighter',trackId:'cpu-r1-track-2'})
+    expect(observedThreat(v)).toBeGreaterThan(threat)
+    expect(orderRisk(v,order)).toBeGreaterThan(risk)
   })
 
   it('requires recovered confirmation and the same base-pressure gate on every difficulty', () => {
@@ -47,16 +63,15 @@ describe('CPU campaign planning', () => {
     }
   })
 
-  it('uses extra Hard route candidates to reduce known SAM exposure', () => {
+  it('retains safe feasible strike options with the larger Hard search budget', () => {
     const easy = view('easy'), hard = view('hard')
     const sites: CpuSiteReport[] = [
       { id: 'p-base', kind: 'base', position: [0, 0], health: 30, maxHealth: 100, observedRound: 1 },
       { id: 'p-sam', kind: 'sam', position: [easy.home[0] * .65, easy.home[1] * .65], health: 100, maxHealth: 100, observedRound: 1 },
     ]
     easy.cpu.sites = sites; hard.cpu.sites = sites; easy.exposure = hard.exposure = 60
-    const easyPlan = planCpu(easy), hardPlan = planCpu(hard)
-    const risk = (v: typeof easy, p: typeof easyPlan) => cpuRouteRisk([...p.orders[0].route, v.home], 'fighter', sites)
-    expect(risk(hard, hardPlan)).toBeLessThan(risk(easy, easyPlan))
+    const risk=(v:typeof easy)=>Math.min(...strikeOrders(v,v.cpu.formations[0],sites[0],{expansions:0,rejected:[]}).map(order=>cpuRouteRisk([...order.route,v.home],'fighter',sites)))
+    expect(risk(hard)).toBeLessThanOrEqual(risk(easy))
   })
 
   it.each([[1, 0], [-1, 0], [0, 1], [0, -1]])('keeps an already-near target inside release range in direction %s,%s', (x, z) => {
@@ -140,10 +155,31 @@ describe('CPU execution and persistence', () => {
       squadrons: state.squadrons.map(s => ({ ...s, sortieOrdered: s.role === 'recon', route: [launch, launch], routeIngress: [launch, launch] })), cpu: { ...state.cpu!, plan: undefined } }
     state.enemyAssets = state.enemyAssets.map(a => a.kind === 'radar' ? { ...a, position: home } : a)
     state = prepareCpuRound(state)
+    const route:[number,number][]=[home,[home[0]+.1,home[1]]]
+    state.cpu!.plan!.orders=state.cpu!.plan!.orders.map(o=>o.role==='fighter'?{...o,mission:'defensive-cap',protectedPoint:home,protectedTargetId:undefined,sortieOrdered:true,route,routeIngress:route,plannedRecoveryFieldId:'e-base'}:{...o,sortieOrdered:false})
     const result = resolveRound(state)
     expect(result.interceptPlans.some(p => p.squadronId === 'red-fighter' && p.source === 'radar')).toBe(true)
     expect(result.contactIntervals.some(c => c.observerId.startsWith('e-') || c.observerId.startsWith('red-'))).toBe(false)
     expect(result.events.some(e => e.title === 'FIGHTER INTERCEPT' && e.detail.includes('BOGEY'))).toBe(false)
+    const radar=result.cpuReport!.traffic.filter(t=>t.source==='radar')
+    expect(radar.length).toBeGreaterThan(0)
+    expect(radar.every(t=>t.role==='unknown'&&t.identity===undefined&&t.strength===undefined&&t.aircraft===undefined)).toBe(true)
+    expect(radar.every(t=>/^cpu-r1-track-\d+$/.test(t.trackId!))).toBe(true)
+    expect(normalizeMatch(JSON.parse(JSON.stringify(applyRound(state,result)))).cpu!.traffic).toEqual(applyRound(state,result).cpu!.traffic)
+  })
+
+  it('retains aircraft identity and condition only after a visual observer returns',()=>{
+    let state=createMatch(),home=state.enemyAssets.find(a=>a.kind==='base')!.position
+    const launch:[number,number]=[home[0]+3,home[1]],route:[number,number][]=[home,[home[0],home[1]+2],home]
+    state={...state,playerAssets:state.playerAssets.filter(a=>a.kind==='base').map(a=>({...a,position:launch})),
+      squadrons:state.squadrons.map(f=>({...f,sortieOrdered:f.role==='recon',mission:f.role==='fighter'?'transit':'search-area',route:[launch,[launch[0]+3,launch[1]]],routeIngress:[launch,[launch[0]+3,launch[1]]]}))}
+    state.cpu!.plan!.orders=state.cpu!.plan!.orders.map(f=>({...f,sortieOrdered:f.role==='fighter',mission:f.role==='fighter'?'transit':'search-area',route,routeIngress:route}))
+    const result=resolveRound(state),visual=result.cpuReport!.traffic.filter(t=>t.source==='visual')
+    expect(result.cpuReport!.recoveredIds).toContain('red-fighter')
+    expect(visual.some(t=>t.identity==='RAVEN 3'&&typeof t.strength==='number'&&typeof t.aircraft==='number')).toBe(true)
+    expect(visual.every(t=>/^cpu-r1-track-\d+$/.test(t.trackId!))).toBe(true)
+    const settled=applyRound(state,result)
+    expect(normalizeMatch(JSON.parse(JSON.stringify(settled))).cpu!.traffic).toEqual(settled.cpu!.traffic)
   })
 
   it('honors a CPU recon recovery decision during an active pursuit', () => {
@@ -222,11 +258,11 @@ describe('CPU execution and persistence', () => {
       if (round === 1) {
         expect(result.cpuReport!.sites.some(site => site.kind === 'base')).toBe(true)
         expect(result.baseDamage).toBe(0)
-        expect(result.baseExposureDelta).toBe(40)
+        expect(result.baseExposureDelta).toBe(80)
       }
       if (round === 2) {
-        expect(state.baseExposure).toBe(46)
-        expect(result.baseDamage).toBe(0)
+        expect(state.baseExposure).toBe(86)
+        expect(result.baseDamage).toBeGreaterThan(0)
       }
       state = openAdaptPhase(applyRound(state, result))
       if (state.phase === 'defeat') break

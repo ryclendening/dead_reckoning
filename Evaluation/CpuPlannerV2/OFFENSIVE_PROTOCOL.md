@@ -1,0 +1,40 @@
+# Offensive campaign evaluation
+
+The completion gate is **greater than 70% base-destruction victories on each of
+Easy, Medium and Hard** against the five attacking policies. A victory requires
+both CPU victory under the existing campaign rules and player base health zero.
+Deadline and aircraft-elimination victories are separate; recon-denial is a
+non-attacking control and is excluded from the denominator.
+
+Development seeds: 3, 11, 29, 47, 71, 89. Previously evaluated comparison seeds:
+103, 127, 151, 173, 197, 229. Neither group is an untouched holdout.
+
+The next fresh validation cohort is registered before running it: **263, 307,
+349, 401, 443, 487, 541, 599, 647, 701, 751, 809**. Run it only after freezing
+the candidate. Report every seed and every attacking policy, including failures.
+If it informs further tuning it becomes development data; do not describe it as
+an untouched holdout afterward. Repeated execution of unchanged code cannot
+improve the deterministic result. No filtering seeds, weakening opponents,
+changing combat odds/forces, or counting survival as offensive success.
+
+Campaigns use the real deployment, order validation, fixed-tick combat, recovery,
+intelligence, settlement, finite economy, and six-round conclusion. CPU orders
+are committed before scripted player orders. Scripts consume authorized player
+knowledge, never hidden CPU positions. Their limitations remain material: they
+are fixed policies, not human or search-based opponents. They do not establish
+human competitive strength.
+
+The raw records include attempted strikes and launched missiles for both sides,
+base damage, recovered intelligence, construction, budgets, recovery, illegal
+orders and strategic decisions. The preserved v1 planner and maintenance policy provide paired-seed
+comparisons through the same current engine by default. This isolates planning
+from shared engine corrections. `CPU_BASELINE_ENGINE=historical` separately
+reproduces the original-engine comparison; do not pool the two rulesets. Raw
+rows label their ruleset and outputs identify both production and harness hashes. Uncertainty must be calculated across campaign seeds, not by
+treating all policy/difficulty matches as independent observations.
+
+The original v2 evaluation remains in `results.json`; new runs write
+`offensive-results.json` by default. `CPU_SEEDS`, `CPU_DIFFICULTY`, `CPU_POLICY`,
+and `CPU_V2_ONLY` permit explicitly labeled diagnostic subsets. `CPU_TRACE=1`
+prints post-resolution diagnostic state and decision traces. No diagnostic
+state is fed into the CPU planning snapshot.

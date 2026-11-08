@@ -1,3 +1,4 @@
+import { SAM_MISSILES_PER_ROUND, SAM_COOLDOWN_SECONDS } from '../airDefense'
 import { axialToPoint } from '../hex'
 import { validateAssetPlacement } from '../sideEconomy'
 import { formationField, isOperationalAirfield } from '../forwardBasing'
@@ -6,33 +7,55 @@ import type { CpuPlanningView } from './planningView'
 import { distance, cpuRouteRisk } from './routes'
 
 export function observedThreat(view: CpuPlanningView): number {
-  const recent=view.cpu.traffic.filter(t=>view.round-t.observedRound<=2&&distance(t.position,view.home)<12)
-  return Math.min(1,(100-view.homeHealth)/100+recent.reduce((sum,t)=>sum+(t.role==='fighter'?.28:.15)/(1+view.round-t.observedRound),0))
-}
-/** Marginal coverage at possible six-unit release approaches, never hidden orders. */
-export function residualApproachRisk(view: CpuPlanningView): number {
-  const contacts=view.cpu.traffic.filter(t=>view.round-t.observedRound<=2&&distance(t.position,view.home)<14)
-  if(!contacts.length)return 1
-  let risk=0,total=0
-  for(const contact of contacts)for(const spread of [-.3,0,.3]) {
-    const angle=(contact.bearing??Math.atan2(contact.position[1]-view.home[1],contact.position[0]-view.home[0]))+spread
-    const p:Point=[view.home[0]+Math.cos(angle)*6,view.home[1]+Math.sin(angle)*6]
-    risk+=view.assets.filter(a=>a.health>0&&(a.kind==='sam'||a.kind==='aaa')).reduce((v,a)=>v*(distance(a.position,p)<=(a.kind==='sam'?3.2:1.9)?(a.kind==='sam'?.3:.75):1),1)
-    total++
+  const recent=view.cpu.traffic.filter(t=>view.round-t.observedRound<=2&&distance(t.position,view.home)<14)
+  const identities=new Map(recent.filter(t=>t.identity&&t.trackId).map(t=>[t.trackId!,t.identity!]))
+  const contacts=new Map<string,number>()
+  for(const t of recent) {
+    const key=t.identity??identities.get(t.trackId??'')??t.trackId??`${t.observedRound}:${t.sector}`
+    const weight=(t.role==='fighter'?.35:t.role==='recon'?.2:.15)/(1+Math.max(0,view.round-t.observedRound-1))
+    contacts.set(key,Math.max(contacts.get(key)??0,weight))
   }
-  return risk/total
+  return Math.min(1,(100-view.homeHealth)/100+[...contacts.values()].reduce((a,b)=>a+b,0))
 }
-export function defenseCoverage(view: CpuPlanningView, point: Point, kind: 'sam'|'aaa'): number {
-  const contacts=view.cpu.traffic.filter(t=>view.round-t.observedRound<=2&&distance(t.position,view.home)<14)
-  const bearings=contacts.length?contacts.map(t=>t.bearing??Math.atan2(t.position[1]-view.home[1],t.position[0]-view.home[0])):Array.from({length:8},(_,i)=>i*Math.PI/4)
-  let gain=0,total=0
-  for(const angle of bearings)for(const spread of [-.3,0,.3])for(const r of [5,6,7,8]) {
-    const p:Point=[view.home[0]+Math.cos(angle+spread)*r,view.home[1]+Math.sin(angle+spread)*r]
-    const prior=view.assets.filter(a=>a.health>0&&(a.kind==='sam'||a.kind==='aaa')).reduce((survival,a)=>survival*(distance(a.position,p)<=(a.kind==='sam'?3.2:1.9)?(a.kind==='sam'?.3:.75):1),1)
-    gain+=(distance(point,p)<=(kind==='sam'?3.2:1.9)?(kind==='sam'?.7:.25):0)*prior
-    total++
+/** Expected strength removed before a radial six-unit strike release. A site
+ * beyond the release ring can deliver another volley; a late hit cannot stop it. */
+function approachDamage(view:CpuPlanningView,point:Point,kind:'sam'|'aaa',angle:number):number {
+  const dx=point[0]-view.home[0],dy=point[1]-view.home[1]
+  const along=dx*Math.cos(angle)+dy*Math.sin(angle), lateral=Math.abs(-dx*Math.sin(angle)+dy*Math.cos(angle))
+  const radius=kind==='sam'?3.2:1.9
+  if(lateral>radius)return 0
+  const reach=Math.sqrt(radius*radius-lateral*lateral),enter=Math.min(20,along+reach),exit=Math.max(6,along-reach)
+  const time=(enter-6)/(40/22),last=(enter-exit)/(40/22)
+  if(enter<6||time<(kind==='sam'?1.05:.34))return 0
+  const shots=kind==='sam'?Math.min(SAM_MISSILES_PER_ROUND,1+Math.floor(Math.min(time-1.05,last)/SAM_COOLDOWN_SECONDS)):1
+  return shots*(kind==='sam'?.64*38:.52*13)
+}
+function approachSurvival(view:CpuPlanningView,angle:number,extra?:{point:Point;kind:'sam'|'aaa'}):number {
+  const damage=view.assets.filter(a=>a.health>0&&a.operational!==false&&(a.kind==='sam'||a.kind==='aaa')).reduce((n,a)=>n+approachDamage(view,a.position,a.kind as 'sam'|'aaa',angle),0)+(extra?approachDamage(view,extra.point,extra.kind,angle):0)
+  // The opening opponent has two fighter formations. Coverage is shared capacity,
+  // rather than assuming every missile protects against every aircraft at once.
+  return Math.max(0,1-damage/200)
+}
+function approachBearings(view:CpuPlanningView):number[] {
+  const recent=view.cpu.traffic.filter(t=>view.round-t.observedRound<=2)
+  const identifiedRecon=new Set(recent.filter(t=>t.role==='recon'&&t.trackId).map(t=>t.trackId))
+  const contacts=recent.filter(t=>distance(t.position,view.home)<14&&t.role!=='recon'&&!(t.role==='unknown'&&t.trackId&&identifiedRecon.has(t.trackId)))
+  const base=view.cpu.sites.find(s=>s.kind==='base'&&s.health>0),bearings:number[]=[]
+  for(const angle of new Set(contacts.map(t=>t.bearing??Math.atan2(t.position[1]-view.home[1],t.position[0]-view.home[0])))) {
+    const fighter=contacts.some(t=>t.role==='fighter'&&(t.bearing??Math.atan2(t.position[1]-view.home[1],t.position[0]-view.home[0]))===angle)
+    for(const spread of [-Math.PI/8,0,Math.PI/8])bearings.push(...Array.from({length:fighter?3:1},()=>angle+spread))
   }
-  return total?gain/total:0
+  if(base){const angle=Math.atan2(base.position[1]-view.home[1],base.position[0]-view.home[0]);for(const spread of [-.15,0,.15])bearings.push(angle+spread,angle+spread)}
+  if(!bearings.length)bearings.push(...new Set(recent.filter(t=>distance(t.position,view.home)<14).map(t=>t.bearing??Math.atan2(t.position[1]-view.home[1],t.position[0]-view.home[0]))))
+  return bearings.length?bearings:Array.from({length:8},(_,i)=>i*Math.PI/4)
+}
+export function residualApproachRisk(view:CpuPlanningView):number {
+  const angles=approachBearings(view)
+  return angles.reduce((n,a)=>n+approachSurvival(view,a),0)/angles.length
+}
+export function defenseCoverage(view:CpuPlanningView,point:Point,kind:'sam'|'aaa'):number {
+  const angles=approachBearings(view)
+  return angles.reduce((n,a)=>n+approachSurvival(view,a)-approachSurvival(view,a,{point,kind}),0)/angles.length
 }
 export function legalPlacements(view: CpuPlanningView, kind: ConstructibleAssetKind): Point[] {
   // Sample only known regions. Bounds of the actual world are deliberately unavailable.
