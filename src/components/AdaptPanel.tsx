@@ -1,6 +1,8 @@
 import { useEffect, useMemo, useState } from 'react'
 import { Check, ChevronRight, MapPin, Plus, Wrench, X } from 'lucide-react'
-import { AIRFIELD_UPGRADE_CATALOG, economyAttentionTargets, economyCommandForQuote, economyQuotesFor, findMatchingEconomyQuote } from '../game/economy'
+import { economyAttentionTargets, economyCommandForQuote, economyQuotesFor, findMatchingEconomyQuote } from '../game/economy'
+import { upgradeDefinition } from '../game/upgrades'
+import { defenseProfile, radarRange } from '../game/equipmentRules'
 import { assetCardData } from '../game/unitCards'
 import type { EconomyActionId, EconomyActionQuote, EconomyCommand, EconomyTarget, MatchState } from '../game/types'
 
@@ -35,10 +37,11 @@ export function AdaptPanel({ match, selectedTarget, onSelectTarget, onCloseTarge
   const friendlyAsset = selectedTarget.kind === 'asset' ? match.playerAssets.find(asset => asset.id === selectedTarget.id) : undefined
   const selectedAsset = friendlyAsset ?? (selectedTarget.kind === 'asset' ? match.enemyAssets.find(asset => asset.id === selectedTarget.id && !asset.hidden && asset.intel !== 'unknown') : undefined)
   const assetData = selectedAsset ? assetCardData(selectedAsset, !friendlyAsset, 'adapt') : undefined
+  const selectedDefense = selectedAsset ? defenseProfile(selectedAsset) : undefined
   const selectedSquadron = selectedTarget.kind === 'squadron' ? match.squadrons.find(squadron => squadron.id === selectedTarget.id) : undefined
   const basedFormations = friendlyAsset ? match.squadrons.filter(squadron => friendlyAsset.basedFormationIds?.includes(squadron.id)) : []
-  const installedUpgrade = AIRFIELD_UPGRADE_CATALOG.find(upgrade => selectedAsset?.upgrades?.includes(upgrade.upgrade))
-  const selected = findMatchingEconomyQuote(quotes, pending ? { actionId: pending.id, target: pending.target } : undefined)
+  const installedUpgrades = (selectedSquadron?.upgrades ?? selectedAsset?.upgrades ?? []).map(upgradeDefinition).filter((upgrade): upgrade is NonNullable<typeof upgrade> => Boolean(upgrade))
+  const selected = findMatchingEconomyQuote(quotes, pending ? { actionId: pending.id, target: pending.target, upgradeId: pending.upgradeId } : undefined)
   const roundIncome = match.economy.statement.filter(entry => entry.direction === 'income').reduce((total, entry) => total + entry.amount, 0)
 
   useEffect(() => setPending(undefined), [selectedTarget.kind, selectedTarget.id])
@@ -73,11 +76,11 @@ export function AdaptPanel({ match, selectedTarget, onSelectTarget, onCloseTarge
 
     {procurementMode === 'closed' && (assetData || selectedSquadron) ? <div className="adapt-drawer adapt-selection" aria-label="Selected unit">
       <header className="adapt-drawer-title"><b>{assetData?.title ?? selectedSquadron?.callsign}</b><small>{assetData ? `${Math.round(assetData.health)} / ${assetData.maxHealth} HP` : `${selectedSquadron!.aircraft}/${selectedSquadron!.maxAircraft} AIRCRAFT · ${Math.round(selectedSquadron!.strength ?? 0)}%`}</small><button type="button" aria-label="Close selected unit" onClick={onCloseTarget}><X/></button></header>
-      {assetData ? <><progress value={assetData.health} max={assetData.maxHealth} aria-label="Site health"/><p className="adapt-site-status">{!friendlyAsset ? 'ENEMY · ' : ''}{selectedAsset?.kind === 'sam' ? `${assetData.status} · RANGE 3.2` : selectedAsset?.kind === 'radar' ? `${assetData.status} · DETECTION RANGE 6.4` : selectedAsset?.kind === 'aaa' ? `${assetData.status} · RANGE 1.9` : selectedAsset?.kind === 'fob' && friendlyAsset ? `${assetData.status} · ${basedFormations.length}/${selectedAsset.capacity ?? 2} FORMATIONS` : assetData.status}</p></> : null}
+      {assetData ? <><progress value={assetData.health} max={assetData.maxHealth} aria-label="Site health"/><p className="adapt-site-status">{!friendlyAsset ? 'ENEMY · ' : ''}{selectedAsset?.kind === 'sam' ? `${assetData.status} · RANGE ${selectedDefense?.range.toFixed(1)}` : selectedAsset?.kind === 'radar' ? `${assetData.status} · DETECTION RANGE ${radarRange(selectedAsset).toFixed(1)}` : selectedAsset?.kind === 'aaa' ? `${assetData.status} · RANGE ${selectedDefense?.range.toFixed(1)}` : selectedAsset?.kind === 'fob' && friendlyAsset ? `${assetData.status} · ${basedFormations.length}/${selectedAsset.capacity ?? 2} FORMATIONS` : assetData.status}</p></> : null}
       {basedFormations.length ? <div className="adapt-based-flights" aria-label="Based formations">{basedFormations.map(squadron => <button key={squadron.id} onClick={() => onSelectTarget({kind:'squadron',id:squadron.id})}>{squadron.callsign} <span>{squadron.aircraft}/{squadron.maxAircraft}</span></button>)}</div> : null}
-      {installedUpgrade && friendlyAsset ? <p className="adapt-installed"><Check/>{installedUpgrade.label} INSTALLED</p> : null}
-      {friendlyAsset?.kind === 'base' && quotes.length ? <p className="adapt-action-heading">UPGRADES · CHOOSE ONE</p> : null}
-      {quotes.length ? <div className="adapt-actions">{quotes.map(quote => <button key={quote.id} disabled={!quote.eligible} className={selected?.id === quote.id ? 'selected' : ''} onClick={() => choose(quote)}><span><b>{quote.label}</b><small>{quote.detail}</small>{!quote.eligible && quote.reason ? <em>{quote.reason}</em> : null}</span><strong>{quote.cost} L{quote.reserveCost ? ` + ${quote.reserveCost} R` : ''}</strong></button>)}</div> : null}
+      {installedUpgrades.map(upgrade => <p key={upgrade.id} className="adapt-installed"><Check/>{upgrade.label} INSTALLED</p>)}
+      {quotes.some(quote => quote.id.startsWith('install-')) ? <p className="adapt-action-heading">AVAILABLE UPGRADES</p> : null}
+      {quotes.length ? <div className="adapt-actions">{quotes.map(quote => <button key={`${quote.id}:${quote.upgradeId ?? ''}`} disabled={!quote.eligible} className={selected?.id === quote.id && selected.upgradeId === quote.upgradeId ? 'selected' : ''} onClick={() => choose(quote)}><span><b>{quote.label}</b><small>{quote.detail}</small>{!quote.eligible && quote.reason ? <em>{quote.reason}</em> : null}</span><strong>{quote.cost} L{quote.reserveCost ? ` + ${quote.reserveCost} R` : ''}</strong></button>)}</div> : null}
       {selected ? <div className="adapt-confirm"><div><b>CONFIRM {selected.label}</b><small>{selected.projected.logistics} LOGISTICS · {selected.projected.reserveAircraft} RESERVE REMAIN</small></div><button onClick={() => setPending(undefined)}>CANCEL</button><button className="confirm" onClick={confirm}><Check/> CONFIRM</button></div> : null}
     </div> : null}
     </div>

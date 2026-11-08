@@ -1,4 +1,5 @@
 import type { Asset, FormationRecoveryOutcome, MatchState, Point, Squadron } from './types'
+import { flightRangeFor } from './flightRules'
 
 export const AIRFIELD_LANDING_RADIUS = .6
 export const FOB_MIN_CAPACITY = 2
@@ -177,9 +178,10 @@ export function deriveRecoveryPlanningView(state: MatchState, formationId: strin
   return { launchField, intendedField, alternateField, normalizedRoute, missionDistance, remainingRange, valid, reason, summary: `RECOVERY: ${intendedField.name ?? (intendedField.kind === 'base' ? 'HOME BASE' : 'FORWARD BASE')} · ALTERNATE: ${alternate}` }
 }
 
-export function validateRecoveryPackage(state: MatchState, maxDistances: Record<Squadron['role'], number>, formationIds?: ReadonlySet<string>): { valid: boolean; reason?: string } {
+export function validateRecoveryPackage(state: MatchState, maxDistances: Record<Squadron['role'], number> | ((squadron: Squadron) => number), formationIds?: ReadonlySet<string>): { valid: boolean; reason?: string } {
   for (const squadron of state.squadrons.filter(item => item.aircraft > 0 && item.status !== 'trapped' && (!formationIds || formationIds.has(item.id)))) {
-    const view = deriveRecoveryPlanningView(state, squadron.id, squadron.route, maxDistances[squadron.role])
+    const maxDistance = typeof maxDistances === 'function' ? maxDistances(squadron) : maxDistances[squadron.role] ?? flightRangeFor(squadron)
+    const view = deriveRecoveryPlanningView(state, squadron.id, squadron.route, maxDistance)
     if (!view?.valid) return { valid: false, reason: view?.reason ?? `INVALID RECOVERY FOR ${squadron.callsign}` }
     if (squadron.plannedRecoveryFieldId !== view.intendedField.id) return { valid: false, reason: `${squadron.callsign} RECOVERY IS NOT CONFIRMED` }
   }
