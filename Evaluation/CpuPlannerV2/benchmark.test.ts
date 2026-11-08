@@ -155,7 +155,10 @@ const full=process.env.CPU_BENCHMARK==='full'
 describe('paired campaign evaluation',()=>{
   it('runs legal reproducible policies against the preserved v1 baseline',()=>{
     const rows:Row[]=[],seeds=process.env.CPU_SEEDS?process.env.CPU_SEEDS.split(',').map(Number):full?[3,11,29,47,71,89,103,127,151,173,197,229]:[3,103]
-    for(const difficulty of (process.env.CPU_DIFFICULTY?[process.env.CPU_DIFFICULTY]:full?['easy','medium','hard']:['medium']) as CpuDifficulty[])for(const seed of seeds)for(const policy of process.env.CPU_POLICY?[process.env.CPU_POLICY as Policy]:policies)for(const version of process.env.CPU_V2_ONLY?['v2'] as const:['v1','v2'] as const)rows.push(campaign(version,difficulty,seed,policy))
+    for(const difficulty of (process.env.CPU_DIFFICULTY?[process.env.CPU_DIFFICULTY]:full?['easy','medium','hard']:['medium']) as CpuDifficulty[])for(const seed of seeds)for(const policy of process.env.CPU_POLICY?[process.env.CPU_POLICY as Policy]:policies)for(const version of process.env.CPU_V2_ONLY?['v2'] as const:['v1','v2'] as const) {
+      const row=campaign(version,difficulty,seed,policy);rows.push(row)
+      if(process.env.CPU_PROGRESS==='1')console.log('CAMPAIGN',JSON.stringify({completed:rows.length,version,difficulty,seed,policy,outcome:row.outcome}))
+    }
     expect(rows.filter(r=>r.version==='v2').every(r=>r.illegal===0)).toBe(true)
     const sample=rows.find(r=>r.version==='v2')!
     expect(campaign('v2',sample.difficulty,sample.seed,sample.policy)).toEqual(sample)

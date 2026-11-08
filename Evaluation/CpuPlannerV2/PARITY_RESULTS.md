@@ -52,3 +52,10 @@ CPU_BENCHMARK=full CPU_OPPONENTS=competitive CPU_V2_ONLY=1 CPU_SEEDS=3,11,29,47,
 This is an isolated feature-branch result. Main has subsequent combat/equipment
 work that requires integration and a separate evaluation; these numbers must
 not be presented as measurements of that later integrated engine.
+
+A subsequent first-contact retreat candidate regressed Easy and Medium to
+18/30 (60%) each and was rejected. `first-contact-rejected-results.json` retains
+all 72 completed rows, including the separate controls. Hard was cancelled once
+the gate had failed and contributes no rows. Its production source hash is
+reproducible from `cd96df4` plus `first-contact-rejected.patch`. This rejected
+candidate is not pooled with either accepted comparison.
