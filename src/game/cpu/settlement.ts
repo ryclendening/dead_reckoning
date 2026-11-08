@@ -44,7 +44,7 @@ export function maintainCpu(state: MatchState): MatchState {
       formation.strength = Math.min(capacity, (formation.strength ?? 0) + LOGISTICS_EFFECTS.formationRepair)
     }
   }
-  for (const asset of assets.filter(asset => ['sam', 'aaa', 'radar'].includes(asset.kind))) {
+  for (const asset of assets.filter(asset => ['aaa', 'radar'].includes(asset.kind))) {
     while (asset.health < asset.maxHealth && cpu.logistics >= LOGISTICS_COSTS.defenseRepair) {
       spend('repair-defense', asset.id, LOGISTICS_COSTS.defenseRepair)
       asset.health = Math.min(asset.maxHealth, asset.health + LOGISTICS_EFFECTS.defenseRepair)

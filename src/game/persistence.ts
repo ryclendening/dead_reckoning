@@ -135,7 +135,7 @@ function validResult(value: unknown): value is RoundResult {
       && text(item.targetId) && finite(item.start) && finite(item.end) && point(item.from)
       && point(item.to) && typeof item.hit === 'boolean' && finite(item.damage))
     && r.combatSequences.every(sequence => record(sequence) && text(sequence.id)
-      && ['dogfight', 'pursuit', 'strike', 'defense'].includes(String(sequence.kind))
+      && ['dogfight', 'pursuit', 'strike', 'defense', 'flyby'].includes(String(sequence.kind))
       && strings(sequence.participantIds) && point(sequence.location)
       && finite(sequence.start) && finite(sequence.end) && sequence.end >= sequence.start
       && Array.isArray(sequence.exchanges) && sequence.exchanges.every(exchange =>

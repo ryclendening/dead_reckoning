@@ -65,7 +65,7 @@ Aircraft counts, strength, and morale now persist as a CPU campaign inventory. S
 - CPU recon and fighters observe fixed assets along executed movement and commit site reports only after recovery. Destroyed or unrecovered flights lose their provisional reports. Recon alone maps terrain; world edges remain hidden route limits. Recovered flights also retain recent visually identified aircraft traffic; radar-only contacts do not reveal aircraft role. The planner uses those past observations rather than hidden current traffic or site health.
 - CPU Ground Strike can select the base, SAM, AAA, radar, or FOB from recovered reports. It physically reaches its stored release point within six units of that site, launches one strength-scaled payload, and uses the shared delayed-impact resolver. It does not voluntarily intercept air contacts or silently retarget. Player support sites, including FOBs, can now be damaged in ordinary campaigns, with the existing recovery/diversion/trapping rules applying.
 - Medium and Hard recon order irreversible recovery on visual fighter contact after collecting a site report or falling below 65 strength. Every tier orders recovery below 40 strength. The decision remains effective during an existing pursuit. Friendly recon still relies on the player's RTB command.
-- CPU round settlement and Adapt maintenance are each applied once. Income is currently +6 per completed round and +2 per newly recovered site report. This basic slice does not award CPU confirmed-kill income. Maintenance spends the shared prices in fixed fighter-then-recon order: replacement aircraft cost 4 Logistics and one reserve, formation repair costs 2 for up to 25 strength within aircraft capacity, and radar/SAM/AAA repair costs 2 for up to 25 health. A replacement restores the strength share of one aircraft, including 50 for two-aircraft recon. Remaining Logistics are saved.
+- CPU round settlement and Adapt maintenance are each applied once. Income is currently +6 per completed round and +2 per newly recovered site report. This basic slice does not award CPU confirmed-kill income. Maintenance spends the shared prices in fixed fighter-then-recon order: replacement aircraft cost 4 Logistics and one reserve, formation repair costs 2 for up to 25 strength within aircraft capacity, and radar/AAA repair costs 2 for up to 25 health. SAM health damage is permanent. A replacement restores the strength share of one aircraft, including 50 for two-aircraft recon. Remaining Logistics are saved.
 - New CPU defense construction, upgrade purchasing, FOB construction/staging, decoy purchasing, generalized recovered terrain/boundary knowledge, and deeper purchase/mission search remain planned. Existing enemy fixed assets remain the starting defense network. The larger design and staged expansion remain in `CPU_PLAY_PLAN.md`.
 
 ### Fixed assets
@@ -158,12 +158,14 @@ Direct fighter combat interrupts a fighter's recon pursuit. When combat or pursu
 - Pursuit missiles launch on the current tick and resolve damage on the first fixed tick at or after their 0.62-second flight (currently 0.65 seconds after launch). Guns resolve immediately. An already-launched missile survives pursuit interruption, pursuit completion, and shooter loss. A target that has recovered or been destroyed before impact takes no further damage and produces no missile hit flash. Resolved missile exchanges remain attached to their originating pursuit, even when impact follows that pursuit's end.
 - The pursuit ends when the recon is destroyed, four shots have launched, the recon opens beyond the attacker's effective sensor range, or the fighter is interrupted. The fighter is then reassessed from current state; pending missiles resolve independently.
 
+- When a fighter enters recovery because its remaining fuel is reserved for the trip home, it can make one opportunistic gun pass at each opposing aircraft that crosses within 1.2 map units of its path. Each pass has a 48% hit chance and deals 6–13 strength on a hit. The fighter continues on its recovery course and cannot intercept, dogfight, or pursue while returning.
+
 ## Ground-Based Air Defense
 
-- Each operational SAM starts every round with **three missiles** and a **three simulated-second cooldown** shared across all targets. It selects the nearest airborne opposing formation in 3.2-unit range (formation IDs break exact ties), can repeatedly fire on the same formation, and spends a missile on every launch including misses. Once empty it cannot fire until the next round. Adapt and Plan show the automatically replenished 3/3 rack with no remaining cooldown; Debrief retains the historical count labeled **MISSILES AT ROUND END**. Health damage persists and still requires repair. A radar track is not required.
-- AAA retains one shot per opposing formation per round when it enters range.
+- Each operational SAM starts every round with **three missiles** and a **three simulated-second cooldown** shared across all targets. It selects the nearest airborne opposing formation in 3.2-unit range (formation IDs break exact ties), can repeatedly fire on the same formation, and spends a missile on every launch including misses. Once empty it cannot fire until the next round. Adapt and Plan show the automatically replenished 3/3 rack with no remaining cooldown; Debrief retains the historical count labeled **MISSILES AT ROUND END**. SAM health damage persists and cannot be repaired. A radar track is not required.
+- AAA opens one five-shot burst per opposing formation per sortie when it enters range. The shots are spaced 0.14 seconds apart and each has a 42% hit chance; hits deal 7–13 strength. Its 1.9-unit range is short, but the bright spread tracer burst is visible during execution.
 - The live SAM shot has a 64% hit chance and deals 38 strength.
-- The live AAA shot has a 52% hit chance and deals 13 strength. Its renderer presents the single resolution as a tracer burst.
+- A live AAA burst has five independent shots. Each has a 42% hit chance and deals 7–13 strength, for about 21 expected damage if all five resolve against the formation. The tracer spread lasts through the burst and uses a larger, brighter rendering than an individual gun shot.
 - Friendly and enemy sites use the same ownership rule: friendly defenses target hostile aircraft and enemy defenses target friendly aircraft.
 - Launches and projectiles are visible during execution. A launch does not itself create persistent intelligence for an unknown enemy site.
 - Destroyed or inoperative defense sites cannot fire. Damage resolves at the queued impact time; misses report zero applied damage. Already launched missiles survive destruction of their site.
@@ -214,7 +216,7 @@ Current Adapt actions:
 
 - Repair formation strength by up to 25 for `2` Logistics, capped by the current aircraft count (`25` strength capacity per aircraft).
 - Replace one aircraft for `4` Logistics plus one reserve aircraft, restoring 25 strength. A formation rebuilt from zero is based at the main airfield.
-- Repair friendly radar, SAM, or AAA by up to 25 health for `2` Logistics.
+- Repair friendly radar or AAA by up to 25 health for `2` Logistics. SAMs cannot be repaired.
 - Restore an unusable FOB to full health and operational status for `4` Logistics.
 - Buy exactly one main-airfield upgrade for `12` Logistics: **Maintenance Wing** reduces formation repair and replacement costs by one, or **Supply Depot** adds the recurring income above.
 - Build a decoy for `4`, AAA for `6`, SAM for `8`, or two-slot FOB for `8` Logistics.
@@ -284,6 +286,12 @@ This log keeps only current net changes. Superseded intermediate states belong i
 - Made aircraft switching a shared planning control: previous/next chevrons and horizontal pointer swipes work in task, target, and route panes. All panes retain the same outer frame, fixed action positions, and status row without vertical scrolling. Fighter tasks fit in one row, escort selection uses a native picker, and the pane stays above map inspectors. The battlefield camera retains its current pose across scene changes and gameplay updates, including purchases and upgrades.
 
 - Ground Strike route handles are larger and draggable, including the **S** release point. Waypoint additions and moves that exceed the fighter's 40-unit fuel budget with return are rejected before changing the route.
+
+- Made SAM damage permanent: friendly Adapt actions and the legacy defense-repair helper reject SAM repairs, damaged SAMs no longer appear in the repair attention queue, and CPU maintenance repairs radar and AAA but not SAMs.
+
+- Added opportunistic fighter return fire: returning fighters can fire a one-time gun burst at opposing aircraft crossing within 1.2 map units, while maintaining their recovery course and staying out of dogfights. Flyby shots are recorded in combat history and resolve in the current tick.
+
+- Increased AAA from one low-impact shot to a five-shot burst per formation, with independently resolved 42% hits for 7–13 strength each. Spread tracer effects now last across the burst and use larger, brighter tracers; AAA remains limited to its 1.9-unit range.
 
 - Made world bounds an invisible movement limit rather than an automatic RTB trigger or recon-discovery source. Aircraft stop at the boundary and continue along their remaining route; ordinary route completion and fuel rules still determine recovery.
 

@@ -536,7 +536,7 @@ function EngagementCueBackdrop({meshRef}:{meshRef:{current:THREE.Mesh|null}}){
 function WeaponEffectVisual({effect,seconds,sceneClock,targetTrack,targetContactStart,targetAuthorized}:{effect:WeaponEffect;seconds:number;sceneClock:FrameClock;targetTrack?:UnitTrack;targetContactStart?:number;targetAuthorized:boolean}){
   const group=useRef<THREE.Group>(null),body=useRef<THREE.Mesh>(null),flash=useRef<THREE.Mesh>(null),plume=useRef<THREE.Mesh>(null),trail=useRef<THREE.Line>(null),burst=useRef<THREE.Group>(null)
   const hostileSource=effect.sourceId.startsWith('e-')||effect.sourceId==='red-fighter'
-  const color=effect.kind==='aaa'?'#ffcf62':effect.kind==='gun'?'#ffd48a':hostileSource?hostile:friendly
+  const color=effect.kind==='aaa'?'#fff06b':effect.kind==='gun'?'#ffd48a':hostileSource?hostile:friendly
   const geometry=useMemo(()=>{const value=new THREE.BufferGeometry();value.setAttribute('position',new THREE.BufferAttribute(new Float32Array(6),3).setUsage(THREE.DynamicDrawUsage));return value},[])
   const material=useMemo(()=>new THREE.LineBasicMaterial({color,transparent:true,depthTest:false,depthWrite:false}),[color])
   const line=useMemo(()=>new THREE.Line(geometry,material),[geometry,material])
@@ -546,7 +546,9 @@ function WeaponEffectVisual({effect,seconds,sceneClock,targetTrack,targetContact
   useFrame(()=>{
     if(!group.current)return
     const time=sceneClock.time,hitscan=effect.kind==='gun',local=hitscan?1:clamp01((time-effect.start)/Math.max(.01,effect.end-effect.start)),lifecycle=weaponVisualLifecycle(effect,time)
-    const targetPosition=(effect.kind==='sam'||effect.kind==='aaa')?authorizedWeaponTarget(effect,time,seconds,targetTrack,targetContactStart,targetAuthorized):effect.to
+    const trackedTarget=(effect.kind==='sam'||effect.kind==='aaa')?authorizedWeaponTarget(effect,time,seconds,targetTrack,targetContactStart,targetAuthorized):effect.to
+    const targetAtLaunch=effect.kind==='aaa'&&targetTrack?sampleUnitTrackForRender(targetTrack,effect.start,seconds,targetContactStart===undefined?undefined:{contactStart:targetContactStart})?.position:undefined
+    const targetPosition:Point=effect.kind==='aaa'&&targetAtLaunch?[trackedTarget[0]+effect.to[0]-targetAtLaunch[0],trackedTarget[1]+effect.to[1]-targetAtLaunch[1]]:trackedTarget
     const path=weaponPath(effect,local,targetPosition)
     group.current.position.set(path.position[0],path.height,path.position[1])
     if(burst.current)burst.current.visible=lifecycle.burstVisible
@@ -561,7 +563,7 @@ function WeaponEffectVisual({effect,seconds,sceneClock,targetTrack,targetContact
     <group ref={group}>
       <primitive object={line} ref={trail}/>
       <mesh ref={body} visible={false}><cylinderGeometry args={[effect.kind==='sam'?.065:.045,effect.kind==='sam'?.09:.065,effect.kind==='sam'?.62:.42,8]}/><meshBasicMaterial color={color} transparent opacity={.98} depthWrite={false}/></mesh>
-      {isBurst?<group ref={burst}>{Array.from({length:effect.kind==='aaa'?7:4},(_,i)=><mesh key={i} position={[-i*.1,0,i*.04]}><sphereGeometry args={[effect.kind==='aaa'?.055:.045,6,4]}/><meshBasicMaterial color={color} transparent opacity={.95-i*.1} depthWrite={false}/></mesh>)}</group>:null}
+      {isBurst?<group ref={burst}>{Array.from({length:effect.kind==='aaa'?11:4},(_,i)=><mesh key={i} position={[-i*(effect.kind==='aaa'?.13:.1),0,i*(effect.kind==='aaa'?.055:.04)]}><sphereGeometry args={[effect.kind==='aaa'?.075:.045,6,4]}/><meshBasicMaterial color={color} transparent opacity={.98-i*(effect.kind==='aaa'?.055:.1)} depthWrite={false}/></mesh>)}</group>:null}
       <mesh ref={flash} visible={false}><sphereGeometry args={[.23,10,8]}/><meshBasicMaterial color="#ffb64a" transparent depthWrite={false}/></mesh>
     </group>
     <mesh ref={plume} position={to3(effect.from,effect.kind==='sam'||effect.kind==='aaa'?.12:.76)} visible={false}><sphereGeometry args={[effect.kind==='sam'?.22:.14,8,6]}/><meshBasicMaterial color="#ffad4f" transparent depthWrite={false}/></mesh>
@@ -585,6 +587,7 @@ function ActiveSequenceVisual({sequence,seconds,result}:{sequence:CombatSequence
     if(material)material.opacity=.88*current.presentationOpacity
   })
   if(seconds<sequence.start||seconds>sequence.end+(sequence.kind==='dogfight'?.7:0))return null
+  if(sequence.kind==='flyby'){const exchange=sequence.exchanges[0];return <Billboard position={[sequence.location[0],1.25,sequence.location[1]]} follow lockZ={false}><Text fontSize={.16} color={exchange?.hit?'#ffcf62':'#d4d2c6'} anchorX="center" outlineWidth={.012} outlineColor="#080806">RETURN FIRE · {exchange?.hit?'HIT':'MISS'}</Text></Billboard>}
   if(sequence.kind==='pursuit')return <Billboard position={[sequence.location[0],1.35,sequence.location[1]]} follow lockZ={false}><Text fontSize={.22} color="#f4e7b1" anchorX="center" outlineWidth={.015} outlineColor="#080806">RECON UNDER PURSUIT</Text></Billboard>
   if(sequence.kind==='dogfight'&&presentation){
     const positions=sequence.participantIds.map(id=>sampleUnitTrack(unitTrackFor(result,id),seconds)?.position).filter((point):point is Point=>Boolean(point))

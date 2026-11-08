@@ -150,7 +150,7 @@ interface CombatSequenceBase {
   moraleBreakReason?: string
 }
 export interface FighterCombatSequence extends CombatSequenceBase {kind:'dogfight';engagement:FighterEngagementRecord}
-export interface OtherCombatSequence extends CombatSequenceBase {kind:'pursuit'|'strike'|'defense';engagement?:never}
+export interface OtherCombatSequence extends CombatSequenceBase {kind:'pursuit'|'strike'|'defense'|'flyby';engagement?:never}
 export type CombatSequence = FighterCombatSequence | OtherCombatSequence
 /** Current-only dogfight presentation summary; excludes exchanges and outcomes. */
 export interface ActiveDogfightPresentation {

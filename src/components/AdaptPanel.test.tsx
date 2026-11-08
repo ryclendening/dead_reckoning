@@ -24,14 +24,14 @@ describe('Adapt context',()=>{
     expect(airfield).not.toContain('Repairs and replacements')
   })
 
-  it('puts current site health, rearmed missiles, and repair action in the same compact selection',()=>{
+  it('shows current SAM health and rearmed missiles without offering repair',()=>{
     const match=state()
     match.playerAssets=match.playerAssets.map(asset=>asset.id==='p-sam'?{...asset,health:75}:asset)
     const sam=render(match,{kind:'asset',id:'p-sam'})
     expect(sam).toContain('75 / 100 HP')
     expect(sam).toContain('3/3 MSL')
-    expect(sam).toContain('REPAIR SAM')
-    expect(sam).toContain('Repairs and replacements (1)')
+    expect(sam).not.toContain('REPAIR SAM')
+    expect(sam).not.toContain('Repairs and replacements')
     expect(sam).not.toContain('MAINTENANCE WING')
     expect(sam).not.toContain('NEED ATTENTION')
   })

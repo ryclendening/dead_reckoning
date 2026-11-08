@@ -149,7 +149,7 @@ const ACTIONS: readonly EconomyActionDefinition[] = [
     quote: (state, target) => {
       if (target.kind !== 'asset') return undefined
       const asset = state.playerAssets.find(item => item.id === target.id)
-      if (!asset || !['radar', 'sam', 'aaa'].includes(asset.kind)) return undefined
+      if (!asset || !['radar', 'aaa'].includes(asset.kind)) return undefined
       const before = asset.health; const after = Math.min(asset.maxHealth, before + LOGISTICS_EFFECTS.defenseRepair)
       if (after <= before + .01) return undefined
       return createQuote(state, 'repair-defense', target, `REPAIR ${asset.kind.toUpperCase()}`, `Health ${Math.round(before)} → ${Math.round(after)} (+${Math.round(after - before)}).`, LOGISTICS_COSTS.defenseRepair, { kind: 'asset-health', before, after })
@@ -213,7 +213,7 @@ export function economyQuotesFor(state: MatchState, target: EconomyTarget): Econ
 export function economyAttentionTargets(state: MatchState): EconomyTarget[] {
   const targets: EconomyTarget[] = [
     ...state.squadrons.map(squadron => ({ kind: 'squadron' as const, id: squadron.id })),
-    ...state.playerAssets.filter(asset => ['radar', 'sam', 'aaa'].includes(asset.kind) || asset.kind === 'fob' && asset.operational === false).map(asset => ({ kind: 'asset' as const, id: asset.id })),
+    ...state.playerAssets.filter(asset => ['radar', 'aaa'].includes(asset.kind) || asset.kind === 'fob' && asset.operational === false).map(asset => ({ kind: 'asset' as const, id: asset.id })),
   ]
   return targets.filter(target => economyQuotesFor(state, target).some(quote => quote.id === 'repair-formation' || quote.id === 'replace-aircraft' || quote.id === 'repair-defense' || quote.id === 'repair-fob'))
 }

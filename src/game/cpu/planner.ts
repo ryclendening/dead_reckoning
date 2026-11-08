@@ -48,7 +48,7 @@ export function cpuRouteRisk(route: Point[], role: Squadron['role'], sites: CpuS
     }
     const seconds = inside / FLIGHT_SPEED[role]
     risk += site.kind === 'sam' ? (seconds > 0 ? Math.min(3, Math.ceil(seconds / 3)) * .64 * 38 : 0)
-      : site.kind === 'aaa' ? (seconds > 0 ? .52 * 13 : 0) : seconds * 1.5
+      : site.kind === 'aaa' ? (seconds > 0 ? .42 * 10 * 5 : 0) : seconds * 1.5
   }
   return risk
 }
