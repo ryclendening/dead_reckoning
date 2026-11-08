@@ -3,8 +3,10 @@ import type { AssetKind, EconomyActionId, EconomyCommand, FormationRecoveryOutco
 export type CpuDifficulty = 'easy' | 'medium' | 'hard'
 export type CpuIntent = 'discover' | 'protect-base' | 'expand-defense' | 'forward-position' | 'suppress-defenses' | 'strike-base' | 'contest-air'
 export interface PredictedEffects { informationGain: number; baseDamage: number; ownBaseRiskReduced: number; defenseCoverageGain: number; futureStrikeAccessGain: number; expectedAircraftLoss: number; logisticsSpent: number; roundsUntilPayoff: number }
-export interface TacticalPackage { id: string; summary: string; orders: Squadron[]; purchases: EconomyCommand[]; predicted: PredictedEffects; checks: string[] }
-export interface CpuDecisionTrace { round: number; observedEvidenceIds: string[]; alternatives: Array<{ intent: CpuIntent; bestPackageScore: number; reason: string; components: Record<string, number> }>; selected: CpuIntent; previous?: CpuIntent; switchReason?: string; scoreDelta?: number; chosenEffects?: PredictedEffects; chosenChecks?: string[]; chosenPackageSummary: string; rejected: string[]; work: { packages: number; routeExpansions: number } }
+/** An analytic own-capability estimate, not an opponent rollout. Damage is in HP. */
+export interface BaseAttackEstimate { damageNow: number; followupDamage: number; preparationRounds: number; releaseSeconds: number; confidence?: number }
+export interface TacticalPackage { id: string; summary: string; orders: Squadron[]; purchases: EconomyCommand[]; predicted: PredictedEffects; baseAttack?: BaseAttackEstimate; checks: string[] }
+export interface CpuDecisionTrace { round: number; observedEvidenceIds: string[]; alternatives: Array<{ intent: CpuIntent; bestPackageScore: number; reason: string; components: Record<string, number>; baseAttack?: BaseAttackEstimate }>; selected: CpuIntent; previous?: CpuIntent; switchReason?: string; scoreDelta?: number; chosenEffects?: PredictedEffects; chosenBaseAttack?: BaseAttackEstimate; chosenChecks?: string[]; chosenPackageSummary: string; rejected: string[]; work: { packages: number; routeExpansions: number } }
 export type CpuObjective = 'defend' | 'patrol' | 'escort' | 'strike'
 export interface CpuSiteReport {
   id: string; kind: AssetKind; position: Point; health: number; maxHealth: number; observedRound: number; observedAt?: number; estimatedDamage?: number

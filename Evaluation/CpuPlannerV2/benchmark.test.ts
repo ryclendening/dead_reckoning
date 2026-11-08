@@ -12,34 +12,25 @@ import { maintainCpu } from '../../src/game/cpu/settlement'
 import { confirmCampaignSetup } from '../../src/game/campaignSetup'
 import { campaignOutcome } from '../../src/game/campaign'
 import { deriveRecoveryPlanningView, formationField, normalizeFormationBasing, validateRecoveryPackage } from '../../src/game/forwardBasing'
-import { generateRouteTemplate, validateGroundStrikeOrder } from '../../src/game/routeTemplates'
 import { MAX_FLIGHT_DISTANCE } from '../../src/game/flightRules'
 import { executeEconomyCommand, economyQuotesFor, validateAssetPlacement } from '../../src/game/economy'
 import { axialToPoint } from '../../src/game/hex'
 import { normalizeMatch } from '../../src/game/persistence'
 import type { Asset, MatchState, Point, Squadron } from '../../src/game/types'
 import type { CpuDifficulty } from '../../src/game/cpu/types'
+import { competitivePlayerOrders, playerSamPlacementValue, resolveCompetitiveRound, scriptedOrder as ordered } from './competitiveOpponents'
 
 const sourceFiles=readdirSync('src/game',{recursive:true}).map(String).filter(f=>f.endsWith('.ts')&&!f.endsWith('.test.ts')).map(f=>'src/game/'+f).sort()
 const candidateHash=createHash('sha256').update(sourceFiles.map(f=>f+'\0'+readFileSync(f,'utf8')).join('\0')).digest('hex')
-const harnessHash=createHash('sha256').update(readFileSync('Evaluation/CpuPlannerV2/benchmark.test.ts')).digest('hex')
+const harnessHash=createHash('sha256').update(['benchmark.test.ts','competitiveOpponents.ts'].map(f=>f+'\0'+readFileSync('Evaluation/CpuPlannerV2/'+f,'utf8')).join('\0')).digest('hex')
+const competitive=process.env.CPU_OPPONENTS==='competitive'
 
 type Policy='direct-rush'|'flank'|'recon-strike'|'heavy-sam'|'forward-fob'|'recon-denial'
 const policies:Policy[]=['direct-rush','flank','recon-strike','heavy-sam','forward-fob','recon-denial']
 const d=(a:Point,b:Point)=>Math.hypot(a[0]-b[0],a[1]-b[1])
-function ordered(s:MatchState,f:Squadron,mission:Squadron['mission'],station:Point,flank=false,target?:Asset):Squadron {
-  const field=formationField(s.playerAssets,f.id)!,from=field.position,l=Math.max(.01,d(from,station))
-  const midpoint:Point=[(from[0]+station[0])/2-(station[1]-from[1])/l*5,(from[1]+station[1])/2+(station[0]-from[0])/l*5]
-  const ingress=flank?[from,midpoint,station]:[from,station]
-  const generated=mission==='base-strike'||mission==='transit'?ingress:generateRouteTemplate({template:mission,ingress,maxDistance:MAX_FLIGHT_DISTANCE[f.role],bounds:{minX:Math.min(from[0],station[0])-8,maxX:Math.max(from[0],station[0])+8,minZ:Math.min(from[1],station[1])-8,maxZ:Math.max(from[1],station[1])+8}}).route
-  const order={...f,mission,route:generated,routeIngress:ingress,sortieOrdered:true,strikeTargetId:target?.id,protectedPoint:mission==='defensive-cap'?station:undefined,protectedTargetId:undefined}
-  const view=deriveRecoveryPlanningView({...s,squadrons:s.squadrons.map(u=>u.id===f.id?order:u)},f.id,generated,MAX_FLIGHT_DISTANCE[f.role])
-  if(!view?.valid)return {...f,sortieOrdered:false}
-  const result={...order,route:view.normalizedRoute,plannedRecoveryFieldId:view.intendedField.id}
-  return mission==='base-strike'&&validateGroundStrikeOrder(s,result)!==undefined?{...f,sortieOrdered:false}:result
-}
 /** Scripted opponents consume player-authorized reports/own state only. */
 function playerOrders(s:MatchState,policy:Policy):MatchState {
+  if(competitive)return competitivePlayerOrders(s,policy,ordered)
   const home=s.playerAssets.find(a=>a.kind==='base')!.position
   const base=s.enemyAssets.find(a=>a.kind==='base'&&a.intel==='confirmed'&&!a.hidden&&a.health>0)
   const sectors:Point[]=[[0,0],[-6,8],[0,8],[6,8],[-6,0],[6,0],[-6,-8],[0,-8],[6,-8],[-10,12],[10,12],[-10,-12],[10,-12]]
@@ -87,17 +78,17 @@ function playerAdapt(s:MatchState,policy:Policy):MatchState {
     const home=s.playerAssets.find(a=>a.kind==='base')!.position,kind=policy==='heavy-sam'?'sam':'fob'
     const points:Point[]=[]
     for(let q=-22;q<=22;q++)for(let r=-20;r<=20;r++) {const p=axialToPoint(q,r);if(validateAssetPlacement(s,kind,p).valid)points.push(p)}
-    points.sort((a,b)=>policy==='heavy-sam'?d(a,home)-d(b,home):d(a,[0,0])-d(b,[0,0]))
+    points.sort((a,b)=>policy==='heavy-sam'?(competitive?playerSamPlacementValue(s,b)-playerSamPlacementValue(s,a):d(a,home)-d(b,home)):d(a,[0,0])-d(b,[0,0]))
     if(points[0]&&(kind!=='fob'||!s.playerAssets.some(a=>a.kind==='fob')))s=executeEconomyCommand(s,{actionId:`build-${kind}`,target:{kind:'campaign',id:'campaign'},placement:points[0]})
   }
   return s
 }
-interface Row {version:'v1'|'v2';ruleset:'shared-current'|'historical-v1';difficulty:CpuDifficulty;seed:number;split:string;policy:Policy;outcome?:ReturnType<typeof campaignOutcome>;cpuWin:boolean;rounds:number;playerBaseDamage:number;cpuBaseDamage:number;intel:number;sams:number;fobs:number;fobUsed:number;recovered:number;sorties:number;logistics:number;spent:number;illegal:number;expansions:number;packages:number;samCoverageGain:number;fobStrikeOrders:number;baseSeen:boolean;exposure:number;playerSams:number;playerFobs:number;decisions:string[];playerStrikeOrders:number;playerMissileLaunches:number;playerPackageAdjustments:number;playerReconSorties:number;playerReconRecovered:number;playerLostBaseReports:number;playerBaseSeen:boolean;cpuStrikeOrders:number;cpuMissileLaunches:number}
+interface Row {version:'v1'|'v2';ruleset:'shared-current'|'historical-v1';difficulty:CpuDifficulty;seed:number;split:string;policy:Policy;outcome?:ReturnType<typeof campaignOutcome>;cpuWin:boolean;rounds:number;playerBaseDamage:number;cpuBaseDamage:number;intel:number;sams:number;fobs:number;fobUsed:number;recovered:number;sorties:number;logistics:number;spent:number;illegal:number;expansions:number;packages:number;samCoverageGain:number;fobStrikeOrders:number;baseSeen:boolean;exposure:number;playerSams:number;playerFobs:number;decisions:string[];playerStrikeOrders:number;playerMissileLaunches:number;playerPackageAdjustments:number;playerReconSorties:number;playerReconRecovered:number;playerLostBaseReports:number;playerBaseSeen:boolean;cpuStrikeOrders:number;cpuMissileLaunches:number;cpuBaseStrikeOrders:number;cpuBaseMissileLaunches:number;firstCpuBaseStrikeRound?:number}
 export function campaign(version:Row['version'],difficulty:CpuDifficulty,seed:number,policy:Policy):Row {
   const historical=version==='v1'&&process.env.CPU_BASELINE_ENGINE==='historical'
   const draft=createCampaignDraft(seed,difficulty)
   let s=confirmCampaignSetup({...draft,setup:{...draft.setup!,stage:'review',placedAssetIds:[...draft.setup!.selectedAssetIds]}})
-  const row:Row={version,ruleset:historical?'historical-v1':'shared-current',difficulty,seed,split:[263,307,349,401,443,487,541,599,647,701,751,809].includes(seed)?'fresh-validation':seed<100?'development':'previously-observed',policy,cpuWin:false,rounds:0,playerBaseDamage:0,cpuBaseDamage:0,intel:0,sams:0,fobs:0,fobUsed:0,recovered:0,sorties:0,logistics:0,spent:0,illegal:0,expansions:0,packages:0,samCoverageGain:0,fobStrikeOrders:0,baseSeen:false,exposure:6,playerSams:0,playerFobs:0,decisions:[],playerStrikeOrders:0,playerMissileLaunches:0,playerPackageAdjustments:0,playerReconSorties:0,playerReconRecovered:0,playerLostBaseReports:0,playerBaseSeen:false,cpuStrikeOrders:0,cpuMissileLaunches:0}
+  const row:Row={version,ruleset:historical?'historical-v1':'shared-current',difficulty,seed,split:[263,307,349,401,443,487,541,599,647,701,751,809].includes(seed)?'fresh-validation':seed<100?'development':'previously-observed',policy,cpuWin:false,rounds:0,playerBaseDamage:0,cpuBaseDamage:0,intel:0,sams:0,fobs:0,fobUsed:0,recovered:0,sorties:0,logistics:0,spent:0,illegal:0,expansions:0,packages:0,samCoverageGain:0,fobStrikeOrders:0,baseSeen:false,exposure:6,playerSams:0,playerFobs:0,decisions:[],playerStrikeOrders:0,playerMissileLaunches:0,playerPackageAdjustments:0,playerReconSorties:0,playerReconRecovered:0,playerLostBaseReports:0,playerBaseSeen:false,cpuStrikeOrders:0,cpuMissileLaunches:0,cpuBaseStrikeOrders:0,cpuBaseMissileLaunches:0}
   for(let round=1;round<=6;round++) {
     s={...s,round,phase:'plan',lastResult:undefined,playerAssets:normalizeFormationBasing(s.squadrons,s.playerAssets)}
     const plan=version==='v2'?planCpu(cpuPlanningView(s)!):planV1(viewV1(s)!)
@@ -122,9 +113,14 @@ export function campaign(version:Row['version'],difficulty:CpuDifficulty,seed:nu
     row.playerReconSorties+=reconIds.size
     row.playerStrikeOrders+=s.squadrons.filter(o=>o.sortieOrdered!==false&&o.mission==='base-strike').length
     row.cpuStrikeOrders+=plan.orders.filter(o=>o.sortieOrdered!==false&&o.mission==='base-strike').length
-    const result=(historical?resolveV1:resolveRound)(s)
+    const baseStrikes=plan.orders.filter(o=>o.sortieOrdered!==false&&o.mission==='base-strike'&&o.strikeTargetId==='p-base').length
+    row.cpuBaseStrikeOrders+=baseStrikes
+    if(baseStrikes)row.firstCpuBaseStrikeRound??=round
+    if(historical&&competitive)throw new Error('Online opponents require the shared-current engine; historical controller is not preserved.')
+    const result=competitive?resolveCompetitiveRound(s):(historical?resolveV1:resolveRound)(s)
     row.playerMissileLaunches+=result.weaponEffects.filter(e=>e.kind==='air-to-ground-missile'&&s.squadrons.some(f=>f.id===e.sourceId)).length
     row.cpuMissileLaunches+=result.weaponEffects.filter(e=>e.kind==='air-to-ground-missile'&&s.cpu!.formations.some(f=>f.id===e.sourceId)).length
+    row.cpuBaseMissileLaunches+=result.weaponEffects.filter(e=>e.kind==='air-to-ground-missile'&&e.targetId==='p-base').length
     row.playerReconRecovered+=(result.recoveryOutcomes??[]).filter(o=>reconIds.has(o.formationId)&&['recovered','diverted'].includes(o.outcome)).length
     row.playerLostBaseReports+=result.intelReports.filter(r=>r.assetId===s.enemyAssets.find(a=>a.kind==='base')!.id&&!r.recovered).length
     row.sorties+=ids.size;row.recovered+=result.cpuReport?.recoveredIds.length??0
@@ -164,6 +160,6 @@ describe('paired campaign evaluation',()=>{
     const sample=rows.find(r=>r.version==='v2')!
     expect(campaign('v2',sample.difficulty,sample.seed,sample.policy)).toEqual(sample)
     console.log('OFFENSIVE WINS',JSON.stringify(['easy','medium','hard'].map(difficulty=>{const sample=rows.filter(r=>r.version==='v2'&&r.difficulty===difficulty&&r.policy!=='recon-denial');return {difficulty,wins:sample.filter(r=>r.cpuWin&&r.playerBaseDamage===100).length,campaigns:sample.length}})))
-    if(full)writeFileSync(process.env.CPU_OUTPUT??'Evaluation/CpuPlannerV2/offensive-results.json',JSON.stringify({baseline:'d8850a0',policyVersion:'fixed-policies-v2-compatible-recovery',baselineHash:createHash('sha256').update(['legacyEngine.fixture.ts','legacyPlanner.fixture.ts','legacySettlement.fixture.ts'].map(f=>f+'\0'+readFileSync('Evaluation/CpuPlannerV2/baseline/'+f,'utf8')).join('\0')).digest('hex'),baselineEngine:process.env.CPU_BASELINE_ENGINE==='historical'?'historical-v1':'shared-current',harnessHash,candidateHash,sourceFiles,gate:'Each difficulty: >70% base-destruction wins against the five attacking policies; deadline and aircraft-elimination wins excluded.',seeds,rows},null,2)+'\n')
+    if(full)writeFileSync(process.env.CPU_OUTPUT??(competitive?'Evaluation/CpuPlannerV2/competitive-results.json':'Evaluation/CpuPlannerV2/offensive-results.json'),JSON.stringify({baseline:'d8850a0',policyVersion:competitive?'competitive-v1':'fixed-policies-v2-compatible-recovery',baselineHash:createHash('sha256').update(['legacyEngine.fixture.ts','legacyPlanner.fixture.ts','legacySettlement.fixture.ts'].map(f=>f+'\0'+readFileSync('Evaluation/CpuPlannerV2/baseline/'+f,'utf8')).join('\0')).digest('hex'),baselineEngine:process.env.CPU_BASELINE_ENGINE==='historical'?'historical-v1':'shared-current',harnessHash,candidateHash,sourceFiles,gate:'Each difficulty: >70% base-destruction wins against the five attacking policies; deadline and aircraft-elimination wins excluded.',seeds,rows},null,2)+'\n')
   },600000)
 })

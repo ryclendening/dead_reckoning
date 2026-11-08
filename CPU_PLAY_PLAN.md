@@ -198,3 +198,28 @@ FOB valuation currently covers known-base reach and known ground-threat cost.
 Broader observed-air-route and reconnaissance staging value remains incomplete;
 the ordinary scripted cohort has no CPU FOB use. These limitations are not
 resolved by the successful long-range FOB capability fixture.
+
+
+### Offensive priority revision — 2026-11-08
+
+The subsequent user direction makes rapid enemy-base destruction the offensive
+objective. Shared tactical packages now carry a compact optional base-attack
+estimate: damage now, follow-up payload, preparation rounds, release time, and
+collection confidence when another report must authorize the attack. The same
+analytic discounted damage/completion calculation scores a direct strike,
+suppression, and a named attack enabled by collection. It rewards earlier
+completion before round six. A support site has no generic hit bonus.
+
+Adapt evaluates these same packages after legal paid commands; the former
+separate restoration-only bonus was removed. No hidden future orders, opponent
+rollouts, invented repairs, or new combat/authorization rules are involved.
+Forecasts are heuristic repeated-capability estimates, not calibrated outcome
+probabilities or a simulation of future rounds. Current FOB utility still uses
+its existing bounded access estimate; full offensive-clock valuation of FOB
+staging and partial escort generation remain incomplete.
+
+Evaluation adds `CPU_OPPONENTS=competitive`, version `competitive-v1`, separately
+from the historical fixed scripts. It includes fighter collection, online player
+recon RTB after legitimate local observation/threat, known-SAM strike avoidance,
+and approach-oriented paid SAM placement. These remain scripts, and a no-strike
+match is reported explicitly rather than assumed to prove competitive success.

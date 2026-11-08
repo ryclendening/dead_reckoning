@@ -1,7 +1,27 @@
+import { ENEMY_TARGETING_THRESHOLD } from '../campaign'
 import type { CpuPlanningView } from './planningView'
 import type { CpuDecisionTrace, CpuIntent, TacticalPackage } from './types'
 
 const intentions:CpuIntent[]=['discover','protect-base','expand-defense','forward-position','suppress-defenses','strike-base','contest-air']
+/** Discounted base HP removed by a repeated, currently achievable capability.
+ * Preparation consumes real campaign rounds. No invented repairs, opponent
+ * actions, or future observations are included in this estimate. */
+export function baseAttackValue(view:CpuPlanningView,p:TacticalPackage):number {
+  const base=view.cpu.sites.find(s=>s.kind==='base'&&s.health>0),attack=p.baseAttack
+  if(!base||!attack)return p.predicted.baseDamage
+  const remaining=7-view.round,discount=.72
+  let health=base.health,value=0
+  for(let offset=0;offset<remaining;offset++) {
+    const available=offset===0?attack.damageNow:offset>=Math.max(1,attack.preparationRounds)?attack.followupDamage:0
+    const damage=Math.min(health,Math.max(0,available))
+    value+=damage/base.health*discount**offset
+    health-=damage
+    if(health<=.001){value+=.75*discount**offset;break}
+  }
+  // Among otherwise equivalent strikes, prefer releasing earlier. A lengthy
+  // recovery does not delay the current payload; ingress time does.
+  return value*(attack.confidence??1)/(1+attack.releaseSeconds/100)
+}
 function advances(view:CpuPlanningView,intent:CpuIntent,p:TacticalPackage):boolean {
   const e=p.predicted, c=contribution(view,p)
   switch(intent) {
@@ -17,18 +37,20 @@ function advances(view:CpuPlanningView,intent:CpuIntent,p:TacticalPackage):boole
 /** All goals use the same measured effects and common campaign contribution scale. */
 export function contribution(view:CpuPlanningView,p:TacticalPackage):Record<string,number> {
   const e=p.predicted,remaining=7-view.round, horizon=Math.max(0,(remaining-e.roundsUntilPayoff)/remaining)
-  const base=view.cpu.sites.find(s=>s.kind==='base'&&s.health>0)
   const health=view.homeHealth
   // The second useful defensive layer can matter; saturation prevents spending
   // every remaining Logistics point on capacity beyond the immediate need.
   const protection=(1-Math.exp(-3*e.ownBaseRiskReduced))*(.6+.4*(100-health)/100)
-  const payload=Math.round(60*(p.orders.find(f=>f.role==='fighter')?.strength??0)/100)
-  const decisive=base&&payload>=base.health?1.5:1
+  const operation=baseAttackValue(view,p)
+  const collecting=p.baseAttack&&e.baseDamage===0&&!p.orders.some(o=>o.mission==='base-strike'&&o.sortieOrdered!==false)
+  const authorizing=view.exposure<ENEMY_TARGETING_THRESHOLD&&view.cpu.sites.some(s=>s.kind==='base'&&s.health>0)
   const components = {
-    strike:e.baseDamage*decisive*Math.min(1.5,Math.max(1,remaining/2)),
+    strike:e.baseDamage>0?operation:0,
     survival:protection,
-    discovery:e.informationGain*.85*horizon,
-    access:e.futureStrikeAccessGain*.85*horizon,
+    discovery:authorizing?(collecting?operation:0):e.informationGain*.85*horizon,
+    // A concrete base operation already includes the follow-through. Do not
+    // count suppression's risk reduction again as an independent reward.
+    access:p.baseAttack?collecting||e.baseDamage>0?0:operation:e.futureStrikeAccessGain*.85*horizon,
     attrition:-e.expectedAircraftLoss*(view.round===6?.12:.26),
     spending:-e.logisticsSpent/Math.max(10,view.cpu.logistics)*.18,
     delay:-e.roundsUntilPayoff/Math.max(1,remaining)*.04,
@@ -52,6 +74,6 @@ export function choosePackage(view:CpuPlanningView,packages:TacticalPackage[],re
   const selected=chosen&&chosen.score>score(saving)?chosen:{intent:'protect-base' as const,package:saving,score:score(saving),components:contribution(view,saving)}
   return {package:selected.package,intent:selected.intent,trace:{round:view.round,
     observedEvidenceIds:[...view.cpu.sites.map(s=>`site:${s.id}:r${s.observedRound}`),...view.cpu.traffic.map((t,i)=>`traffic:r${t.observedRound}:${t.sector??i}`),...(view.homeHealth<100?[`own-base-health:${view.homeHealth}`]:[])],
-    alternatives:alternatives.map(c=>({intent:c.intent,bestPackageScore:c.score,reason:c.package.summary,components:c.components})),selected:selected.intent,previous:prior,scoreDelta:selected.score-(validPrior?.score??0),switchReason:prior===selected.intent?'Continue feasible intent.':!validPrior?'Previous intent completed or has no feasible payoff.':'A stronger achievable package exceeds commitment friction.',chosenEffects:selected.package.predicted,chosenChecks:selected.package.checks,
+    alternatives:alternatives.map(c=>({intent:c.intent,bestPackageScore:c.score,reason:c.package.summary,components:c.components,baseAttack:c.package.baseAttack})),selected:selected.intent,previous:prior,scoreDelta:selected.score-(validPrior?.score??0),switchReason:prior===selected.intent?'Continue feasible intent.':!validPrior?'Previous intent completed or has no feasible payoff.':'A stronger achievable package exceeds commitment friction.',chosenEffects:selected.package.predicted,chosenBaseAttack:selected.package.baseAttack,chosenChecks:selected.package.checks,
     chosenPackageSummary:selected.package.summary,rejected:[...new Set(rejected)].slice(0,24),work:{packages:packages.length,routeExpansions:expansions}}}
 }

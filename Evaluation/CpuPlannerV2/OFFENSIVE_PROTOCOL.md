@@ -54,3 +54,35 @@ It adds no information or resources. Both v1 and v2 face the corrected scripts,
 and raw rows count package adjustments. Older policy-version results that did
 not check collective player capacity remain historical, provisional evidence.
 The scripts still do not make midflight RTB decisions or adapt like a human.
+
+
+## Competitive opponent revision — 2026-11-08
+
+The user has reaffirmed **rapid destruction of the enemy base** as the objective;
+force elimination and deadline survival remain separate outcomes. The old
+`fixed-policies-v2-compatible-recovery` suite remains a historical comparison.
+Its intended attacking policies frequently never attacked and cannot establish
+a competitive win rate. Do not pool it with the stronger suite.
+
+`CPU_OPPONENTS=competitive` selects `competitive-v1` on the current shared engine:
+
+- Direct/flank policies collect with two fighters plus recon until confirmation,
+  then assign both fighters legal base strikes.
+- Recon-strike/heavy-SAM policies put one fighter on the collection corridor and
+  use the other to collect; forward-FOB can physically stage before confirmation.
+- Strike candidates compare alternate legal releases and one-bend routes against
+  only confirmed SAM/AAA coordinates. No hidden CPU plan enters the script.
+- Player recon uses real next-tick RTB commands after a legitimate live base
+  sighting, critical own condition, or a sensed threat. The sensor adapter uses
+  the engine's exact fixed-site observation radius; remote hidden sites have no
+  effect on commands.
+- Paid SAM construction ranks legal sites on observed/confirmed inbound
+  approaches. Resources, recovery, combat and six-round limits are unchanged.
+
+This suite remains scripted. Report how many campaigns actually issued strikes
+and launched missiles, and how many CPU base kills occurred with no player
+strike. Intelligence denial can prevent attacks, but such matches alone do not
+establish strength against an attacking human. Keep all policy/seed failures.
+Run both the original v1 and the immediately previous CPU v2 (`f7f9998`) against
+the same new opponents when assessing this revision. The registered fresh seeds
+remain untouched until the candidate passes development validation.

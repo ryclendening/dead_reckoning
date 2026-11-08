@@ -1,11 +1,10 @@
-import { ENEMY_TARGETING_THRESHOLD, BASE_STRIKE_DAMAGE } from '../campaign'
 import { economyQuotesFor, executeEconomyCommand, validateAssetPlacement } from '../sideEconomy'
 import type { SidePlanningContext } from '../sideContext'
 import type { EconomyCommand, EconomyTarget } from '../types'
 import type { CpuPlanningView } from './planningView'
 import { generateActions } from './actions'
 import { choosePackage, contribution } from './strategy'
-import { CPU_PROFILES, orderRisk, strikeOrders, type RouteWork } from './routes'
+import { CPU_PROFILES, type RouteWork } from './routes'
 import { defenseCoverage, forwardValue, legalPlacements, observedThreat } from './placement'
 import type { TacticalPackage } from './types'
 
@@ -37,22 +36,11 @@ export function planPurchases(view:CpuPlanningView):ReturnType<typeof choosePack
     const scored:Array<{node:Node;score:number}>=[]
     for(const node of beam) {
       const current=withContext(nextRound,node.ctx)
-      const base=current.cpu.sites.find(s=>s.kind==='base'&&s.health>0)
-      const restored=current.cpu.formations.find(f=>f.role==='fighter')!,before=original.cpu.formations.find(f=>f.role==='fighter')!
-      // Recovery of the remaining observation can authorize this named strike
-      // next round. Value the capability restored by purchases without issuing
-      // an unauthorized strike or rolling out an opponent's future actions.
-      const restoration=base&&current.exposure<ENEMY_TARGETING_THRESHOLD&&current.round<6&&(restored.strength??0)>(before.strength??0)
-        ? Math.max(0,...strikeOrders(current,restored,base,work).map(order=>{
-          const risk=orderRisk(current,order,current.cpu.sites,false)
-          const payload=(strength:number)=>BASE_STRIKE_DAMAGE*strength/100*Math.max(0,1-risk/Math.max(25,strength+20))
-          return (Math.min(base.health,payload(restored.strength??0))-Math.min(base.health,payload(before.strength??0)))/Math.max(1,base.health)
-        })):0
       const options=generateActions(current,work).map(p=>({...p,id:`${node.commands.map(c=>c.actionId+':'+c.target.id+':'+c.placement).join('|')}/${p.id}`,purchases:node.commands,
         summary:`${node.commands.length?node.commands.map(c=>`${c.actionId}${c.placement?` at ${c.placement.map(n=>n.toFixed(1))}`:''}`).join(', ')+'. ':''}${p.summary}`,
         predicted:{...p.predicted,logisticsSpent:original.cpu.logistics-node.ctx.logistics,defenseCoverageGain:node.coverage,
           ownBaseRiskReduced:Math.min(1,p.predicted.ownBaseRiskReduced+node.coverage*observedThreat(original)*1.6),
-          futureStrikeAccessGain:Math.max(p.predicted.futureStrikeAccessGain,node.forward,restoration*p.predicted.informationGain*(6-current.round)/(7-current.round)),
+          futureStrikeAccessGain:Math.max(p.predicted.futureStrikeAccessGain,node.forward),
           roundsUntilPayoff:node.forward>0?2:p.predicted.roundsUntilPayoff}}))
       all.push(...options)
       scored.push({node,score:Math.max(...options.map(utility))})

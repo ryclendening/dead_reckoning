@@ -42,6 +42,36 @@ describe('CPU v2 behavioral acceptance',()=>{
     expect(resolveRound(ready).baseDamage).toBe(60)
     expect(plan.trace!.observedEvidenceIds).toContain('site:p-base:r1')
   })
+  it('finishes a reachable base despite defensive pressure and preserves the attack estimate on reload',()=>{
+    const s=setup();s.phase='plan';s.round=5;s.enemyBaseHealth=40;s.enemyAssets[0].health=40
+    s.playerBaseHealth=40;s.playerAssets[0].health=40;s.cpu!.sites[0].health=40
+    s.cpu!.intent='protect-base'
+    s.cpu!.traffic=[{identity:'VIPER 1',role:'fighter',position:[8,0],observedRound:4,source:'visual',strength:100,bearing:0}]
+    const ready=prepareCpuRound(s)
+    expect(ready.cpu!.plan!.intent).toBe('strike-base')
+    expect(ready.cpu!.plan!.trace!.chosenBaseAttack!.damageNow).toBeGreaterThan(0)
+    const loaded=normalizeMatch(JSON.parse(JSON.stringify(ready)))
+    expect(loaded.cpu!.plan).toEqual(ready.cpu!.plan)
+    expect(campaignOutcome(applyRound(loaded,resolveRound(loaded)))).toBe('home-base-destroyed')
+  })
+  it('spends scarce cash restoring a two-sortie base kill instead of delaying it for a SAM',()=>{
+    let s=setup();s.round=4;s.cpu!.logistics=8;s.cpu!.reserves=1
+    s.cpu!.formations[0]={...s.cpu!.formations[0],strength:75,aircraft:3}
+    s.cpu!.mappedAreas=[[8,0],[10,0]]
+    s.cpu!.traffic=[{identity:'VIPER 1',role:'fighter',position:[8,0],observedRound:4,source:'visual',strength:100,bearing:0}]
+    s=maintainCpu(s)
+    expect(s.cpu!.formations[0].strength).toBe(100)
+    expect(s.cpu!.spending.some(c=>c.action==='replace-aircraft')).toBe(true)
+    expect(s.enemyAssets.some(a=>a.kind==='sam')).toBe(false)
+    s=beginNextRound(s)
+    expect(s.cpu!.plan!.orders[0].strikeTargetId).toBe('p-base')
+    s=applyRound(s,resolveRound(s))
+    expect(s.playerBaseHealth).toBe(40)
+    s=beginNextRound(openAdaptPhase(s))
+    s=applyRound(s,resolveRound(s))
+    expect(s.round).toBe(6)
+    expect(campaignOutcome(s)).toBe('home-base-destroyed')
+  })
   it('retains feasible collection opportunities on both sides of a dense search prior',()=>{
     const s=setup([0,-12],[0,8]);s.phase='plan';s.round=1;s.baseExposure=6;s.cpu!.sites=[]
     const packages=generateActions(cpuPlanningView(s)!,{expansions:0,rejected:[]})

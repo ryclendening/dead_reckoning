@@ -19,9 +19,11 @@ const traffic = (v: unknown) => record(v) && point(v.position) && ['fighter', 'r
   && (v.sector === undefined || integer(v.sector) && v.sector < 8)
 
 const intent = (v: unknown) => ['discover','protect-base','expand-defense','forward-position','suppress-defenses','strike-base','contest-air'].includes(String(v))
+const baseAttack = (v: unknown) => record(v) && number(v.damageNow) && v.damageNow<=60 && number(v.followupDamage) && v.followupDamage<=60 && integer(v.preparationRounds) && number(v.releaseSeconds) && (v.confidence===undefined||number(v.confidence)&&v.confidence<=1)
 const trace = (v: unknown) => record(v) && integer(v.round) && intent(v.selected) && text(v.chosenPackageSummary)
   && Array.isArray(v.observedEvidenceIds) && v.observedEvidenceIds.every(text) && Array.isArray(v.rejected) && v.rejected.every(text)
-  && Array.isArray(v.alternatives) && v.alternatives.every(a=>record(a)&&intent(a.intent)&&typeof a.bestPackageScore==='number'&&Number.isFinite(a.bestPackageScore)&&text(a.reason)&&record(a.components)&&Object.values(a.components).every(n=>typeof n==='number'&&Number.isFinite(n)))
+  && Array.isArray(v.alternatives) && v.alternatives.every(a=>record(a)&&intent(a.intent)&&typeof a.bestPackageScore==='number'&&Number.isFinite(a.bestPackageScore)&&text(a.reason)&&record(a.components)&&Object.values(a.components).every(n=>typeof n==='number'&&Number.isFinite(n))&&(a.baseAttack===undefined||baseAttack(a.baseAttack)))
+  && (v.chosenBaseAttack===undefined||baseAttack(v.chosenBaseAttack))
   && record(v.work) && integer(v.work.packages) && integer(v.work.routeExpansions)
 export function validCpuReport(v: unknown): v is CpuRoundReport {
   return record(v) && Array.isArray(v.sites) && v.sites.every(site) && Array.isArray(v.traffic) && v.traffic.every(traffic)
