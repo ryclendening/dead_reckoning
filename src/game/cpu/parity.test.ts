@@ -10,6 +10,7 @@ import { validateRecoveryPackage } from '../forwardBasing'
 import { cpuPlanningView, cpuReportAt, prepareCpuRound } from './planner'
 import { generateActions } from './actions'
 import { discoveryAttackValue } from './strategy'
+import { collectionScorer, covers } from './search'
 import type { CpuDifficulty } from './types'
 
 function campaign(difficulty:CpuDifficulty='hard') {
@@ -96,6 +97,24 @@ describe('symmetric campaign rules',()=>{
     expect(retreat.start).toBeGreaterThan(shot.start)
     expect(retreat.start).toBeLessThan(shot.end)
     expect(result.cpuReport!.sites.some(s=>s.kind==='base')).toBe(false)
+  })
+  it('matches exhaustive returned-report outcomes with direct coverage probability',()=>{
+    const view=cpuPlanningView(strikeScenario())!
+    const ends:Array<[number,number]>=[[12,0],[12,6],[12,-6]]
+    const orders=view.cpu.formations.map((f,i)=>({...f,sortieOrdered:true,route:[[0,0] as [number,number],ends[i],[0,0] as [number,number]]}))
+    const probabilities=[.2,.45,.9],confidence=(o:typeof orders[number])=>probabilities[orders.indexOf(o)]
+    for(const refresh of [false,true]) {
+      view.cpu.sites=refresh?[{id:'p-base',kind:'base',position:[12,0],health:100,maxHealth:100,observedRound:1}]:[]
+      const points=refresh?Array.from({length:8},(_,i)=>({point:[12+Math.cos(i*Math.PI/4)*3.2,Math.sin(i*Math.PI/4)*3.2] as [number,number],weight:1})):[{point:[8,0] as [number,number],weight:1},{point:[10,4] as [number,number],weight:2},{point:[12,-4] as [number,number],weight:3}]
+      let exhaustive=0
+      for(let mask=0;mask<8;mask++) {
+        let probability=1
+        for(let i=0;i<3;i++)probability*=mask&(1<<i)?probabilities[i]:1-probabilities[i]
+        const covered=points.filter(p=>orders.some((o,i)=>(mask&(1<<i))&&covers(o.route,p.point))).reduce((n,p)=>n+p.weight,0)
+        exhaustive+=probability*covered/points.reduce((n,p)=>n+p.weight,0)
+      }
+      expect(collectionScorer(view,points)(orders,confidence)).toBeCloseTo(exhaustive*(refresh?.1:1),12)
+    }
   })
   it('preserves a legacy two-formation save without granting aircraft, condition or money',()=>{
     const s=campaign()

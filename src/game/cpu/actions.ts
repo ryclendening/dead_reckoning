@@ -7,7 +7,7 @@ import type { CpuPlanningView } from './planningView'
 import type { BaseAttackEstimate, CpuSiteReport, PredictedEffects, TacticalPackage } from './types'
 import { CPU_PROFILES, cpuRouteRisk, distance, hold, missionOrders, orderRisk, recoveryView, strikeOrders, type RouteWork } from './routes'
 import { searchPrior, collectionScorer, covers } from './search'
-import { contribution } from './strategy'
+import { contribution, discoveryAttackValue } from './strategy'
 import { observedThreat, residualApproachRisk, forwardValue } from './placement'
 export const emptyEffects = (): PredictedEffects => ({ informationGain:0,baseDamage:0,ownBaseRiskReduced:0,defenseCoverageGain:0,futureStrikeAccessGain:0,expectedAircraftLoss:0,logisticsSpent:0,roundsUntilPayoff:0 })
 export const SEARCH_SECTORS:Point[]=[[0,0],[-6,8],[0,8],[6,8],[-6,0],[6,0],[-6,-8],[0,-8],[6,-8],[-10,12],[0,12],[10,12],[-10,0],[10,0],[-10,-12],[0,-12],[10,-12]]
@@ -157,7 +157,8 @@ function fighterActions(view: CpuPlanningView, work: RouteWork, fighter: Squadro
  * a second fighter can strike, screen, collect or stage independently. */
 export function generateActions(view:CpuPlanningView,work:RouteWork):TacticalPackage[] {
   const fighters=view.cpu.formations.filter(f=>f.role==='fighter')
-  const libraries=fighters.map(f=>fighterActions(view,work,f))
+  const discoveryPayoff=discoveryAttackValue(view)
+  const libraries=fighters.map(f=>fighterActions(view,work,f).map(p=>({...p,discoveryPayoff})))
   if(libraries.length===1)return libraries[0]
   const result=libraries.flatMap((library,i)=>library.map(p=>({...p,id:i===0&&p.id==='save'?'save':fighters[i].id+':'+p.id})))
   const reconKey=(p:TacticalPackage)=>JSON.stringify(p.orders.find(o=>o.role==='recon'))
@@ -199,7 +200,7 @@ export function generateActions(view:CpuPlanningView,work:RouteWork):TacticalPac
     const attacks=[a.baseAttack,b.baseAttack].filter((v):v is BaseAttackEstimate=>!!v)
     const cap=base?.health??100
     const baseAttack=attacks.length?{damageNow:Math.min(cap,attacks.reduce((n,v)=>n+v.damageNow,0)),followupDamage:Math.min(cap,attacks.reduce((n,v)=>n+v.followupDamage,0)),preparationRounds:Math.max(...attacks.map(v=>v.preparationRounds)),releaseSeconds:Math.max(...attacks.map(v=>v.releaseSeconds))}:undefined
-    result.push({id:`joint:${a.id}|${b.id}`,summary:`${fighters[0].callsign}: ${a.summary} ${fighters[1].callsign}: ${b.summary}`,orders,purchases:[],baseAttack,
+    result.push({id:`joint:${a.id}|${b.id}`,summary:`${fighters[0].callsign}: ${a.summary} ${fighters[1].callsign}: ${b.summary}`,orders,purchases:[],baseAttack,discoveryPayoff,
       predicted:{...emptyEffects(),informationGain:Math.min(1,collect(orders,confidence))*Math.min(1,(6-view.round)/2),baseDamage:Math.min(1,a.predicted.baseDamage+b.predicted.baseDamage),
         ownBaseRiskReduced:Math.min(1,a.predicted.ownBaseRiskReduced+b.predicted.ownBaseRiskReduced),futureStrikeAccessGain:Math.min(1,a.predicted.futureStrikeAccessGain+b.predicted.futureStrikeAccessGain),
         expectedAircraftLoss:orders.reduce((n,o)=>n+(o.sortieOrdered===false?0:Math.min(o.aircraft,protectedRisk(o)/100*o.maxAircraft)),0),roundsUntilPayoff:Math.max(a.predicted.roundsUntilPayoff,b.predicted.roundsUntilPayoff)},checks:a.checks})

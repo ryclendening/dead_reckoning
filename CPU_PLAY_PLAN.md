@@ -301,3 +301,10 @@ on actual incoming fighter fire before impact, without inspecting its future
 hit or damage roll. A distant sighting alone need not end collection.
 These are planner/controller decisions using existing actions, not new combat
 rules. Their evaluation is separate from the frozen parity-only comparison.
+
+Discovery payoff is attached to each package from its actual counterfactual
+owned inventory. Purchase comparisons must not recompute it from the original
+unrepaired force. Repeated contribution calculations are cached per decision.
+With the symmetric one-report authorization rule, returned-report collection
+uses the exact coverage-union probability; deterministic exhaustive-subset
+checks verify the simplification for both discovery and intelligence refresh.

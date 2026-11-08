@@ -26,29 +26,24 @@ export function searchPrior(view:CpuPlanningView):Array<{point:Point;weight:numb
   }
   return points
 }
+/** Independent returned-report probabilities combine as a coverage union.
+ * This is exactly the exhaustive subset expectation for one required report. */
 export function collectionScorer(view:CpuPlanningView,prior=searchPrior(view)):(orders:Squadron[],confidence?:(order:Squadron)=>number)=>number {
-  const base=view.cpu.sites.find(s=>s.kind==='base'&&s.health>0),total=prior.reduce((n,p)=>n+p.weight,0)
+  const base=view.cpu.sites.find(s=>s.kind==='base'&&s.health>0)
+  const points=base?Array.from({length:8},(_,i)=>({point:[base.position[0]+Math.cos(i*Math.PI/4)*3.2,base.position[1]+Math.sin(i*Math.PI/4)*3.2] as Point,weight:1})):prior
+  const total=points.reduce((n,p)=>n+p.weight,0)
+  const known=new Set(view.cpu.sites.filter(s=>['sam','aaa','radar'].includes(s.kind)).map(s=>s.kind)).size
+  const interest=base?.health? .08*Math.max(0,3-known)/3+.04*Math.min(1,Math.max(0,view.round-base.observedRound)/2):1
   const cache=new WeakMap<Squadron,boolean[]>()
   return (orders,confidence=()=>1)=>{
     const flying=orders.filter(o=>o.sortieOrdered!==false),probabilities=flying.map(o=>Math.max(0,Math.min(1,confidence(o))))
-    // Own observers: analytically combine their possible returned reports.
-    // This is collection uncertainty, not a simulated opponent policy.
-    const expected=(effect:(returned:Squadron[])=>number)=>{
-      let value=0
-      for(let mask=0;mask<1<<flying.length;mask++) {
-        let probability=1;const returned:Squadron[]=[]
-        for(let i=0;i<flying.length;i++){const present=!!(mask&(1<<i));probability*=present?probabilities[i]:1-probabilities[i];if(present)returned.push(flying[i])}
-        value+=probability*effect(returned)
-      }
-      return value
+    const coverage=flying.map(o=>{let mask=cache.get(o);if(!mask){mask=points.map(p=>covers(o.route,p.point));cache.set(o,mask)}return mask})
+    let value=0
+    for(let i=0;i<points.length;i++) {
+      let missed=1
+      for(let j=0;j<flying.length;j++)if(coverage[j][i])missed*=1-probabilities[j]
+      value+=points[i].weight*(1-missed)
     }
-    if(base) {
-      const known=new Set(view.cpu.sites.filter(s=>['sam','aaa','radar'].includes(s.kind)).map(s=>s.kind)).size
-      const interest=.08*Math.max(0,3-known)/3+.04*Math.min(1,Math.max(0,view.round-base.observedRound)/2)
-      const sectors=Array.from({length:8},(_,i)=>[base.position[0]+Math.cos(i*Math.PI/4)*3.2,base.position[1]+Math.sin(i*Math.PI/4)*3.2] as Point)
-      return expected(returned=>interest*sectors.filter(p=>returned.some(o=>covers(o.route,p))).length/sectors.length)
-    }
-    for(const o of flying)if(!cache.has(o))cache.set(o,prior.map(p=>covers(o.route,p.point)))
-    return total?expected(returned=>prior.reduce((n,p,i)=>{const observers=returned.filter(o=>cache.get(o)![i]).length;return n+p.weight*(observers>0?1:0)},0)/total):0
+    return total?interest*value/total:0
   }
 }

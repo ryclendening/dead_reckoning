@@ -5,7 +5,7 @@ export type CpuIntent = 'discover' | 'protect-base' | 'expand-defense' | 'forwar
 export interface PredictedEffects { informationGain: number; baseDamage: number; ownBaseRiskReduced: number; defenseCoverageGain: number; futureStrikeAccessGain: number; expectedAircraftLoss: number; logisticsSpent: number; roundsUntilPayoff: number }
 /** An analytic own-capability estimate, not an opponent rollout. Damage is in HP. */
 export interface BaseAttackEstimate { damageNow: number; followupDamage: number; preparationRounds: number; releaseSeconds: number; confidence?: number }
-export interface TacticalPackage { id: string; summary: string; orders: Squadron[]; purchases: EconomyCommand[]; predicted: PredictedEffects; baseAttack?: BaseAttackEstimate; checks: string[] }
+export interface TacticalPackage { id: string; summary: string; orders: Squadron[]; purchases: EconomyCommand[]; predicted: PredictedEffects; baseAttack?: BaseAttackEstimate; discoveryPayoff?: number; checks: string[] }
 export interface CpuDecisionTrace { round: number; observedEvidenceIds: string[]; alternatives: Array<{ intent: CpuIntent; bestPackageScore: number; reason: string; components: Record<string, number>; baseAttack?: BaseAttackEstimate }>; selected: CpuIntent; previous?: CpuIntent; switchReason?: string; scoreDelta?: number; chosenEffects?: PredictedEffects; chosenBaseAttack?: BaseAttackEstimate; chosenChecks?: string[]; chosenPackageSummary: string; rejected: string[]; work: { packages: number; routeExpansions: number; routeSearches?: number; optimalRouteSearches?: number } }
 export type CpuObjective = 'defend' | 'patrol' | 'escort' | 'strike'
 export interface CpuSiteReport {

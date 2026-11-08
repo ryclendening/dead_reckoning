@@ -199,7 +199,10 @@ describe('CPU v2 behavioral acceptance',()=>{
     const initial=setup();initial.round=1;initial.baseExposure=46;initial.cpu!.reserves=3
     initial.cpu!.formations=initial.cpu!.formations.map(f=>f.role==='fighter'?{...f,aircraft:0,strength:0,status:'destroyed'}:f)
     const blind=structuredClone(initial);blind.cpu!.sites=[]
-    expect(maintainCpu(blind).cpu!.formations[0].aircraft).toBe(0)
+    const blindAdapted=maintainCpu(blind)
+    expect(blindAdapted.cpu!.formations[0]).toMatchObject({aircraft:3,strength:75})
+    expect(blindAdapted.cpu!.sites).toEqual([])
+    expect(beginNextRound(blindAdapted).cpu!.plan!.orders.some(o=>o.mission==='base-strike'&&o.sortieOrdered!==false)).toBe(false)
     const adapted=maintainCpu(initial)
     expect(adapted.cpu!.formations[0]).toMatchObject({aircraft:3,strength:75})
     expect(adapted.cpu!.logistics).toBe(4)
