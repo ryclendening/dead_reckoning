@@ -12,7 +12,8 @@ import { executeCpuEconomyCommand } from './economy'
 import { generateActions } from './actions'
 import { covers, collectionScorer } from './search'
 import { campaignOutcome } from '../campaign'
-import { strikeOrders, orderRisk } from './routes'
+import { CPU_PROFILES, strikeOrders, orderRisk, routeThreats, type RouteWork } from './routes'
+import { threatRouteCost } from './routeSearch'
 import type { Asset, MatchState, Point } from '../types'
 
 function setup(home:Point=[0,0],target:Point=[20,0]) {
@@ -144,6 +145,36 @@ describe('CPU v2 behavioral acceptance',()=>{
     expect(plan.orders[0].strikeTargetId).toBe('p-base')
     expect(orderRisk(v,plan.orders[0])).toBe(0)
     expect(resolveRound(prepareCpuRound({...s,phase:'plan'})).baseDamage).toBe(60)
+  })
+  it('retains the A* strike candidate, validates fuel/release, and reuses its bounded search',()=>{
+    const s=setup(),sam:Asset={...s.playerAssets[0],id:'p-sam-1',kind:'sam',position:[5,2]}
+    s.playerAssets.push(sam,{...sam,id:'p-sam-2',position:[9,-2]})
+    s.cpu!.sites=s.playerAssets.map(a=>cpuReportAt(a,1))
+    const v=cpuPlanningView(s)!,work:RouteWork={expansions:0,rejected:[]}
+    const orders=strikeOrders(v,v.cpu.formations[0],v.cpu.sites[0],work)
+    const search=[...work.routeCache!.values()][0]!
+    expect(orders.some(o=>JSON.stringify(o.route)===JSON.stringify(search.route))).toBe(true)
+    expect(work.expansions).toBeLessThanOrEqual(CPU_PROFILES.hard.expansions)
+    const expansions=work.expansions
+    expect(strikeOrders(v,v.cpu.formations[0],v.cpu.sites[0],work)).toEqual(orders)
+    expect(work.expansions).toBe(expansions)
+    const simple=strikeOrders(v,v.cpu.formations[0],v.cpu.sites[0],{expansions:CPU_PROFILES.hard.expansions,rejected:[]})
+    const threats=routeThreats(v,'fighter'),cost=(o:typeof orders[number])=>threatRouteCost(o.route,v.home,threats)
+    expect(search.cost).toBeLessThan(Math.min(...simple.map(cost)))
+    const chosen=orders.find(o=>JSON.stringify(o.route)===JSON.stringify(search.route))!
+    expect(orderRisk(v,chosen,v.cpu.sites,false)).toBe(0)
+    const ready={...s,phase:'plan' as const,cpu:{...s.cpu!,plan:{round:2,objective:'strike' as const,reason:'Execute optimized route.',orders:[chosen,{...s.cpu!.formations[1],sortieOrdered:false}],candidates:[]}}}
+    legal(ready)
+    const result=resolveRound(ready)
+    expect(result.weaponEffects.some(e=>e.kind==='air-to-ground-missile'&&e.targetId==='p-base')).toBe(true)
+    expect(result.baseDamage).toBe(60)
+  })
+  it('does not optimize or issue strikes for destroyed or trapped aircraft',()=>{
+    const s=setup(),sam:Asset={...s.playerAssets[0],id:'p-sam',kind:'sam',position:[8,0]}
+    s.playerAssets.push(sam);s.cpu!.sites.push(cpuReportAt(sam,1))
+    const v=cpuPlanningView(s)!,work:RouteWork={expansions:0,rejected:[]}
+    for(const fighter of [{...v.cpu.formations[0],aircraft:0,strength:0,status:'destroyed' as const},{...v.cpu.formations[0],status:'trapped' as const}])expect(strikeOrders(v,fighter,v.cpu.sites[0],work)).toEqual([])
+    expect(work.expansions).toBe(0)
   })
   it('suppresses a confirmed SAM when doing so measurably improves the following base strike',()=>{
     let s=setup([0,0],[25,0])

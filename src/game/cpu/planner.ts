@@ -3,6 +3,7 @@ import type { Asset, MatchState, Point, Squadron } from '../types'
 import type { CpuDifficulty, CpuPlan, CpuSiteReport, CpuState } from './types'
 import { generateActions } from './actions'
 import { choosePackage } from './strategy'
+import type { RouteWork } from './routes'
 import { cpuPlanningView, type CpuPlanningView } from './planningView'
 export { cpuPlanningView } from './planningView'
 export type { CpuPlanningView } from './planningView'
@@ -20,8 +21,8 @@ export function createCpuState(home: Point, difficulty: CpuDifficulty = 'medium'
 
 
 export function planCpu(view:CpuPlanningView):CpuPlan {
-  const work={expansions:0,rejected:[] as string[]},packages=generateActions(view,work)
-  const decision=choosePackage(view,packages,work.rejected,work.expansions),orders=decision.package.orders
+  const work:RouteWork={expansions:0,rejected:[]},packages=generateActions(view,work)
+  const decision=choosePackage(view,packages,work.rejected,work.expansions,work.routeCache?.values()),orders=decision.package.orders
   const fighter=orders.find(o=>o.role==='fighter')!
   const objective=fighter.mission==='base-strike'?'strike':fighter.protectedTargetId?'escort':fighter.mission==='forward-patrol'?'patrol':'defend'
   return { round:view.round,objective,intent:decision.intent,reason:decision.package.summary,orders,trace:decision.trace,

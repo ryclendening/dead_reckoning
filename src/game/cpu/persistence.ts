@@ -25,6 +25,7 @@ const trace = (v: unknown) => record(v) && integer(v.round) && intent(v.selected
   && Array.isArray(v.alternatives) && v.alternatives.every(a=>record(a)&&intent(a.intent)&&typeof a.bestPackageScore==='number'&&Number.isFinite(a.bestPackageScore)&&text(a.reason)&&record(a.components)&&Object.values(a.components).every(n=>typeof n==='number'&&Number.isFinite(n))&&(a.baseAttack===undefined||baseAttack(a.baseAttack)))
   && (v.chosenBaseAttack===undefined||baseAttack(v.chosenBaseAttack))
   && record(v.work) && integer(v.work.packages) && integer(v.work.routeExpansions)
+  && (v.work.routeSearches===undefined||integer(v.work.routeSearches)) && (v.work.optimalRouteSearches===undefined||integer(v.work.optimalRouteSearches))
 export function validCpuReport(v: unknown): v is CpuRoundReport {
   return record(v) && Array.isArray(v.sites) && v.sites.every(site) && Array.isArray(v.traffic) && v.traffic.every(traffic)
     && Array.isArray(v.recoveredIds) && v.recoveredIds.every(id => id === 'red-fighter' || id === 'red-recon')

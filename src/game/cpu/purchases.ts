@@ -88,5 +88,5 @@ export function planPurchases(view:CpuPlanningView):ReturnType<typeof choosePack
   // Preserve an explicit save alternative even when all useful aircraft are grounded.
   const save=all.find(p=>p.purchases.length===0&&p.orders.every(o=>o.sortieOrdered===false))!
   save.id='save'
-  return choosePackage(nextRound,all,work.rejected,work.expansions)
+  return choosePackage(nextRound,all,work.rejected,work.expansions,work.routeCache?.values())
 }

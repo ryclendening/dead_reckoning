@@ -236,3 +236,35 @@ Latest development results before the route-search revision: against
 v2 commit `f7f9998` scored 12/30, 11/30, 13/30 against the same opponents.
 The historical fixed suite scores 18/30, 20/30, 16/30. **The >70% gate is not met.**
 These are reused development seeds, not holdout evidence or human playtests.
+
+
+### Threat-aware shortest-route revision — 2026-11-08
+
+The user's route-algorithm request is implemented as a narrow resource-constrained
+A* utility shared by the tactical generators. Its objective is Euclidean route
+length plus additive exposure length inside recovered SAM/AAA/radar envelopes
+and weighted coarse observed fighter sectors. Those weights are a route-ranking
+surrogate, not actual combat damage probabilities. Strike searches compare all
+profile-sampled legal release points together and include the actual direct
+return to the launch field. Unknown defenses and true world boundaries are absent.
+
+The graph connects the exact field to nearby public hex centers, six neighbors
+per center, and exact candidate endpoints. Euclidean remaining distance plus
+fixed endpoint recovery cost is an admissible heuristic. Separate labels for
+heading/waypoint count retain the cost/fuel Pareto frontier, preserving shorter
+paths that may be necessary to finish. Fuel, waypoint cap and canonical recovery
+remain hard constraints. Exact collinear compression adds no unsafe shortcut.
+
+Results distinguish a proved minimum weighted cost within this finite route
+graph from a best-found result after exhausting the work allowance. This is not
+a guarantee of the optimal continuous route, a globally optimal release point,
+or an optimal combat outcome. The search allowance is 64/180/420 expansions on
+Easy/Medium/Hard; a local cache shares results across isolated purchase copies.
+The optimized candidate is retained alongside fast and low-risk candidates,
+then the existing strategic/tactical valuation chooses an operation.
+
+Independent exhaustive candidate enumeration checks one- and two-bend optima.
+The two-SAM execution fixture reduces weighted route cost from 46.5046 to
+42.9896 (33.5075-unit round trip), has zero modeled ingress exposure, launches
+a full 60-damage payload, and remains within canonical fuel/recovery limits.
+This capability result does not establish the >70% campaign target.

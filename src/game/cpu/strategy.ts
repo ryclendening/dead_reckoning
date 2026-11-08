@@ -60,7 +60,8 @@ export function contribution(view:CpuPlanningView,p:TacticalPackage):Record<stri
   }
   return Object.fromEntries(Object.entries(components).map(([k,v])=>[k,v===0?0:v]))
 }
-export function choosePackage(view:CpuPlanningView,packages:TacticalPackage[],rejected:string[],expansions:number):{package:TacticalPackage;intent:CpuIntent;trace:CpuDecisionTrace} {
+export function choosePackage(view:CpuPlanningView,packages:TacticalPackage[],rejected:string[],expansions:number,searches:Iterable<{optimal:boolean}|undefined>=[]):{package:TacticalPackage;intent:CpuIntent;trace:CpuDecisionTrace} {
+  const searchResults=[...searches].filter((s):s is {optimal:boolean}=>!!s)
   const score=(p:TacticalPackage)=>Object.values(contribution(view,p)).reduce((a,b)=>a+b,0)
   const alternatives=intentions.flatMap(intent=>{
     const options=packages.filter(p=>advances(view,intent,p)).sort((a,b)=>score(b)-score(a)||a.id.localeCompare(b.id))
@@ -78,5 +79,5 @@ export function choosePackage(view:CpuPlanningView,packages:TacticalPackage[],re
   return {package:selected.package,intent:selected.intent,trace:{round:view.round,
     observedEvidenceIds:[...view.cpu.sites.map(s=>`site:${s.id}:r${s.observedRound}`),...view.cpu.traffic.map((t,i)=>`traffic:r${t.observedRound}:${t.sector??i}`),...(view.homeHealth<100?[`own-base-health:${view.homeHealth}`]:[])],
     alternatives:alternatives.map(c=>({intent:c.intent,bestPackageScore:c.score,reason:c.package.summary,components:c.components,baseAttack:c.package.baseAttack})),selected:selected.intent,previous:prior,scoreDelta:selected.score-(validPrior?.score??0),switchReason:prior===selected.intent?'Continue feasible intent.':!validPrior?'Previous intent completed or has no feasible payoff.':'A stronger achievable package exceeds commitment friction.',chosenEffects:selected.package.predicted,chosenBaseAttack:selected.package.baseAttack,chosenChecks:selected.package.checks,
-    chosenPackageSummary:selected.package.summary,rejected:[...new Set(rejected)].slice(0,24),work:{packages:packages.length,routeExpansions:expansions}}}
+    chosenPackageSummary:selected.package.summary,rejected:[...new Set(rejected)].slice(0,24),work:{packages:packages.length,routeExpansions:expansions,routeSearches:searchResults.length,optimalRouteSearches:searchResults.filter(s=>s.optimal).length}}}
 }
