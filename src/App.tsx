@@ -14,7 +14,8 @@ import { freshCampaignSeed } from './game/campaignLayout'
 import { BASE_STRIKE_RANGE, campaignOutcome, confirmedStrikeTarget, groundStrikeTargets, isCampaign } from './game/campaign'
 import { placeInitialAsset, validateInitialPlacement } from './game/campaignPlacement'
 import { confirmCampaignSetup, validateCampaignAllocation, SETUP_REQUIRED_ASSET_IDS } from './game/campaignSetup'
-import { applyRound, createRoundSimulation, EXECUTION_SECONDS, MAX_FLIGHT_DISTANCE, missionDistance, resolveRound, TICK_SECONDS, type RoundSimulationController } from './game/engine'
+import { applyRound, createRoundSimulation, EXECUTION_SECONDS, missionDistance, resolveRound, TICK_SECONDS, type RoundSimulationController } from './game/engine'
+import { flightRangeFor } from './game/flightRules'
 import { beginNextRound, economyCommandForQuote, economyQuotesFor, executeEconomyCommand, openAdaptPhase, PROCUREMENT_CATALOG, validateAssetPlacement } from './game/economy'
 import { snapToHex } from './game/hex'
 import { deriveKnownWorldModel } from './game/knownWorld'
@@ -116,7 +117,7 @@ export default function App(){
   const viableFormationIds=useMemo(()=>viablePlanningFormationIds(match.squadrons),[match.squadrons])
   const reviewedCount=viableFormationIds.reduce((total,id)=>total+Number(reviewedIds.has(id)),0)
   const selectedLaunchField=formationField(planningBaseGroups.map(group=>group.base),selected.id)??match.playerAssets.find(asset=>asset.kind==='base')
-  const recoveryView=useMemo(()=>deriveRecoveryPlanningView(match,selected.id,selected.route,MAX_FLIGHT_DISTANCE[selected.role]),[match,selected])
+  const recoveryView=useMemo(()=>deriveRecoveryPlanningView(match,selected.id,selected.route,flightRangeFor(selected)),[match,selected])
   const routeAdjustmentNotice=(adjustment:ReturnType<typeof generateRouteTemplate>['adjustment'])=>adjustment==='ingress-clamped'?'ROUTE CLAMPED AT THE VISIBLE MAP LIMIT':adjustment==='pattern-shrunk'?'ON-STATION PATTERN REDUCED TO FIT FUEL':adjustment==='ingress-shortened'?'INGRESS ROUTE SHORTENED TO PRESERVE RETURN FUEL':undefined
 
   const setRoute=useCallback((ingress:Point[])=>{
@@ -126,7 +127,7 @@ export default function App(){
     const routeBounds=match.world.presentationBounds
     if(squadron.mission==='defensive-cap'&&selectingProtectTarget&&withOrigin.length>1){
       const protectedPoint=withOrigin.at(-1)!
-      const generated=generateRouteTemplate({template:squadron.mission,ingress:withOrigin,maxDistance:MAX_FLIGHT_DISTANCE[squadron.role],bounds:routeBounds})
+      const generated=generateRouteTemplate({template:squadron.mission,ingress:withOrigin,maxDistance:flightRangeFor(squadron),bounds:routeBounds})
       setRouteNotice('PROTECTING MAP POINT · COVERAGE CIRCLE SET')
       setSelectingProtectTarget(false)
       setReviewedIds(ids=>{const next=new Set(ids);next.delete(squadron.id);return next})
@@ -140,13 +141,13 @@ export default function App(){
       const target=match.enemyAssets.find(asset=>asset.id===squadron.strikeTargetId)
       const route=groundStrikeRoute(anchors,withOrigin.slice(1,-1),releasePoint)
       if(target&&pointDistance(releasePoint,target.position)>BASE_STRIKE_RANGE+.001){setRouteNotice(`KEEP THE STRIKE POINT INSIDE THE ${BASE_STRIKE_RANGE}-UNIT RELEASE CIRCLE`);return false}
-      if(missionDistance(route,launch)>MAX_FLIGHT_DISTANCE.fighter+.001){setRouteNotice('WAYPOINT EXCEEDS FUEL RANGE · NOT PLACED');return false}
+      if(missionDistance(route,launch)>flightRangeFor(squadron)+.001){setRouteNotice('WAYPOINT EXCEEDS FUEL RANGE · NOT PLACED');return false}
       setRouteNotice(undefined)
       setReviewedIds(ids=>{const next=new Set(ids);next.delete(squadron.id);return next})
       setMatch(m=>({...m,squadrons:m.squadrons.map(s=>s.id===squadron.id?{...s,route,routeIngress:route,plannedRecoveryFieldId:undefined}:s)}))
       return true
     }
-    const generated=generateRouteTemplate({template:squadron.mission,ingress:withOrigin,maxDistance:MAX_FLIGHT_DISTANCE[squadron.role],bounds:routeBounds})
+    const generated=generateRouteTemplate({template:squadron.mission,ingress:withOrigin,maxDistance:flightRangeFor(squadron),bounds:routeBounds})
     setRouteNotice(routeAdjustmentNotice(generated.adjustment))
     setReviewedIds(ids=>{const next=new Set(ids);next.delete(squadron.id);return next});setMatch(m=>({...m,squadrons:m.squadrons.map(s=>s.id===squadron.id?{...s,route:generated.route,routeIngress:generated.ingress,protectedPoint:s.mission==='defensive-cap'&&!s.protectedTargetId&&generated.ingress.length>1?[...generated.ingress.at(-1)!] as Point:s.protectedPoint,plannedRecoveryFieldId:undefined}:s)}))
     return true
@@ -158,7 +159,7 @@ export default function App(){
     setSelectingProtectTarget(protectTargetSelectionFor('exit'))
     const ingress=routeToRecoveryField(match,squadron.id,fieldId,direct)
     if(!ingress){setRouteNotice('RECOVERY AIRFIELD IS UNAVAILABLE');return}
-    const view=deriveRecoveryPlanningView(match,squadron.id,ingress,MAX_FLIGHT_DISTANCE[squadron.role])
+    const view=deriveRecoveryPlanningView(match,squadron.id,ingress,flightRangeFor(squadron))
     setRouteNotice(view?.valid?`${squadron.role==='fighter'?'TRANSIT':'RECOVERY'} ROUTE SET TO ${field.name??(field.kind==='base'?'HOME BASE':'FOB')} · CONFIRM ORDERS`:view?.reason??'RECOVERY ROUTE IS NOT VALID')
     setReviewedIds(ids=>{const next=new Set(ids);next.delete(squadron.id);return next})
     setMatch(state=>({...state,squadrons:state.squadrons.map(item=>item.id===squadron.id?{...item,mission:item.role==='fighter'?'transit':item.mission,route:ingress,routeIngress:ingress,plannedRecoveryFieldId:undefined}:item)}))
@@ -178,7 +179,7 @@ export default function App(){
     const existing=squadron.routeIngress.length>=2?squadron.routeIngress:squadron.route.length>=2?squadron.route:[base]
     const ingress:[[number,number],...Point[]]=[[...base],...existing.slice(1)]
     const routeBounds=match.world.presentationBounds
-    const generated=generateRouteTemplate({template:mission,ingress,maxDistance:MAX_FLIGHT_DISTANCE[squadron.role],bounds:routeBounds})
+    const generated=generateRouteTemplate({template:mission,ingress,maxDistance:flightRangeFor(squadron),bounds:routeBounds})
     const protect=mission==='defensive-cap'
     setSelectingProtectTarget(false)
     setRouteNotice(routeAdjustmentNotice(generated.adjustment))
@@ -214,7 +215,7 @@ export default function App(){
     const orderedIds=new Set(reviewedIds)
     let source=match
     if(includeSelectedRoute){
-      const view=deriveRecoveryPlanningView(match,selected.id,selected.route,MAX_FLIGHT_DISTANCE[selected.role])
+      const view=deriveRecoveryPlanningView(match,selected.id,selected.route,flightRangeFor(selected))
       if(selected.aircraft<=0||selected.status==='trapped'||!view?.valid){setRouteNotice(view?.reason??'FORMATION CANNOT LAUNCH');return}
       const candidate={...selected,route:view.normalizedRoute,plannedRecoveryFieldId:view.intendedField.id}
       const strikeError=validateGroundStrikeOrder(match,candidate)
@@ -224,7 +225,7 @@ export default function App(){
       orderedIds.add(candidate.id)
     }
     const orderedMatch={...source,squadrons:source.squadrons.map(s=>({...s,sortieOrdered:orderedIds.has(s.id),plannedRecoveryFieldId:orderedIds.has(s.id)?s.plannedRecoveryFieldId:undefined}))}
-    const validation=validateRecoveryPackage(orderedMatch,MAX_FLIGHT_DISTANCE,orderedIds)
+    const validation=validateRecoveryPackage(orderedMatch,s=>flightRangeFor(s),orderedIds)
     const strikeError=orderedMatch.squadrons.filter(s=>orderedIds.has(s.id)).map(s=>validateGroundStrikeOrder(orderedMatch,s)).find(Boolean)
     const escortError=orderedMatch.squadrons.filter(s=>orderedIds.has(s.id)&&s.mission==='defensive-cap'&&s.protectedTargetId).map(s=>{const target=orderedMatch.squadrons.find(item=>item.id===s.protectedTargetId);return !target||!orderedIds.has(target.id)?'ESCORT TARGET MUST HAVE A CONFIRMED ORDER':undefined}).find(Boolean)
     if(!orderedIds.size||!validation.valid||strikeError||escortError){setRouteNotice(strikeError??escortError??validation.reason??'PLAN AT LEAST ONE FORMATION');return}
@@ -245,7 +246,7 @@ export default function App(){
   const restart=()=>{const seed=freshCampaignSeed();localStorage.removeItem(SAVE_KEY);for(const key of LEGACY_SAVE_KEYS)localStorage.removeItem(key);resetPlanningUi();setEconomyTarget({kind:'campaign',id:'campaign'});setMatch(m=>m.debugScenario&&m.debugScenario!=='campaign'?createScenario(m.debugScenario):createCampaignDraft(seed,m.cpu?.difficulty))}
   const selectFormation=(id:string)=>{setAcknowledgedThreatIds(current=>{const next=new Set(current);for(const alert of liveResult?.threatAlerts??[])if(alert.unitId===id)next.add(alert.id);return next});setFollowId(id);setFocusPoint(undefined);setMatch(m=>({...m,selectedId:id}))}
   const confirmPlanningOrder=(squadron:Squadron,state:MatchState=match):boolean=>{
-    const view=deriveRecoveryPlanningView(state,squadron.id,squadron.route,MAX_FLIGHT_DISTANCE[squadron.role])
+    const view=deriveRecoveryPlanningView(state,squadron.id,squadron.route,flightRangeFor(squadron))
     if(squadron.aircraft<=0||squadron.status==='trapped'||!view?.valid){setRouteNotice(view?.reason??'FORMATION CANNOT LAUNCH');return false}
     const reviewedSquadron={...squadron,route:view.normalizedRoute}
     if(reviewedSquadron.mission==='defensive-cap'&&reviewedSquadron.protectedTargetId){const target=state.squadrons.find(item=>item.id===reviewedSquadron.protectedTargetId);if(!target||!reviewedIds.has(target.id)){setRouteNotice('ESCORT TARGET MUST HAVE A CONFIRMED ORDER FIRST');return false}}
@@ -269,7 +270,7 @@ export default function App(){
     const squadron=match.squadrons.find(item=>item.id===match.selectedId)
     if(!asset||!squadron||!selectingProtectTarget)return
     const launch=formationField(match.playerAssets,squadron.id)?.position??playerBase
-    const generated=generateRouteTemplate({template:'defensive-cap',ingress:[[...launch] as Point,[...asset.position] as Point],maxDistance:MAX_FLIGHT_DISTANCE.fighter,bounds:match.world.presentationBounds})
+    const generated=generateRouteTemplate({template:'defensive-cap',ingress:[[...launch] as Point,[...asset.position] as Point],maxDistance:flightRangeFor(squadron),bounds:match.world.presentationBounds})
     const station=generated.ingress.at(-1)
     if(!station||Math.hypot(station[0]-asset.position[0],station[1]-asset.position[1])>.1){setRouteNotice('SITE OUT OF REACH · CHOOSE A CLOSER PROTECTION POINT');return}
     const candidate={...squadron,protectedPoint:[...asset.position] as Point,protectedTargetId:undefined,route:generated.route,routeIngress:generated.ingress,plannedRecoveryFieldId:undefined}
@@ -279,7 +280,7 @@ export default function App(){
     const squadron=match.squadrons.find(item=>item.id===match.selectedId)
     if(!selectingProtectTarget||!squadron)return
     const launch=formationField(match.playerAssets,squadron.id)?.position??playerBase
-    const generated=generateRouteTemplate({template:'defensive-cap',ingress:[[...launch] as Point,[...point] as Point],maxDistance:MAX_FLIGHT_DISTANCE.fighter,bounds:match.world.presentationBounds})
+    const generated=generateRouteTemplate({template:'defensive-cap',ingress:[[...launch] as Point,[...point] as Point],maxDistance:flightRangeFor(squadron),bounds:match.world.presentationBounds})
     const station=generated.ingress.at(-1)
     if(!station||Math.hypot(station[0]-point[0],station[1]-point[1])>.1){setRouteNotice('POINT OUT OF REACH · CHOOSE A CLOSER PROTECTION POINT');return}
     const candidate={...squadron,protectedPoint:[...point] as Point,protectedTargetId:undefined,route:generated.route,routeIngress:generated.ingress,plannedRecoveryFieldId:undefined}
@@ -288,7 +289,7 @@ export default function App(){
   const protectTarget=selected.protectedTargetId?match.squadrons.find(item=>item.id===selected.protectedTargetId):undefined
   const protectAsset=selected.protectedPoint?match.playerAssets.find(asset=>Math.hypot(asset.position[0]-selected.protectedPoint![0],asset.position[1]-selected.protectedPoint![1])<.01):undefined
   const protectSummary=selected.mission==='defensive-cap'?(protectTarget?`ESCORT ${protectTarget.callsign} · MAX RANGE`:selected.protectedPoint?`DEFEND ${protectAsset?.name??protectAsset?.kind.toUpperCase()??'ROUTE ENDPOINT'}`:undefined):undefined
-  const selectProtectFlight=(id:string)=>{const squadron=match.squadrons.find(item=>item.id===match.selectedId);const target=match.squadrons.find(item=>item.id===id);if(!squadron||squadron.mission!=='defensive-cap'||!target||target.id===squadron.id||!reviewedIds.has(target.id)||target.aircraft<=0)return;const launch=formationField(match.playerAssets,squadron.id)?.position??playerBase;const escortRecovery=match.playerAssets.find(asset=>asset.id===squadron.plannedRecoveryFieldId)?.position??launch;const targetLaunch=formationField(match.playerAssets,target.id)?.position??target.route[0];const targetRecovery=match.playerAssets.find(asset=>asset.id===target.plannedRecoveryFieldId)?.position??targetLaunch;const targetRoute=target.route.at(-1)&&pointDistance(target.route.at(-1)!,targetRecovery)<.03?target.route:[...target.route,[...targetRecovery] as Point];const route=maxEscortRoute(launch,targetRoute,escortRecovery,MAX_FLIGHT_DISTANCE.fighter);if(route.length<2){setRouteNotice('NO FIGHTER RANGE AVAILABLE FOR THIS ESCORT');return}const candidate={...squadron,protectedTargetId:target.id,protectedPoint:undefined,route,routeIngress:route,plannedRecoveryFieldId:undefined};setRouteNotice('ESCORT ROUTE DRAWN TO MAX FIGHTER RANGE · CONFIRM ORDER');finishProtectOrder(squadron,candidate,match)}
+  const selectProtectFlight=(id:string)=>{const squadron=match.squadrons.find(item=>item.id===match.selectedId);const target=match.squadrons.find(item=>item.id===id);if(!squadron||squadron.mission!=='defensive-cap'||!target||target.id===squadron.id||!reviewedIds.has(target.id)||target.aircraft<=0)return;const launch=formationField(match.playerAssets,squadron.id)?.position??playerBase;const escortRecovery=match.playerAssets.find(asset=>asset.id===squadron.plannedRecoveryFieldId)?.position??launch;const targetLaunch=formationField(match.playerAssets,target.id)?.position??target.route[0];const targetRecovery=match.playerAssets.find(asset=>asset.id===target.plannedRecoveryFieldId)?.position??targetLaunch;const targetRoute=target.route.at(-1)&&pointDistance(target.route.at(-1)!,targetRecovery)<.03?target.route:[...target.route,[...targetRecovery] as Point];const route=maxEscortRoute(launch,targetRoute,escortRecovery,flightRangeFor(squadron));if(route.length<2){setRouteNotice('NO FIGHTER RANGE AVAILABLE FOR THIS ESCORT');return}const candidate={...squadron,protectedTargetId:target.id,protectedPoint:undefined,route,routeIngress:route,plannedRecoveryFieldId:undefined};setRouteNotice('ESCORT ROUTE DRAWN TO MAX FIGHTER RANGE · CONFIRM ORDER');finishProtectOrder(squadron,candidate,match)}
   const orderRtb=(id:string)=>{const simulation=simulationRef.current;if(!simulation||simulation.complete)return;const issuedAtTick=simulation.nextTick();if(pendingCommandsRef.current.some(command=>command.unitId===id&&command.type==='rtb')||(simulation.result.simulationCommands??[]).some(command=>command.unitId===id&&command.type==='rtb'))return;pendingCommandsRef.current.push({id:`rtb-${match.round}-${id}-${issuedAtTick}`,unitId:id,type:'rtb',issuedAtTick})}
   const selectPlanningFormation=(id:string)=>{
     if(id===selected.id){
@@ -342,7 +343,7 @@ export default function App(){
       </div>
       {match.phase==='execute'&&executionBaseId?<ExecutionChitRail squadrons={match.squadrons} bases={match.playerAssets} result={liveResult} progress={progress} activeBaseId={executionBaseId} selectedId={match.selectedId} followId={followId} threatenedIds={new Set((liveResult?.threatAlerts??[]).filter(alert=>!acknowledgedThreatIds.has(alert.id)).map(alert=>alert.unitId))} onSelect={selectFormation}/>:null}
       {match.phase==='deploy'&&match.setup?<CampaignSetupPanel match={match} placementId={placementId} onSelectPlacement={setPlacementId} onContinue={advanceCampaignSetup}/>:match.phase==='deploy'?<DeploymentPanel assets={match.playerAssets} selectedId={placementId} onSelect={setPlacementId} onLock={()=>setMatch(m=>({...m,phase:'plan'}))}/>:null}
-      {match.phase==='plan'?<CommandShelf squadrons={match.squadrons} bases={match.playerAssets} activeBaseId={activePlanningBaseId} rosterMode={planningRosterMode} squadron={selected} routeDistance={recoveryView?.missionDistance??missionDistance(selected.route,playerBase)} maxDistance={MAX_FLIGHT_DISTANCE[selected.role]} routeNotice={routeNotice} protectSummary={protectSummary} recoverySummary={recoveryView?.summary} onSelect={selectPlanningFormation} onBaseSelect={selectPlanningBase} onRosterMode={mode=>{setPlanningRosterMode(mode);if(mode!=='closed'){setPlanningStep('idle');setSelectingProtectTarget(false)}}} onMission={selectMission} onPickProtectTarget={()=>{setSelectingProtectTarget(true);setRouteNotice(undefined)}} onProtectFlight={selectProtectFlight} onRecoverHome={()=>routeToAirfield('p-base',true)} onClear={()=>{setRouteNotice(undefined);if(selectingProtectTarget)setSelectingProtectTarget(false);else setRoute([])}} onBack={()=>{setPlanningStep('mission');setSelectingProtectTarget(false);setRouteNotice(undefined)}} onCommit={commit} step={planningStep} onClose={()=>{if(planningStep==='route'&&selected.route.length>=2&&!selectingProtectTarget&&!confirmPlanningOrder(selected))return;setPlanningStep('idle');setSelectingProtectTarget(false)}} reviewedIds={reviewedIds} reviewedCount={reviewedCount} totalCount={viableFormationIds.length} groundTargets={groundTargets} onChangeGroundTarget={changeGroundTarget} strikeUnlocked={groundTargets.length>0} strikeDisabledReason="RECOVER GROUND TARGET INTELLIGENCE FIRST" selectingProtectTarget={selectingProtectTarget}/>:null}
+      {match.phase==='plan'?<CommandShelf squadrons={match.squadrons} bases={match.playerAssets} activeBaseId={activePlanningBaseId} rosterMode={planningRosterMode} squadron={selected} routeDistance={recoveryView?.missionDistance??missionDistance(selected.route,playerBase)} maxDistance={flightRangeFor(selected)} routeNotice={routeNotice} protectSummary={protectSummary} recoverySummary={recoveryView?.summary} onSelect={selectPlanningFormation} onBaseSelect={selectPlanningBase} onRosterMode={mode=>{setPlanningRosterMode(mode);if(mode!=='closed'){setPlanningStep('idle');setSelectingProtectTarget(false)}}} onMission={selectMission} onPickProtectTarget={()=>{setSelectingProtectTarget(true);setRouteNotice(undefined)}} onProtectFlight={selectProtectFlight} onRecoverHome={()=>routeToAirfield('p-base',true)} onClear={()=>{setRouteNotice(undefined);if(selectingProtectTarget)setSelectingProtectTarget(false);else setRoute([])}} onBack={()=>{setPlanningStep('mission');setSelectingProtectTarget(false);setRouteNotice(undefined)}} onCommit={commit} step={planningStep} onClose={()=>{if(planningStep==='route'&&selected.route.length>=2&&!selectingProtectTarget&&!confirmPlanningOrder(selected))return;setPlanningStep('idle');setSelectingProtectTarget(false)}} reviewedIds={reviewedIds} reviewedCount={reviewedCount} totalCount={viableFormationIds.length} groundTargets={groundTargets} onChangeGroundTarget={changeGroundTarget} strikeUnlocked={groundTargets.length>0} strikeDisabledReason="RECOVER GROUND TARGET INTELLIGENCE FIRST" selectingProtectTarget={selectingProtectTarget}/>:null}
       {match.phase==='debrief'&&match.lastResult?<Debrief match={match} onFocus={point=>{setFollowId(undefined);setFocusPoint([...point] as Point)}} onAdapt={enterAdapt}/>:null}
       {match.phase==='adapt'?<AdaptPanel match={match} selectedTarget={economyTarget} onSelectTarget={selectEconomyTarget} onCloseTarget={()=>selectEconomyTarget({kind:'campaign',id:'campaign'})} onPurchase={purchaseEconomy} onNextRound={nextRound} procurementMode={procurementMode} procurementActionId={procurementActionId} onProcurementMode={changeProcurementMode} onProcurementAction={selectProcurementAction} hasPlacementPreview={Boolean(procurementPlacement)} onConfirmPlacement={confirmProcurementPlacement} onCancelPlacement={()=>setProcurementPlacement(undefined)}/>:null}
       {(match.phase==='victory'||match.phase==='defeat')?<EndState victory={match.phase==='victory'} round={match.round} outcome={campaignOutcome(match)} onRestart={()=>setMenuOpen(true)}/>:null}

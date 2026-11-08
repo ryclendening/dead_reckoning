@@ -7,6 +7,8 @@ import type { Asset, CampaignSetupState, DebugScenario, EconomyState, MatchState
 import { DEBUG_SCENARIOS } from './scenarios'
 import { createCpuState, prepareCpuRound } from './cpu/planner'
 import { validCpuReport, validCpuState } from './cpu/persistence'
+import { normalizeAircraftType } from './aircraftTypes'
+import { isKnownUpgradeId } from './upgrades'
 
 const phases = new Set(['deploy', 'plan', 'execute', 'debrief', 'adapt', 'victory', 'defeat'])
 const roles = new Set(['fighter', 'recon'])
@@ -14,7 +16,6 @@ const missions = new Set(['defensive-cap', 'forward-patrol', 'transit', 'search-
 const assetKinds = new Set(['base', 'fob', 'decoy', 'radar', 'sam', 'aaa'])
 const intelLevels = new Set(['unknown', 'suspected', 'probable', 'confirmed'])
 const setupStages = new Set(['allocate', 'place', 'review'])
-const upgrades = new Set(['maintenance-wing', 'supply-depot'])
 
 const record = (value: unknown): value is Record<string, unknown> => !!value && typeof value === 'object' && !Array.isArray(value)
 const finite = (value: unknown): value is number => typeof value === 'number' && Number.isFinite(value)
@@ -23,6 +24,7 @@ const text = (value: unknown): value is string => typeof value === 'string' && v
 const point = (value: unknown): value is Point => Array.isArray(value) && value.length === 2 && finite(value[0]) && finite(value[1])
 const points = (value: unknown): value is Point[] => Array.isArray(value) && value.every(point)
 const strings = (value: unknown): value is string[] => Array.isArray(value) && value.every(text)
+const validUpgrades = (value: unknown): value is string[] => value === undefined || Array.isArray(value) && value.every(isKnownUpgradeId)
 
 function finiteTree(value: unknown, seen = new Set<object>()): boolean {
   if (typeof value === 'number') return Number.isFinite(value)
@@ -65,6 +67,8 @@ function validSquadron(value: unknown): value is Squadron {
   if (value.plannedRecoveryFieldId !== undefined && !text(value.plannedRecoveryFieldId)) return false
   if (value.strikeTargetId !== undefined && !text(value.strikeTargetId)) return false
   if (value.sortieOrdered !== undefined && typeof value.sortieOrdered !== 'boolean') return false
+  if (value.aircraftTypeId !== undefined && !text(value.aircraftTypeId)) return false
+  if (!validUpgrades(value.upgrades)) return false
   return value.role === 'fighter' ? value.mission !== 'search-area' : value.mission === 'search-area'
 }
 
@@ -76,7 +80,7 @@ function validAsset(value: unknown): value is Asset {
   if (value.operational !== undefined && typeof value.operational !== 'boolean') return false
   if (value.capacity !== undefined && (!Number.isInteger(value.capacity) || !finite(value.capacity) || value.capacity < 1)) return false
   if (value.basedFormationIds !== undefined && !strings(value.basedFormationIds)) return false
-  if (value.upgrades !== undefined && (!Array.isArray(value.upgrades) || value.upgrades.some(item => !upgrades.has(String(item))))) return false
+  if (!validUpgrades(value.upgrades)) return false
   if (value.name !== undefined && typeof value.name !== 'string') return false
   return true
 }
@@ -236,6 +240,7 @@ export function normalizeMatch(input: unknown): MatchState {
     const routeIngress = squadron.routeIngress.length ? squadron.routeIngress : squadron.route
     return {
       ...squadron,
+      ...normalizeAircraftType(squadron),
       routeIngress,
       mission: (squadron.role === 'recon' ? 'search-area' : squadron.mission) as MissionId,
       strength: squadron.strength ?? Math.max(0, Math.min(100, squadron.aircraft / Math.max(1, squadron.maxAircraft) * 100)),
@@ -245,7 +250,7 @@ export function normalizeMatch(input: unknown): MatchState {
   })
   const normalizedAssets = playerAssets.map(asset => {
     if (asset.kind === 'base') return { ...asset, operational: asset.operational ?? asset.health > 0, upgrades: asset.upgrades ?? [] }
-    if (asset.kind === 'fob') return { ...asset, operational: asset.operational !== false, capacity: asset.capacity ?? 1, basedFormationIds: asset.basedFormationIds ?? [] }
+    if (asset.kind === 'fob') return { ...asset, operational: asset.operational !== false, capacity: asset.capacity ?? 1, basedFormationIds: asset.basedFormationIds ?? [], upgrades: asset.upgrades ?? [] }
     return asset
   })
   const basedAssets = normalizeFormationBasing(normalizedSquadrons, normalizedAssets)

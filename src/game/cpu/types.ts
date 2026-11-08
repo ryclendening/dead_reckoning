@@ -1,9 +1,9 @@
-import type { AssetKind, Point, Role, Squadron } from '../types'
+import type { AssetKind, Point, Role, Squadron, UpgradeId } from '../types'
 
 export type CpuDifficulty = 'easy' | 'medium' | 'hard'
 export type CpuObjective = 'defend' | 'patrol' | 'escort' | 'strike'
 export interface CpuSiteReport {
-  id: string; kind: AssetKind; position: Point; health: number; maxHealth: number; observedRound: number
+  id: string; kind: AssetKind; position: Point; health: number; maxHealth: number; observedRound: number; upgrades?: UpgradeId[]
 }
 export interface CpuTraffic { position: Point; role: Role; observedRound: number }
 export interface CpuPlan {
