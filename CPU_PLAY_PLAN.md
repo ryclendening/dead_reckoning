@@ -330,3 +330,29 @@ After the user's instruction against overfitting, freeze this general-mechanics
 candidate with the existing 64/180/420 route expansion and 4/8/12 search-sector
 budgets. Run registered fresh cohort 2 once and report its result, including a
 missed >70% gate. Do not tune further against that cohort.
+
+
+### Territory-restricted defensive investment — 2026-11-08
+
+After `731df29`, mapped terrain alone no longer permits SAM/AAA construction.
+The shared placement validator remains authoritative. Defensive placement now
+separates pre-release base protection from expected post-release fighter
+attrition and report-return denial on legitimately observed recon approaches.
+Only the first effect can claim to prevent the current payload. The other two
+use remaining-round value, diminishing marginal coverage, observed condition
+with repair uncertainty, and no future reward after a forecast immediate win.
+They do not inspect opponent orders, knowledge, purchases or current inventory.
+
+The existing bounded purchase search preserves up to two complete, affordable
+FOB-plus-SAM/AAA expansion packages before prefix pruning, alongside complete
+aircraft restoration seeds. Every command uses the shared economy/territory
+rules. A defensive FOB needs evidence and a useful newly legal weapon site,
+both paid now; standalone territory carries no speculative defense reward.
+Ground sites function without aircraft staging. Offensive FOB use still
+requires real Transit/recovery before aircraft gain its operating position.
+
+No search-budget or difficulty changes, opponent scripts, combat changes,
+new mechanics, persistent belief grid or opponent rollout were added. New
+optional predicted-effect fields remain compatible with existing saves.
+Validation uses executed geometry scenarios and one fixed paired smoke cohort;
+it is not another attempt to tune the prior fresh cohort above 70%.

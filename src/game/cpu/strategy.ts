@@ -42,7 +42,7 @@ function advances(intent:CpuIntent,p:TacticalPackage,c:Record<string,number>):bo
   switch(intent) {
     case 'discover':return e.informationGain>0&&e.baseDamage===0&&c.survival<c.discovery&&c.discovery>=c.access
     case 'protect-base':return e.ownBaseRiskReduced>0&&c.survival>=c.discovery&&e.baseDamage===0
-    case 'expand-defense':return e.defenseCoverageGain>0
+    case 'expand-defense':return e.defenseCoverageGain>0||(e.reconDenial??0)>0||(e.opponentAttrition??0)>0
     case 'forward-position':return e.futureStrikeAccessGain>0&&(p.orders.some(o=>o.mission==='transit'&&o.sortieOrdered!==false)||p.purchases.some(c=>c.actionId==='build-fob'||c.actionId==='repair-fob'))
     case 'suppress-defenses':return e.futureStrikeAccessGain>0&&p.orders.some(o=>o.mission==='base-strike'&&e.baseDamage===0)
     case 'strike-base':return e.baseDamage>0
@@ -60,10 +60,15 @@ export function contribution(view:CpuPlanningView,p:TacticalPackage):Record<stri
   const base=view.cpu.sites.find(s=>s.kind==='base'&&s.health>0)
   const finishesNow=!!base&&e.baseDamage>0&&!!p.baseAttack&&p.baseAttack.damageNow>=base.health
   const resourceLoss=finishesNow?(e.ingressAircraftLoss??e.expectedAircraftLoss):e.expectedAircraftLoss
+  const future=finishesNow?0:Math.max(0,(6-view.round)/5)
   const collecting=p.baseAttack&&e.baseDamage===0&&!p.orders.some(o=>o.mission==='base-strike'&&o.sortieOrdered!==false)
   const components = {
     strike:e.baseDamage>0?operation:0,
     survival:protection,
+    // A late hit cannot stop this payload. Its value is a reduced future
+    // attack or an unreturned report, and expires at the campaign deadline.
+    denial:(e.reconDenial??0)*.72*future,
+    enemyAttrition:(e.opponentAttrition??0)*.72*future,
     discovery:finishesNow?0:e.informationGain*(view.cpu.sites.some(s=>s.kind==='base'&&s.health>0)?.85:(p.discoveryPayoff??discoveryAttackValue(view)))*horizon,
     // A concrete base operation already includes the follow-through. Do not
     // count suppression's risk reduction again as an independent reward.

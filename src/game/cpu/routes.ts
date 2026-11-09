@@ -5,7 +5,7 @@ import { FLIGHT_SPEED, MAX_FLIGHT_DISTANCE, flightRangeFor, flightSpeedFor, rout
 import { deriveRecoveryPlanningView, formationField, isOperationalAirfield } from '../forwardBasing'
 import { generateRouteTemplate, validateStrikeGeometry } from '../routeTemplates'
 import { findThreatAwareRoute, type RouteThreat, type ThreatRouteResult } from './routeSearch'
-import type { Point, Squadron } from '../types'
+import type { Asset, Point, Squadron } from '../types'
 import type { CpuPlanningView } from './planningView'
 import type { CpuDifficulty, CpuSiteReport } from './types'
 export const distance = (a: Point, b: Point) => Math.hypot(a[0]-b[0], a[1]-b[1])
@@ -16,7 +16,7 @@ export const CPU_PROFILES = {
 } satisfies Record<CpuDifficulty, { offsets: number[]; releases: number[]; expansions: number; sectors: number; purchases: number }>
 /** Expected known-site hits that can arrive by the chosen release time.
  * Geometry follows the planned ingress; no enemy orders or future rolls enter. */
-function defenseDamageBy(route:Point[],speed:number,site:CpuSiteReport,deadline:number):number {
+export function defenseDamageBy(route:Point[],speed:number,site:Pick<Asset,'kind'|'position'|'upgrades'>,deadline:number):number {
   const profile=defenseProfile(site)!
   const windows:Array<[number,number]>=[]
   let elapsed=0

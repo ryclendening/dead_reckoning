@@ -1,5 +1,5 @@
 import { defenseProfile, SAM_FLIGHT_SECONDS, AAA_FLIGHT_SECONDS, AAA_BURST_INTERVAL } from '../equipmentRules'
-import { flightRangeFor } from '../flightRules'
+import { FLIGHT_SPEED, flightRangeFor } from '../flightRules'
 import { BASE_STRIKE_RANGE } from '../campaign'
 import { SAM_MISSILES_PER_ROUND, SAM_COOLDOWN_SECONDS } from '../airDefense'
 import { axialToPoint } from '../hex'
@@ -7,7 +7,7 @@ import { validateAssetPlacement } from '../sideEconomy'
 import { formationField, isOperationalAirfield } from '../forwardBasing'
 import type { Asset, ConstructibleAssetKind, Point } from '../types'
 import type { CpuPlanningView } from './planningView'
-import { distance, cpuRouteRisk } from './routes'
+import { distance, cpuRouteRisk, defenseDamageBy } from './routes'
 
 export function observedThreat(view: CpuPlanningView): number {
   const recent=view.cpu.traffic.filter(t=>view.round-t.observedRound<=2&&distance(t.position,view.home)<14)
@@ -60,9 +60,41 @@ export function defenseCoverage(view:CpuPlanningView,point:Point,kind:'sam'|'aaa
   const angles=approachBearings(view)
   return angles.reduce((n,a)=>n+approachSurvival(view,a)-approachSurvival(view,a,{point,kind}),0)/angles.length
 }
-export function legalPlacements(view: CpuPlanningView, kind: ConstructibleAssetKind): Point[] {
+export interface DefenseBenefits { coverage:number; reconDenial:number; opponentAttrition:number }
+/** Marginal effects on observed approaches, never the opponent's actual route
+ * or recovered knowledge. Late hits are deliberately separate from protection. */
+export function defenseBenefits(view:CpuPlanningView,point:Point,kind:'sam'|'aaa'):DefenseBenefits {
+  const sites=view.assets.filter(a=>(a.kind==='sam'||a.kind==='aaa')&&a.health>0&&a.operational!==false)
+  const extra={kind,position:point}
+  const path=(angle:number,turn:number):Point[]=>[20,turn,20].map(r=>[view.home[0]+Math.cos(angle)*r,view.home[1]+Math.sin(angle)*r])
+  const damage=(route:Point[],speed:number,deadline:number)=>sites.reduce((n,s)=>n+defenseDamageBy(route,speed,s,deadline),0)
+  const reconTracks=new Set(view.cpu.traffic.filter(t=>t.role==='recon'&&t.trackId).map(t=>`${t.observedRound}:${t.trackId}`))
+  const fighterView={...view,cpu:{...view.cpu,traffic:view.cpu.traffic.filter(t=>t.role!=='recon'&&!(t.role==='unknown'&&t.trackId&&reconTracks.has(`${t.observedRound}:${t.trackId}`)))}}
+  const angles=approachBearings(fighterView),fighterThreat=observedThreat(fighterView)
+  const opponentAttrition=angles.reduce((n,angle)=>{
+    const route=path(angle,BASE_STRIKE_RANGE),release=(20-BASE_STRIKE_RANGE)/FLIGHT_SPEED.fighter,end=release*2
+    const before=damage(route,FLIGHT_SPEED.fighter,release),after=damage(route,FLIGHT_SPEED.fighter,end)
+    const early=defenseDamageBy(route,FLIGHT_SPEED.fighter,extra,release),total=defenseDamageBy(route,FLIGHT_SPEED.fighter,extra,end)
+    // Two opening fighter formations share finite defensive capacity. Do not
+    // reward a pre-release hit again as damage to a future attacker.
+    return n+Math.max(0,Math.min(200,after+total)-Math.min(200,before+early)-(Math.min(200,after)-Math.min(200,before)))/200
+  },0)/angles.length*fighterThreat
+  const recon=new Map<string,typeof view.cpu.traffic[number]>()
+  for(const t of [...view.cpu.traffic].sort((a,b)=>a.observedRound-b.observedRound||(a.observedAt??0)-(b.observedAt??0)))if(t.role==='recon'&&view.round-t.observedRound<=2&&distance(t.position,view.home)<14)recon.set(t.identity??t.trackId??t.position.join(','),t)
+  let reconDenial=0
+  for(const t of recon.values()) {
+    const angle=t.bearing??Math.atan2(t.position[1]-view.home[1],t.position[0]-view.home[0])
+    // A radial collect-and-return envelope is an uncertain opportunity, not a
+    // claim that this aircraft saw home or will repeat its previous mission.
+    const route=path(angle,3.8),end=2*(20-3.8)/FLIGHT_SPEED.recon
+    const strength=Math.max(25,Math.min(100,(t.strength??100)+25*Math.max(0,view.round-t.observedRound)))
+    const before=damage(route,FLIGHT_SPEED.recon,end),extraDamage=defenseDamageBy(route,FLIGHT_SPEED.recon,extra,end)
+    reconDenial+=(Math.min(strength,before+extraDamage)-Math.min(strength,before))/strength/(1+view.round-t.observedRound)
+  }
+  return {coverage:defenseCoverage(view,point,kind),opponentAttrition,reconDenial:reconDenial/Math.max(1,recon.size)}
+}
+export function legalPlacements(view: CpuPlanningView, kind: ConstructibleAssetKind, centers:Point[]=[view.home,...(view.cpu.mappedAreas??[]),...view.assets.filter(a=>a.kind==='fob'&&isOperationalAirfield(a)).map(a=>a.position)]): Point[] {
   // Sample only known regions. Bounds of the actual world are deliberately unavailable.
-  const centers=[view.home,...(view.cpu.mappedAreas??[]),...view.assets.filter(a=>a.kind==='fob'&&isOperationalAirfield(a)).map(a=>a.position)]
   const candidates=new Map<string,Point>(),visited=new Set<string>()
   for(const center of centers) {
     const row=Math.round(center[1]/1.17), col=Math.round(center[0]/(Math.sqrt(3)*.78)-row/2)

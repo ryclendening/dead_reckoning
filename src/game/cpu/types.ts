@@ -2,7 +2,7 @@ import type { AssetKind, EconomyActionId, EconomyCommand, FormationRecoveryOutco
 
 export type CpuDifficulty = 'easy' | 'medium' | 'hard'
 export type CpuIntent = 'discover' | 'protect-base' | 'expand-defense' | 'forward-position' | 'suppress-defenses' | 'strike-base' | 'contest-air'
-export interface PredictedEffects { informationGain: number; baseDamage: number; ownBaseRiskReduced: number; defenseCoverageGain: number; futureStrikeAccessGain: number; expectedAircraftLoss: number; ingressAircraftLoss?:number; logisticsSpent: number; roundsUntilPayoff: number }
+export interface PredictedEffects { informationGain: number; baseDamage: number; ownBaseRiskReduced: number; defenseCoverageGain: number; futureStrikeAccessGain: number; expectedAircraftLoss: number; ingressAircraftLoss?:number; reconDenial?:number; opponentAttrition?:number; logisticsSpent: number; roundsUntilPayoff: number }
 /** An analytic own-capability estimate, not an opponent rollout. Damage is in HP. */
 export interface BaseAttackEstimate { damageNow: number; followupDamage: number; preparationRounds: number; releaseSeconds: number; confidence?: number }
 export interface TacticalPackage { id: string; summary: string; orders: Squadron[]; purchases: EconomyCommand[]; predicted: PredictedEffects; baseAttack?: BaseAttackEstimate; discoveryPayoff?: number; checks: string[] }
