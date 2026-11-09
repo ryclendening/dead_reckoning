@@ -24,7 +24,7 @@ describe('contact and recovery information',()=>{
     const state=createScenario('recon-recovery'),result=resolveRound(state)
     const recovery=result.behaviorIntervals.find(interval=>interval.unitId==='raven'&&interval.mode==='recovering')!
     const seconds=recovery.start
-    const markup=renderToStaticMarkup(<FormationDock squadrons={state.squadrons} bases={state.playerAssets} result={result} progress={seconds/result.duration} selectedId="raven" onSelect={()=>{}} onClearFollow={()=>{}} onAirfield={()=>{}} onRtb={()=>{}}/>)
+    const markup=renderToStaticMarkup(<FormationDock squadrons={state.squadrons} bases={state.playerAssets} result={result} progress={seconds/result.duration} selectedId="raven" onSelect={()=>{}} onClearFollow={()=>{}} onAirfield={()=>{}}/>)
     expect(markup).toContain('ROUTE COMPLETE')
   })
 })
