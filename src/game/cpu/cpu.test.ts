@@ -185,16 +185,16 @@ describe('CPU execution and persistence', () => {
     expect(normalizeMatch(JSON.parse(JSON.stringify(settled))).cpu!.traffic).toEqual(settled.cpu!.traffic)
   })
 
-  it('honors a CPU recon recovery decision during an active pursuit', () => {
+  it('honors the committed CPU conservative condition even at direct pursuit range', () => {
     let state = createMatch(7301, 'medium')
     const home = state.enemyAssets.find(a => a.kind === 'base')!.position
     state = { ...state, playerAssets: state.playerAssets.filter(a => a.kind === 'base').map(a => ({ ...a, position: home })),
       squadrons: state.squadrons.map(s => ({ ...s, sortieOrdered: s.id === 'viper', mission: s.role === 'fighter' ? 'forward-patrol' : 'search-area', route: [home, [home[0] + 6, home[1]]], routeIngress: [home, [home[0] + 6, home[1]]] })) }
-    state.cpu!.plan!.orders.forEach(o=>{if(o.role==='fighter')o.sortieOrdered=false})
+    state.cpu!.plan!.orders.forEach(o=>{if(o.role==='fighter')o.sortieOrdered=false;else o.reconPosture='conservative'})
     const result = resolveRound(state)
-    const recovery = result.behaviorIntervals.find(i => i.unitId === 'red-recon' && i.reason === 'cpu-preserve-recon')!
+    const recovery = result.behaviorIntervals.find(i => i.unitId === 'red-recon' && i.reason === 'recon-conservative-condition')!
     expect(recovery).toBeDefined()
-    expect(result.combatSequences.some(s => s.kind === 'pursuit' && s.start < recovery.start && s.participantIds.includes('red-recon'))).toBe(true)
+    expect(recovery.start).toBeCloseTo(.05)
     expect(result.cpuReport!.recoveredIds).toContain('red-recon')
   })
 

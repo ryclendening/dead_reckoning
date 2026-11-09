@@ -1,6 +1,7 @@
 import type { Point, Squadron } from '../types'
 import type { CpuPlanningView } from './planningView'
 import { distance } from './routes'
+import type { FlightForecast } from './recon'
 
 export function segmentDistance(p:Point,a:Point,b:Point):number {
   const dx=b[0]-a[0],dy=b[1]-a[1],length=dx*dx+dy*dy
@@ -28,7 +29,7 @@ export function searchPrior(view:CpuPlanningView):Array<{point:Point;weight:numb
 }
 /** Independent returned-report probabilities combine as a coverage union.
  * This is exactly the exhaustive subset expectation for one required report. */
-export function collectionScorer(view:CpuPlanningView,prior=searchPrior(view)):(orders:Squadron[],confidence?:(order:Squadron)=>number)=>number {
+export function collectionScorer(view:CpuPlanningView,prior=searchPrior(view),forecasts:(order:Squadron)=>FlightForecast[]=order=>[{order,probability:1}]):(orders:Squadron[],confidence?:(order:Squadron)=>number)=>number {
   const base=view.cpu.sites.find(s=>s.kind==='base'&&s.health>0)
   const points=base?Array.from({length:8},(_,i)=>({point:[base.position[0]+Math.cos(i*Math.PI/4)*3.2,base.position[1]+Math.sin(i*Math.PI/4)*3.2] as Point,weight:1})):prior
   const total=points.reduce((n,p)=>n+p.weight,0)
@@ -36,12 +37,14 @@ export function collectionScorer(view:CpuPlanningView,prior=searchPrior(view)):(
   const interest=base?.health? .08*Math.max(0,3-known)/3+.04*Math.min(1,Math.max(0,view.round-base.observedRound)/2):1
   const cache=new WeakMap<Squadron,boolean[]>()
   return (orders,confidence=()=>1)=>{
-    const flying=orders.filter(o=>o.sortieOrdered!==false),probabilities=flying.map(o=>Math.max(0,Math.min(1,confidence(o))))
-    const coverage=flying.map(o=>{let mask=cache.get(o);if(!mask){mask=points.map(p=>covers(o.route,p.point));cache.set(o,mask)}return mask})
+    const flying=orders.filter(o=>o.sortieOrdered!==false).map(o=>forecasts(o).map(f=>{
+      let mask=cache.get(f.order);if(!mask){mask=points.map(p=>covers(f.order.route,p.point));cache.set(f.order,mask)}
+      return {mask,probability:f.probability*Math.max(0,Math.min(1,confidence(f.order)))}
+    }))
     let value=0
     for(let i=0;i<points.length;i++) {
       let missed=1
-      for(let j=0;j<flying.length;j++)if(coverage[j][i])missed*=1-probabilities[j]
+      for(const branches of flying)missed*=1-branches.reduce((n,b)=>n+(b.mask[i]?b.probability:0),0)
       value+=points[i].weight*(1-missed)
     }
     return total?interest*value/total:0

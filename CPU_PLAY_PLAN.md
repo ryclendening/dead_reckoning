@@ -356,3 +356,26 @@ new mechanics, persistent belief grid or opponent rollout were added. New
 optional predicted-effect fields remain compatible with existing saves.
 Validation uses executed geometry scenarios and one fixed paired smoke cohort;
 it is not another attempt to tune the prior fresh cohort above 70%.
+
+
+### Shared recon posture — 2026-11-09
+
+CPU recon commits the same Aggressive or Conservative condition as the player.
+The former CPU-only RTB controller is removed, including collection, low-strength
+and incoming-fire overrides and its preference for home. Existing orders lacking
+a condition use the shared Aggressive default. Conditions remain committed
+through reload and execution; no external live CPU command is generated.
+
+Both postures are capabilities within the same tactical mission library.
+Collection and aircraft-loss estimates use mutually exclusive return branches
+for Conservative recon: recovered fixed-defense envelopes trigger a return,
+whereas recent coarse fighter sectors are uncertain contact opportunities.
+Radar-only observations do not identify fighters. Prefixes and direct planned-
+field recovery legs exist only in forecasts; actual routes remain committed.
+The initiating SAM/AAA shot retains risk even after immediate turnback. Escort
+estimates apply to each forecast path without removing ground threat.
+
+There is no posture score bonus, new sensor, combat modifier, opponent rollout
+or search-budget change. A separate command-free campaign smoke test uses
+preselected conditions for both sides; the historic online-RTB benchmark remains
+a historical diagnostic and does not establish asynchronous competitive rates.

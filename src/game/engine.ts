@@ -380,6 +380,20 @@ function* simulateRoundTicks(state:MatchState):Generator<RoundResult,RoundResult
   const releaseClaim=(unit:SimUnit)=>{for(const ids of fieldClaims.values())ids.delete(unit.id)}
   const claim=(unit:SimUnit,fieldId:string)=>{releaseClaim(unit);fieldClaims.get(fieldId)?.add(unit.id)}
   const transition=(u:SimUnit,mode:FlightMode,time:number,reason:string,targetId?:string,source?:'radar'|'visual')=>{if(u.mode===mode&&u.targetId===targetId)return;const old=openBehavior.get(u.id);if(old)old.end=time;u.mode=mode;u.targetId=targetId;const item:BehaviorInterval={id:`behavior-${behavior.length}`,unitId:u.id,mode,start:time,end:time,targetId,source,reason};behavior.push(item);openBehavior.set(u.id,item)}
+  // Both sides commit the same recon condition before execution. CPU reactions
+  // publish no hidden contact or recovery event into the player's live feed.
+  const reconThreat=(unit:SimUnit,kind:ThreatAlert['kind'],sourceId:string,time:number)=>{
+    const key=`${kind}:${unit.id}:${sourceId}`
+    if(kind==='fighter-contact'&&alertedThreats.has(key))return
+    alertedThreats.add(key)
+    if(unit.friendly)threatAlerts.push({id:`threat-${threatAlerts.length}`,unitId:unit.id,time,kind,sourceId})
+    const conservative=(unit.source as Squadron).reconPosture==='conservative'
+    if(conservative&&unit.mode!=='recovering'&&!unit.recoveryCommanded){
+      unit.recoveryCommanded=true
+      transition(unit,'recovering',time,'recon-conservative-condition')
+      if(unit.friendly)add('friendly','RECON RTB CONDITION',`${unit.callsign} turns for its planned recovery field after ${kind==='fighter-contact'?'direct fighter contact':`a ${kind==='sam-launch'?'SAM':'AAA'} launch`}.`,unit.position,time)
+    }else if(!conservative&&unit.friendly)add('warning','RECON THREAT',`${unit.callsign} encounters ${kind==='fighter-contact'?'a hostile fighter':kind==='sam-launch'?'a SAM launch':'an AAA launch'} and continues searching under its aggressive RTB condition.`,unit.position,time)
+  }
   const record=(time:number)=>units.forEach(u=>u.frames.push({time,position:[...u.position] as Point,facing:[...u.facing] as Point,mode:u.mode,strength:u.strength,morale:u.morale,aircraft:u.aircraft,traveledDistance:u.traveled}))
   const currentContactKeys=new Set<string>()
   const contact=(observerId:string,targetId:string,source:'radar'|'visual',position:Point,active:boolean,time:number)=>{const key=`${observerId}:${targetId}:${source}`;const old=openContacts.get(key);if(active){currentContactKeys.add(key);if(!old){const x={id:`contact-${intervals.length}`,observerId,targetId,source,start:time,end:time,position:[...position] as Point};intervals.push(x);openContacts.set(key,x)}else old.end=time}else if(old)openContacts.delete(key)}
@@ -476,20 +490,12 @@ function* simulateRoundTicks(state:MatchState):Generator<RoundResult,RoundResult
     }
     // Do not leave an observer's last contact live after it lands or is lost.
     for(const key of openContacts.keys())if(!currentContactKeys.has(key))openContacts.delete(key)
-    // CPU RTB is an irreversible local command, including while the recon is being pursued.
-    if(cpuActive)for(const recon of units.filter(unit=>!unit.friendly&&unit.role==='recon'&&!terminal(unit)&&!unit.recoveryCommanded)){
-      const fighterSeen=current.get(recon.id)?.some(contact=>contact.source==='visual'&&contact.target.role==='fighter')
-      const usefulReport=[...(cpuSites.get(recon.id)?.values()??[])].some(site=>{const known=state.cpu!.sites.find(s=>s.id===site.id);return site.kind==='base'&&!known||!!state.cpu!.sites.find(s=>s.kind==='base')&&(!known||Math.abs(site.health-(known.health-(known.estimatedDamage??0)))>1)})
-      const baseReport=[...(cpuSites.get(recon.id)?.values()??[])].some(site=>site.kind==='base'&&!state.cpu!.sites.some(s=>s.id===site.id))
-      const incomingFighterFire=pendingImpacts.some(p=>p.effect.targetId===recon.id&&(p.effect.kind==='air-to-air-missile'||p.effect.kind==='gun'))
-      if(baseReport||(fighterSeen&&(usefulReport||recon.strength<65||incomingFighterFire))||recon.strength<40){recon.recoveryCommanded=true;const homeField=assets.find(a=>a.kind==='base'&&isOperationalAirfield(a));if(homeField&&distance(recon.position,homeField.position)<=flightRangeFor(recon.source)-recon.traveled+.001){recon.recoveryFieldId=homeField.id;claim(recon,homeField.id)}transition(recon,'recovering',time,'cpu-preserve-recon')}
-    }
     // 4-5: shared reaction priority, pursuit, and direct combat. A formation
     // may belong to only one engagement; independent pairs can fight at once.
     const engagedUnitIds=()=>new Set(activeEngagements.flatMap(engagement=>engagement.participants.map(participant=>participant.id)))
     const evaluateReaction=(u:SimUnit)=>{if(terminal(u))return;const seen:AirContact[]=(current.get(u.id)??[]);const ownAssets=u.friendly?playerAssets:assets;const ownHome=u.friendly?base:enemyBase;const recovery=ownAssets.find(asset=>asset.id===u.recoveryFieldId)?.position??ownHome;const protectedId=(u.source as Squadron).protectedTargetId;const protectedPosition=protectedId?byId.get(protectedId)?.position:(u.source as Squadron).protectedPoint;const choice=u.friendly||cpuActive?selectAirTarget(u,seen,recovery,ownHome,protectedPosition):undefined
       const hostileVisual=seen.find(x=>x.source==='visual'&&x.target.role==='fighter')
-      if(u.friendly&&u.role==='recon'&&hostileVisual){const key=`fighter:${u.id}:${hostileVisual.target.id}`;if(!alertedThreats.has(key)){alertedThreats.add(key);threatAlerts.push({id:`threat-${threatAlerts.length}`,unitId:u.id,time,kind:'fighter-contact',sourceId:hostileVisual.target.id});const conservative=(u.source as Squadron).reconPosture==='conservative';if(conservative&&u.mode!=='recovering'&&!u.recoveryCommanded){u.recoveryCommanded=true;transition(u,'recovering',time,'recon-conservative-condition');add('friendly','RECON RTB CONDITION',`${u.callsign} turns for its planned recovery field after direct fighter contact.`,u.position,time)}else if(!conservative)add('warning','RECON THREAT',`${u.callsign} has direct fighter contact and continues searching under its aggressive RTB condition.`,u.position,time)}}
+      if(u.role==='recon'&&hostileVisual)reconThreat(u,'fighter-contact',hostileVisual.target.id,time)
       if(engagedUnitIds().has(u.id)||u.mode==='stranded')return
       const decision=decideReaction({destroyed:u.mode==='destroyed',inDirectCombat:false,recoveryCommanded:!!u.recoveryCommanded,recoveryRequired:u.mode==='recovering',actionableTargetId:choice?.target.id,missionAvailable:u.waypoint<u.route.length})
       if(decision.state==='recovering'){if(u.mode!=='recovering')transition(u,'recovering',time,decision.reason);return}
@@ -541,10 +547,7 @@ function* simulateRoundTicks(state:MatchState):Generator<RoundResult,RoundResult
       if(distance(asset.position,target.position)>range)continue
       if(asset.kind==='sam'){const status=samStatusAt(asset.id,effects,time,asset);if(status.remaining===0||status.cooldown>.000001)continue}
       else {if(fired.has(key))continue;fired.add(key)}
-      if(target.friendly&&target.role==='recon'){
-        threatAlerts.push({id:`threat-${threatAlerts.length}`,unitId:target.id,time,kind:asset.kind==='sam'?'sam-launch':'aaa-launch',sourceId:asset.id})
-        const conservative=(target.source as Squadron).reconPosture==='conservative';if(conservative&&target.mode!=='recovering'&&!target.recoveryCommanded){target.recoveryCommanded=true;transition(target,'recovering',time,'recon-conservative-condition');add('friendly','RECON RTB CONDITION',`${target.callsign} turns for its planned recovery field after a ${asset.kind.toUpperCase()} launch.`,target.position,time)}else if(!conservative)add('warning','RECON THREAT',`${target.callsign} is targeted by ${asset.kind.toUpperCase()} and continues searching under its aggressive RTB condition.`,target.position,time)
-      }
+      if(target.role==='recon')reconThreat(target,asset.kind==='sam'?'sam-launch':'aaa-launch',asset.id,time)
       const kind:WeaponKind=asset.kind,shots=profile.burstShots
       for(let shot=0;shot<shots;shot++){
         const start=time+shot*AAA_BURST_INTERVAL,hit=rand(roll++)<profile.hitChance,amount=hit?kind==='sam'?profile.damage:Math.round(profile.damage-3+rand(roll++)*6):0,effect:WeaponEffect={id:`weapon-${effects.length}`,kind,sourceId:asset.id,targetId:target.id,start,end:start+(kind==='sam'?SAM_FLIGHT_SECONDS:AAA_FLIGHT_SECONDS),from:[...asset.position],to:kind==='aaa'?[target.position[0]+(rand(roll++)-.5)*.55,target.position[1]+(rand(roll++)-.5)*.55]:[...target.position],hit,damage:amount}

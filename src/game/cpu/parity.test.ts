@@ -86,17 +86,15 @@ describe('symmetric campaign rules',()=>{
     view.round=2;view.assets=view.assets.map(a=>({...a,health:0}))
     expect(discoveryAttackValue(view)).toBe(0)
   })
-  it('returns on an observed incoming fighter shot before impact without knowing its hit roll',()=>{
+  it('returns on visual fighter contact under the committed conservative condition',()=>{
     const s=strikeScenario();s.cpu!.sites=[]
     s.playerAssets=s.playerAssets.map(a=>({...a,position:[30,0]}))
     s.squadrons=s.squadrons.map(f=>({...f,sortieOrdered:f.id==='viper',mission:'forward-patrol',route:[[30,0],[8,0],[30,0]],routeIngress:[[30,0],[8,0]],plannedRecoveryFieldId:'p-base'}))
-    s.cpu!.plan={round:2,objective:'defend',reason:'Collect under a locally observed threat.',candidates:[],orders:s.cpu!.formations.map(f=>({...f,sortieOrdered:f.role==='recon',route:[[0,0],[20,0],[0,0]],routeIngress:[[0,0],[20,0]],plannedRecoveryFieldId:'e-base'}))}
+    s.cpu!.plan={round:2,objective:'defend',reason:'Collect under a locally observed threat.',candidates:[],orders:s.cpu!.formations.map(f=>({...f,reconPosture:'conservative',sortieOrdered:f.role==='recon',route:[[0,0],[20,0],[0,0]],routeIngress:[[0,0],[20,0]],plannedRecoveryFieldId:'e-base'}))}
     const result=resolveRound(s)
-    const shot=result.weaponEffects.find(e=>e.kind==='air-to-air-missile'&&e.targetId==='red-recon')!
-    const retreat=result.behaviorIntervals.find(i=>i.unitId==='red-recon'&&i.reason==='cpu-preserve-recon')!
-    expect(shot).toBeDefined();expect(retreat).toBeDefined()
-    expect(retreat.start).toBeGreaterThan(shot.start)
-    expect(retreat.start).toBeLessThan(shot.end)
+    const retreat=result.behaviorIntervals.find(i=>i.unitId==='red-recon'&&i.reason==='recon-conservative-condition')!
+    expect(retreat).toBeDefined();expect(retreat.start).toBeGreaterThan(0)
+    expect(result.behaviorIntervals.some(i=>i.reason==='cpu-preserve-recon')).toBe(false)
     expect(result.cpuReport!.sites.some(s=>s.kind==='base')).toBe(false)
   })
   it('matches exhaustive returned-report outcomes with direct coverage probability',()=>{

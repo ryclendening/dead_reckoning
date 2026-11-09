@@ -9,6 +9,7 @@ import { CPU_PROFILES, cpuRouteRisk, distance, hold, missionOrders, orderRisk, r
 import { searchPrior, collectionScorer, covers } from './search'
 import { contribution, discoveryAttackValue } from './strategy'
 import { observedThreat, residualApproachRisk, forwardValue } from './placement'
+import { reconForecasts, type ReconForecasts } from './recon'
 export const emptyEffects = (): PredictedEffects => ({ informationGain:0,baseDamage:0,ownBaseRiskReduced:0,defenseCoverageGain:0,futureStrikeAccessGain:0,expectedAircraftLoss:0,logisticsSpent:0,roundsUntilPayoff:0 })
 export const SEARCH_SECTORS:Point[]=[[0,0],[-6,8],[0,8],[6,8],[-6,0],[6,0],[-6,-8],[0,-8],[6,-8],[-10,12],[0,12],[10,12],[-10,0],[10,0],[-10,-12],[0,-12],[10,-12]]
 export function estimateBaseAttack(view:CpuPlanningView,order:Squadron,sites:CpuSiteReport[]=view.cpu.sites):BaseAttackEstimate {
@@ -18,26 +19,28 @@ export function estimateBaseAttack(view:CpuPlanningView,order:Squadron,sites:Cpu
 }
 /** Escort coverage reduces the air-threat part of collection risk, never SAM
  * exposure. Both single and joint packages use this same capability estimate. */
-function protectedRisks(view:CpuPlanningView,orders:Squadron[],riskOf:(o:Squadron)=>number):(o:Squadron)=>number {
+function protectedRisks(view:CpuPlanningView,orders:Squadron[],riskOf:(o:Squadron)=>number,launchRisk:(o:Squadron)=>number):(o:Squadron)=>number {
   const adjusted=new Map<Squadron,number>()
-  for(const escort of orders.filter(o=>o.sortieOrdered!==false&&o.protectedTargetId)) {
-    const target=orders.find(o=>o.id===escort.protectedTargetId&&o.sortieOrdered!==false)
-    if(!target)continue
-    const field=view.assets.find(a=>a.id===escort.plannedRecoveryFieldId),recovery=view.assets.find(a=>a.id===target.plannedRecoveryFieldId)
-    if(!field)continue
-    const coverage=estimateEscortCoverage({escortRoute:escort.route,protectedRoute:[...target.route,recovery?.position??view.home],escortSpeed:flightSpeedFor(escort),protectedSpeed:flightSpeedFor(target),recoveryPoint:field.position,maxDistance:flightRangeFor(escort)})
-    const ground=cpuRouteRisk([...target.route,recovery?.position??view.home],target.role,view.cpu.sites,target)
-    const risk=riskOf(target),protectedRisk=risk-Math.max(0,risk-ground)*coverage.percent/100*.6
-    adjusted.set(target,Math.min(adjusted.get(target)??risk,protectedRisk))
+  return target=>{
+    const saved=adjusted.get(target);if(saved!==undefined)return saved
+    let result=riskOf(target)
+    for(const escort of orders.filter(o=>o.sortieOrdered!==false&&o.protectedTargetId===target.id)) {
+      const field=view.assets.find(a=>a.id===escort.plannedRecoveryFieldId),recovery=view.assets.find(a=>a.id===target.plannedRecoveryFieldId)
+      if(!field)continue
+      const coverage=estimateEscortCoverage({escortRoute:escort.route,protectedRoute:[...target.route,recovery?.position??view.home],escortSpeed:flightSpeedFor(escort),protectedSpeed:flightSpeedFor(target),recoveryPoint:field.position,maxDistance:flightRangeFor(escort)})
+      const ground=Math.max(launchRisk(target),cpuRouteRisk([...target.route,recovery?.position??view.home],target.role,view.cpu.sites,target))
+      const risk=riskOf(target),protectedRisk=risk-Math.max(0,risk-ground)*coverage.percent/100*.6
+      result=Math.min(result,protectedRisk)
+    }
+    adjusted.set(target,result);return result
   }
-  return o=>adjusted.get(o)??riskOf(o)
 }
-function fighterActions(view: CpuPlanningView, work: RouteWork, fighter: Squadron): TacticalPackage[] {
+function fighterActions(view: CpuPlanningView, work: RouteWork, fighter: Squadron,forecasts:ReconForecasts): TacticalPackage[] {
   const cpu=view.cpu, recon=cpu.formations.find(f=>f.role==='recon')!, profile=CPU_PROFILES[cpu.difficulty]
   const packages:TacticalPackage[]=[],base=cpu.sites.find(s=>s.kind==='base'&&s.health>0),threat=observedThreat(view)*residualApproachRisk(view), remaining=7-view.round
   const prospectiveBaseOrders=base?strikeOrders(view,fighter,base,work):[]
   const earlyBaseOrders=prospectiveBaseOrders
-  const prior=searchPrior(view),collect=collectionScorer(view,prior),risks=new WeakMap<Squadron,number>()
+  const prior=searchPrior(view),collect=collectionScorer(view,prior,forecasts.paths),risks=new WeakMap<Squadron,number>()
   const priorWeight=prior.reduce((n,p)=>n+p.weight,0)
   const militaryRegion=base?[{point:base.position,weight:1}]:prior
   const militaryWeight=base?1:priorWeight
@@ -46,7 +49,9 @@ function fighterActions(view: CpuPlanningView, work: RouteWork, fighter: Squadro
     // Public opening forces can defend an unobserved operating region. This
     // uncertainty is not a hidden contact and disappears into observed risk.
     const uncertain=o.sortieOrdered!==false&&!witnessedFighters&&militaryWeight?militaryRegion.reduce((n,p)=>n+(covers(o.route,p.point,4.5)?p.weight:0),0)/militaryWeight*(o.role==='fighter'?60:25):0
-    risk=orderRisk(view,o)+uncertain;risks.set(o,risk)
+    const recovery=view.assets.find(a=>a.id===o.plannedRecoveryFieldId)?.position??view.home
+    const launch=forecasts.launchRisk(o),extra=launch>0?Math.max(0,launch-cpuRouteRisk([...o.route,recovery],o.role,view.cpu.sites,o)):0
+    risk=orderRisk(view,o)+uncertain+extra;risks.set(o,risk)
   }return risk}
   const ingressRisks=new WeakMap<Squadron,number>()
   const ingressRisk=(o:Squadron)=>{let value=ingressRisks.get(o);if(value===undefined){value=orderRisk(view,o,view.cpu.sites,false);ingressRisks.set(o,value)}return value}
@@ -64,22 +69,27 @@ function fighterActions(view: CpuPlanningView, work: RouteWork, fighter: Squadro
     if(searches.every(selected=>distance(point,selected)>3.5))searches.push(point)
     if(searches.length>=profile.sectors)break
   }
-  const reconOptions=[hold(view,recon),...searches.slice(0,profile.sectors).flatMap(p=>[...missionOrders(view,recon,'search-area',p,work,cpu.lastReconLost?Math.min(48,flightRangeFor(recon)):flightRangeFor(recon)),...(cpu.traffic.some(t=>t.role==='fighter')?missionOrders(view,recon,'search-area',p,work,36):[])])]
+  const reconOptions=[hold(view,recon),...searches.slice(0,profile.sectors).flatMap(p=>[...missionOrders(view,recon,'search-area',p,work,cpu.lastReconLost?Math.min(48,flightRangeFor(recon)):flightRangeFor(recon)),...(cpu.traffic.some(t=>t.role==='fighter')?missionOrders(view,recon,'search-area',p,work,36):[])]).flatMap(o=>(['aggressive','conservative'] as const).map(reconPosture=>({...o,reconPosture})))]
   function information(order:Squadron):number {
     if(order.sortieOrdered===false)return 0
     return collect([order],confidence)*Math.min(1,(remaining-1)/2)
   }
   const rankedRecon=reconOptions.sort((a,b)=>information(b)-information(a)||riskOf(a)-riskOf(b)||routeDistance(a.route)-routeDistance(b.route))
   const sortedRecon:Squadron[]=[]
-  for(const order of rankedRecon)if(sortedRecon.every(o=>distance(o.routeIngress.at(-1)!,order.routeIngress.at(-1)!)>2.5)){sortedRecon.push(order);if(sortedRecon.length===3)break}
-  const usefulRecon=sortedRecon[0]??hold(view,recon)
+  for(const order of rankedRecon)if(sortedRecon.filter(o=>o.reconPosture===order.reconPosture).length<3&&sortedRecon.every(o=>o.reconPosture!==order.reconPosture||distance(o.routeIngress.at(-1)!,order.routeIngress.at(-1)!)>2.5)){sortedRecon.push(order);if(sortedRecon.length===6)break}
+  const pairedRecon=(['aggressive','conservative'] as const).flatMap(posture=>{const order=sortedRecon.find(o=>o.sortieOrdered!==false&&o.reconPosture===posture);return order?[order]:[]})
   const add=(id:string,summary:string,order:Squadron,predicted:Partial<PredictedEffects>,reconOrder?:Squadron,baseAttack?:BaseAttackEstimate):void=>{
-    if(!reconOrder){add(id+':recon-hold',summary,order,predicted,hold(view,recon),baseAttack);reconOrder=usefulRecon}
+    if(!reconOrder){
+      add(id+':recon-hold',summary,order,predicted,hold(view,recon),baseAttack)
+      for(const r of pairedRecon)add(`${id}:recon-${r.reconPosture}`,summary,order,predicted,r,baseAttack)
+      return
+    }
     const orders=cpu.formations.map(f=>f.id===order.id?order:f.id===reconOrder.id?reconOrder:hold(view,f)),ids=new Set(orders.filter(o=>o.sortieOrdered!==false).map(o=>o.id))
     const check=validateRecoveryPackage({playerAssets:view.assets,squadrons:orders},flightRangeFor,ids)
     if(!check.valid){work.rejected.push(`${id}: ${check.reason}`);return}
-    const protectedRisk=protectedRisks(view,orders,riskOf),returnConfidence=(o:Squadron)=>Math.max(0,1-protectedRisk(o)/Math.max(25,(o.strength??100)+20))
-    const effects={...emptyEffects(),informationGain:Math.min(1,collect(orders,returnConfidence))*Math.min(1,(remaining-1)/2),expectedAircraftLoss:orders.reduce((n,o)=>n+(o.sortieOrdered===false?0:Math.min(o.aircraft,protectedRisk(o)/100*o.maxAircraft)),0),ingressAircraftLoss:orders.reduce((n,o)=>n+(o.sortieOrdered===false?0:Math.min(o.aircraft,(o.mission==='base-strike'?ingressRisk(o):protectedRisk(o))/100*o.maxAircraft)),0),...predicted}
+    const protectedRisk=protectedRisks(view,orders,riskOf,forecasts.launchRisk),returnConfidence=(o:Squadron)=>Math.max(0,1-protectedRisk(o)/Math.max(25,(o.strength??100)+20))
+    const loss=(o:Squadron)=>forecasts.paths(o).reduce((n,f)=>n+f.probability*Math.min(o.aircraft,protectedRisk(f.order)/100*o.maxAircraft),0)
+    const effects={...emptyEffects(),informationGain:Math.min(1,collect(orders,returnConfidence))*Math.min(1,(remaining-1)/2),expectedAircraftLoss:orders.reduce((n,o)=>n+(o.sortieOrdered===false?0:loss(o)),0),ingressAircraftLoss:orders.reduce((n,o)=>n+(o.sortieOrdered===false?0:o.mission==='base-strike'?Math.min(o.aircraft,ingressRisk(o)/100*o.maxAircraft):loss(o)),0),...predicted}
     packages.push({id,summary,orders,purchases:[],baseAttack,predicted:effects,checks:['shared recovery / capacity / fuel','recovered targets','one order per formation']})
   }
   add('save','Hold aircraft and preserve cash.',hold(view,fighter),{},hold(view,recon))
@@ -159,8 +169,9 @@ function fighterActions(view: CpuPlanningView, work: RouteWork, fighter: Squadro
  * a second fighter can strike, screen, collect or stage independently. */
 export function generateActions(view:CpuPlanningView,work:RouteWork):TacticalPackage[] {
   const fighters=view.cpu.formations.filter(f=>f.role==='fighter')
+  const forecasts=reconForecasts(view)
   const discoveryPayoff=discoveryAttackValue(view)
-  const libraries=fighters.map(f=>fighterActions(view,work,f).map(p=>({...p,discoveryPayoff})))
+  const libraries=fighters.map(f=>fighterActions(view,work,f,forecasts).map(p=>({...p,discoveryPayoff})))
   if(libraries.length===1)return libraries[0]
   const result=libraries.flatMap((library,i)=>library.map(p=>({...p,id:i===0&&p.id==='save'?'save':fighters[i].id+':'+p.id})))
   const reconKey=(p:TacticalPackage)=>JSON.stringify(p.orders.find(o=>o.role==='recon'))
@@ -194,12 +205,12 @@ export function generateActions(view:CpuPlanningView,work:RouteWork):TacticalPac
     }
     return diverse
   }
-  const collect=collectionScorer(view),base=view.cpu.sites.find(s=>s.kind==='base'&&s.health>0)
+  const collect=collectionScorer(view,undefined,forecasts.paths),base=view.cpu.sites.find(s=>s.kind==='base'&&s.health>0)
   // Same conservative, authorized-information uncertainty as the single-actor library.
   const prior=base?[{point:base.position,weight:1}]:searchPrior(view),total=prior.reduce((n,p)=>n+p.weight,0)
   const witnessed=view.cpu.traffic.some(t=>t.role==='fighter'&&view.round-t.observedRound<=2)
   const risks=new WeakMap<Squadron,number>()
-  const risk=(o:Squadron)=>{let value=risks.get(o);if(value===undefined){value=orderRisk(view,o)+(o.sortieOrdered!==false&&!witnessed&&total?prior.reduce((n,p)=>n+(covers(o.route,p.point,4.5)?p.weight:0),0)/total*(o.role==='fighter'?60:25):0);risks.set(o,value)}return value}
+  const risk=(o:Squadron)=>{let value=risks.get(o);if(value===undefined){const recovery=view.assets.find(a=>a.id===o.plannedRecoveryFieldId)?.position??view.home;const launch=forecasts.launchRisk(o),extra=launch>0?Math.max(0,launch-cpuRouteRisk([...o.route,recovery],o.role,view.cpu.sites,o)):0;value=orderRisk(view,o)+extra+(o.sortieOrdered!==false&&!witnessed&&total?prior.reduce((n,p)=>n+(covers(o.route,p.point,4.5)?p.weight:0),0)/total*(o.role==='fighter'?60:25):0);risks.set(o,value)}return value}
   const ingressRisks=new WeakMap<Squadron,number>()
   const ingressRisk=(o:Squadron)=>{let value=ingressRisks.get(o);if(value===undefined){value=orderRisk(view,o,view.cpu.sites,false);ingressRisks.set(o,value)}return value}
   const keys=[...new Set(libraries[0].map(reconKey))]
@@ -207,14 +218,15 @@ export function generateActions(view:CpuPlanningView,work:RouteWork):TacticalPac
     const orders=a.orders.map(o=>o.id===fighters[1].id?b.orders.find(f=>f.id===o.id)!:o)
     const ids=new Set(orders.filter(o=>o.sortieOrdered!==false).map(o=>o.id))
     if(!validateRecoveryPackage({playerAssets:view.assets,squadrons:orders},flightRangeFor,ids).valid)continue
-    const protectedRisk=protectedRisks(view,orders,risk),confidence=(o:Squadron)=>Math.max(0,1-protectedRisk(o)/Math.max(25,(o.strength??100)+20))
+    const protectedRisk=protectedRisks(view,orders,risk,forecasts.launchRisk),confidence=(o:Squadron)=>Math.max(0,1-protectedRisk(o)/Math.max(25,(o.strength??100)+20))
+    const loss=(o:Squadron)=>forecasts.paths(o).reduce((n,f)=>n+f.probability*Math.min(o.aircraft,protectedRisk(f.order)/100*o.maxAircraft),0)
     const attacks=[a.baseAttack,b.baseAttack].filter((v):v is BaseAttackEstimate=>!!v)
     const cap=base?.health??100
     const baseAttack=attacks.length?{damageNow:Math.min(cap,attacks.reduce((n,v)=>n+v.damageNow,0)),followupDamage:Math.min(cap,attacks.reduce((n,v)=>n+v.followupDamage,0)),preparationRounds:Math.max(...attacks.map(v=>v.preparationRounds)),releaseSeconds:Math.max(...attacks.map(v=>v.releaseSeconds))}:undefined
     result.push({id:`joint:${a.id}|${b.id}`,summary:`${fighters[0].callsign}: ${a.summary} ${fighters[1].callsign}: ${b.summary}`,orders,purchases:[],baseAttack,discoveryPayoff,
       predicted:{...emptyEffects(),informationGain:Math.min(1,collect(orders,confidence))*Math.min(1,(6-view.round)/2),baseDamage:Math.min(1,a.predicted.baseDamage+b.predicted.baseDamage),
         ownBaseRiskReduced:Math.min(1,a.predicted.ownBaseRiskReduced+b.predicted.ownBaseRiskReduced),futureStrikeAccessGain:Math.min(1,a.predicted.futureStrikeAccessGain+b.predicted.futureStrikeAccessGain),
-        expectedAircraftLoss:orders.reduce((n,o)=>n+(o.sortieOrdered===false?0:Math.min(o.aircraft,protectedRisk(o)/100*o.maxAircraft)),0),ingressAircraftLoss:orders.reduce((n,o)=>n+(o.sortieOrdered===false?0:Math.min(o.aircraft,(o.mission==='base-strike'?ingressRisk(o):protectedRisk(o))/100*o.maxAircraft)),0),roundsUntilPayoff:Math.max(a.predicted.roundsUntilPayoff,b.predicted.roundsUntilPayoff)},checks:a.checks})
+        expectedAircraftLoss:orders.reduce((n,o)=>n+(o.sortieOrdered===false?0:loss(o)),0),ingressAircraftLoss:orders.reduce((n,o)=>n+(o.sortieOrdered===false?0:o.mission==='base-strike'?Math.min(o.aircraft,ingressRisk(o)/100*o.maxAircraft):loss(o)),0),roundsUntilPayoff:Math.max(a.predicted.roundsUntilPayoff,b.predicted.roundsUntilPayoff)},checks:a.checks})
   }
   return result
 }
