@@ -48,7 +48,9 @@ export interface FobPlacementValidation { valid: boolean; reason?: string }
 export function validateAssetPlacement(state: SidePlanningContext, kind: ConstructibleAssetKind, placement: [number, number] | undefined): FobPlacementValidation {
   if (!placement || !Number.isFinite(placement[0]) || !Number.isFinite(placement[1])) return { valid: false, reason: 'SELECT A MAP LOCATION' }
   const territory = friendlyTerritoryForAssets(state.territory,state.assets)
-  const persistentlyKnown = territoryContains(placement,territory) || state.mappedAreas.some(area => pointDistance(placement, area) <= MAPPED_RADIUS)
+  const owned = territoryContains(placement,territory)
+  if (kind !== 'fob' && !owned) return { valid: false, reason: 'SITE MUST BE INSIDE FRIENDLY TERRITORY' }
+  const persistentlyKnown = owned || state.mappedAreas.some(area => pointDistance(placement, area) <= MAPPED_RADIUS)
   if (!persistentlyKnown) return { valid: false, reason: 'SITE MUST BE IN RECOVERED TERRITORY' }
   if (kind === 'fob' && !territoryRegions(territory).some(region => pointDistance(placement, region.center) <= region.radius + FOB_PLACEMENT_MAX_TERRITORY_GAP + 1e-7)) {
     return { valid: false, reason: `FOB MUST BE WITHIN ${FOB_PLACEMENT_MAX_TERRITORY_GAP} UNITS OF FRIENDLY TERRITORY EDGE` }

@@ -12,6 +12,7 @@ import { executeCpuEconomyCommand } from './economy'
 import { generateActions } from './actions'
 import { covers, collectionScorer } from './search'
 import { campaignOutcome } from '../campaign'
+import { validateAssetPlacement } from '../sideEconomy'
 import { CPU_PROFILES, strikeOrders, orderRisk, routeThreats, type RouteWork } from './routes'
 import { threatRouteCost } from './routeSearch'
 import type { Asset, MatchState, Point } from '../types'
@@ -100,15 +101,18 @@ describe('CPU v2 behavioral acceptance',()=>{
     expect(result.cpuReport!.recoveredIds).toContain('red-fighter')
   })
 
-  it.each([0,Math.PI/2,-Math.PI/2])('builds marginal SAM coverage facing the observed approach %s',angle=>{
+  it.each([0,Math.PI/2,-Math.PI/2])('builds marginal SAM coverage in FOB territory facing the observed approach %s',angle=>{
     const s=setup(),home=s.enemyAssets[0].position
     s.cpu!.sites=[];s.enemyAssets[0].health=40;s.enemyBaseHealth=40
     s.cpu!.mappedAreas=[[Math.cos(angle)*8,Math.sin(angle)*8],[Math.cos(angle)*11,Math.sin(angle)*11]]
+    s.enemyAssets.push({...s.enemyAssets[0],id:'e-fob-test',kind:'fob',position:s.cpu!.mappedAreas[1],health:100,operational:true,capacity:2,basedFormationIds:[]})
     s.cpu!.traffic=[{role:'fighter',position:[Math.cos(angle)*8,Math.sin(angle)*8],observedRound:2,source:'visual',bearing:angle,sector:(Math.round(angle/(Math.PI/4))+8)%8}]
     const before=cpuPlanningView(s)!,adapted=maintainCpu(s),sam=adapted.enemyAssets.find(a=>a.kind==='sam')
     expect(sam).toBeDefined()
     expect((sam!.position[0]-home[0])*Math.cos(angle)+(sam!.position[1]-home[1])*Math.sin(angle)).toBeGreaterThan(2)
-    expect(defenseCoverage(before,sam!.position,'sam')).toBeGreaterThan(.1)
+    expect(validateAssetPlacement(before.context,'sam',sam!.position).valid).toBe(true)
+    const homeRim:Point=[home[0]+Math.cos(angle)*4,home[1]+Math.sin(angle)*4]
+    expect(defenseCoverage(before,sam!.position,'sam')).toBeGreaterThan(defenseCoverage(before,homeRim,'sam'))
     expect(adapted.cpu!.logistics).toBeGreaterThanOrEqual(0)
     expect(maintainCpu(adapted)).toBe(adapted)
     expect(normalizeMatch(JSON.parse(JSON.stringify(adapted))).cpu).toEqual(adapted.cpu)
@@ -123,7 +127,11 @@ describe('CPU v2 behavioral acceptance',()=>{
   })
   it('places forward SAM fire early enough to affect a real inbound strike',()=>{
     const run=(placement:Point)=>{
-      let s=setup([0,0],[-20,0]);s.cpu!.mappedAreas=[placement]
+      let s=setup([0,0],[-20,0]);s.cpu!.mappedAreas=[[-8,0]]
+      if(placement[0]<-4.5) {
+        s=executeCpuEconomyCommand(s,{actionId:'build-fob',target:{kind:'campaign',id:'campaign'},placement:[-8,0]})
+        expect(s.enemyAssets.some(a=>a.kind==='fob')).toBe(true)
+      }
       s=executeCpuEconomyCommand(s,{actionId:'build-sam',target:{kind:'campaign',id:'campaign'},placement})
       expect(s.enemyAssets.some(a=>a.kind==='sam')).toBe(true)
       s.enemyAssets=s.enemyAssets.map(a=>a.kind==='base'?{...a,intel:'confirmed',hidden:false,confidence:100}:a)
