@@ -34,6 +34,9 @@ The existing Maintenance Wing and Supply Depot remain the only purchasable upgra
 `cpu/strategy.ts` compares objectives by feasible shared packages from
 `cpu/actions.ts`, `routes.ts` and `purchases.ts`; `placement.ts` evaluates legal
 coverage and operating-field opportunities. The same fighter capabilities serve
-both CPU formations. Shared side commands execute accepted purchases; the game
+every CPU fighter. Shared side commands execute accepted purchases; the game
 engine remains authoritative for sensing, combat, movement and recovery.
 New campaigns share player opening forces, condition and strike authorization.
+`cpu/recon.ts` derives uncertain collection/return paths for the committed recon
+posture. These paths affect package forecasts only; executable orders retain
+their full routes and use the engine’s shared Aggressive/Conservative reactions.
