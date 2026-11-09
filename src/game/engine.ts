@@ -388,8 +388,9 @@ function* simulateRoundTicks(state:MatchState):Generator<RoundResult,RoundResult
   record(0)
   const liveResult=(duration:number):RoundResult=>({round:state.round,duration:Math.max(TICK_SECONDS,duration),tickSeconds:TICK_SECONDS,unitTracks:units.map(u=>({unitId:u.id,frames:u.frames})),contactIntervals:intervals,behaviorIntervals:behavior.map(item=>openBehavior.get(item.unitId)===item?{...item,end:duration}:item),events,squadrons,assets,enemyLosses:0,friendlyLosses:0,friendlyAttrition:[],enemyAttrition:[],friendlyFormationsDestroyed:0,enemyFormationsDestroyed:0,intelGained:[],baseDamage,enemyBaseDamage,logisticsIncome:{base:0,intel:0,enemyAircraft:0,total:0},command:state.command,executionRoutes:Object.fromEntries(units.map(u=>[u.id,u.frames.map(f=>f.position)])),enemyFlights:flights.map(f=>({...f,detectionWindows:intervals.filter(i=>i.targetId===f.id).map(i=>({start:i.start/Math.max(TICK_SECONDS,duration),end:i.end/Math.max(TICK_SECONDS,duration),source:i.source,observer:i.observerId}))})),defenseCues:[],defensiveAwareness:0,lessons:[],playerAssets,reinforcementCalls:[],roundScore:0,baseExposure,baseExposureDelta,combatSequences:sequences,activeDogfights:activeEngagements.filter(engagement=>engagement.kind==='dogfight').map(activeDogfightPresentation),weaponEffects:[...effects,...activeEngagements.flatMap(engagement=>engagement.effects)],contactObservations:observations,interceptPlans:plans,intelReports:[],mappedAreas:[],discoveredBoundaries:[],recoveryOutcomes:[],simulationCommands:commands,threatAlerts})
   let debugFieldDisabled=false
-  yield liveResult(0)
+  let pendingCommands:SimulationCommand[]=yield liveResult(0)
   for(let time=TICK_SECONDS;time<=MAX_EXECUTION_SECONDS+1e-6;time+=TICK_SECONDS){
+    for(const command of pendingCommands){if(command.type!=='rtb'||command.issuedAtTick!==Math.round(time/TICK_SECONDS)||commands.some(existing=>existing.id===command.id))continue;const unit=byId.get(command.unitId);if(!unit?.friendly||unit.role!=='recon'||terminal(unit)||unit.recoveryCommanded)continue;commands.push(command);unit.recoveryCommanded=true;const homeField=playerAssets.find(asset=>asset.kind==='base');const homeReachable=homeField&&isOperationalAirfield(homeField)&&distance(unit.position,homeField.position)<=flightRangeFor(unit.source)-unit.traveled+.001;if(homeReachable&&homeField){if(unit.recoveryFieldId!==homeField.id){releaseClaim(unit);unit.recoveryFieldId=homeField.id;unit.diverted=true}}const destination=playerAssets.find(asset=>asset.id===unit.recoveryFieldId);transition(unit,'recovering',time,'player-rtb');add('friendly','RTB ORDERED',`${unit.callsign} turns for ${destination?.kind==='base'?'HOME BASE':destination?.name??'planned recovery field'}${homeReachable?'':' (home out of range)'}.`,unit.position,time)}
     for(const pending of pendingImpacts.filter(item=>item.impactTime<=time+.001)){
       const fixedTarget=[...assets,...playerAssets].find(asset=>asset.id===pending.effect.targetId)
       const flightTarget=byId.get(pending.effect.targetId)
@@ -567,7 +568,7 @@ function* simulateRoundTicks(state:MatchState):Generator<RoundResult,RoundResult
     record(time)
     if(time>=22&&units.every(terminal)&&activeEngagements.length===0&&pendingImpacts.length===0)break
     if(time>=60&&!units.some(unit=>unit.mode==='stranded')&&pendingImpacts.length===0)break
-    yield liveResult(time)
+    pendingCommands=yield liveResult(time)
   }
   const duration=Math.min(MAX_EXECUTION_SECONDS,units.reduce((m,u)=>Math.max(m,u.frames.at(-1)?.time??0),22));for(const x of openContacts.values())x.end=duration;for(const x of openBehavior.values())x.end=duration
   for(const unit of units.filter(item=>item.friendly&&(item.source as Squadron).mission==='base-strike'&&(item.source as Squadron).sortieOrdered!==false&&!item.strikeLaunched)){

@@ -178,7 +178,7 @@ export function ObserveEventFeed({events,progress,duration=22,onFocus}:{events:C
   </section>
 }
 
-export function FormationDock({squadrons,bases,result,progress,selectedId,followId,onSelect,onClearFollow,onAirfield}:{squadrons:Squadron[];bases:Asset[];result?:RoundResult;progress:number;selectedId:string;followId?:string;onSelect:(id:string)=>void;onClearFollow:()=>void;onAirfield:()=>void;onRtb?:(id:string)=>void}){
+export function FormationDock({squadrons,bases,result,progress,selectedId,followId,onSelect,onClearFollow,onAirfield}:{squadrons:Squadron[];bases:Asset[];result?:RoundResult;progress:number;selectedId:string;followId?:string;onSelect:(id:string)=>void;onClearFollow:()=>void;onAirfield:()=>void}){
   const [view,setView]=useState<'closed'|'details'|'roster'>('closed')
   const active=squadrons.find(s=>s.id===selectedId)??squadrons[0]
   if(!active)return null
