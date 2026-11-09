@@ -1,3 +1,6 @@
+> Latest equal-rules, frozen-candidate results: [FAIR_CPU_RESULTS.md](FAIR_CPU_RESULTS.md).
+> This file preserves an earlier candidate and ruleset.
+
 > Historical report: the original player scripts validated individual orders and
 > could overbook a FOB. Current corrected, jointly validated policy results are
 > in [OFFENSIVE_PROGRESS.md](OFFENSIVE_PROGRESS.md). Preserve these older results

@@ -1,0 +1,16 @@
+CANCELLED, NOT ADOPTED. Isolated Easy 96 expansion / six sector experiment.
+Incomplete progress; no rate or determinism claim. Production stayed 64/four.
+
+ RUN  v4.1.11 /private/tmp/cpu-effort-evaluation
+
+CAMPAIGN {"completed":1,"version":"v2","difficulty":"easy","seed":263,"policy":"direct-rush","outcome":"home-base-destroyed"}
+CAMPAIGN {"completed":2,"version":"v2","difficulty":"easy","seed":263,"policy":"flank","outcome":"home-base-destroyed"}
+CAMPAIGN {"completed":3,"version":"v2","difficulty":"easy","seed":263,"policy":"recon-strike","outcome":"home-base-destroyed"}
+CAMPAIGN {"completed":4,"version":"v2","difficulty":"easy","seed":263,"policy":"heavy-sam","outcome":"home-base-destroyed"}
+CAMPAIGN {"completed":5,"version":"v2","difficulty":"easy","seed":263,"policy":"forward-fob","outcome":"home-base-destroyed"}
+CAMPAIGN {"completed":6,"version":"v2","difficulty":"easy","seed":263,"policy":"recon-denial","outcome":"home-base-destroyed"}
+CAMPAIGN {"completed":7,"version":"v2","difficulty":"easy","seed":307,"policy":"direct-rush","outcome":"home-base-destroyed"}
+CAMPAIGN {"completed":8,"version":"v2","difficulty":"easy","seed":307,"policy":"flank","outcome":"home-base-destroyed"}
+CAMPAIGN {"completed":9,"version":"v2","difficulty":"easy","seed":307,"policy":"recon-strike","outcome":"home-base-destroyed"}
+CAMPAIGN {"completed":10,"version":"v2","difficulty":"easy","seed":307,"policy":"heavy-sam","outcome":"home-base-destroyed"}
+CAMPAIGN {"completed":11,"version":"v2","difficulty":"easy","seed":307,"policy":"forward-fob","outcome":"home-base-destroyed"}

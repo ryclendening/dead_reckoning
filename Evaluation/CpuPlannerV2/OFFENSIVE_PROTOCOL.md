@@ -132,3 +132,11 @@ of whether every difficulty exceeds 70%. No further tuning, seed selection,
 opponent changes, or pooling is permitted to obtain a passing headline. An
 isolated Easy effort experiment was cancelled and never adopted; incomplete
 progress is not a measured rate.
+
+
+## Frozen evaluation complete
+
+Candidate `8252ae3`, cohort 2: Easy 41/60 (68.3%), Medium 43/60 (71.7%),
+Hard 41/60 (68.3%). The strict all-difficulties gate is not met. Full raw rows
+and source fingerprints are in `validation-2-results.json`; the final report
+is `FAIR_CPU_RESULTS.md`. No tuning or repeat was performed after these results.

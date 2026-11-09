@@ -1,3 +1,6 @@
+> Latest equal-rules, frozen-candidate results: [FAIR_CPU_RESULTS.md](FAIR_CPU_RESULTS.md).
+> This file preserves an earlier candidate and ruleset.
+
 # Offensive tuning checkpoint — 2026-11-08
 
 The >70% base-destruction target on **each** difficulty is **not achieved**.
