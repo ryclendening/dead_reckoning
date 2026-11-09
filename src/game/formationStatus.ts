@@ -23,7 +23,9 @@ const clamp = (value: number, min: number, max: number) => Math.min(max, Math.ma
 export function recoveryReasonLabel(reason?:string){
   switch(reason){
     case 'fuel-reserve':return 'FUEL RESERVE'
-    case 'player-rtb':case 'recovery-commanded':return 'PLAYER RTB ORDER'
+    case 'player-rtb':return 'PLAYER RTB ORDER'
+    case 'recovery-commanded':return 'ORDERED RTB'
+    case 'recon-conservative-condition':return 'CONSERVATIVE RTB CONDITION'
     case 'recovery-field-unusable':return 'AIRFIELD DIVERSION'
     case 'protected-flight-ended':return 'ESCORT COMPLETE'
     case 'route-complete':case 'mission-unavailable':return 'ROUTE COMPLETE'

@@ -67,6 +67,7 @@ function validSquadron(value: unknown): value is Squadron {
   if (value.plannedRecoveryFieldId !== undefined && !text(value.plannedRecoveryFieldId)) return false
   if (value.strikeTargetId !== undefined && !text(value.strikeTargetId)) return false
   if (value.sortieOrdered !== undefined && typeof value.sortieOrdered !== 'boolean') return false
+  if (value.reconPosture !== undefined && value.reconPosture !== 'aggressive' && value.reconPosture !== 'conservative') return false
   if (value.aircraftTypeId !== undefined && !text(value.aircraftTypeId)) return false
   if (!validUpgrades(value.upgrades)) return false
   return value.role === 'fighter' ? value.mission !== 'search-area' : value.mission === 'search-area'

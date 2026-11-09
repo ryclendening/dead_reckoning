@@ -2,6 +2,7 @@ import type { CpuRoundReport, CpuState } from './cpu/types'
 export type Phase = 'deploy' | 'plan' | 'execute' | 'debrief' | 'adapt' | 'victory' | 'defeat' | 'draw'
 export type Role = 'fighter' | 'recon'
 export type MissionId = 'defensive-cap' | 'forward-patrol' | 'transit' | 'search-area' | 'base-strike'
+export type ReconPosture = 'aggressive' | 'conservative'
 export type IntelLevel = 'unknown' | 'suspected' | 'probable' | 'confirmed'
 export type Point = [number, number]
 export type ReinforcementType = 'alert-cap' | 'replacement-flight'
@@ -29,6 +30,8 @@ export interface Squadron {
   protectedTargetId?: string; protectedPoint?: Point
   /** Explicit recovered enemy ground target; base-strike is the legacy Ground Strike mission ID. */
   strikeTargetId?: string
+  /** Planned response to direct threats during a recon sortie. Older saves default to aggressive. */
+  reconPosture?: ReconPosture
   /** Optional catalog key; older saves resolve to the role's default airframe. */
   aircraftTypeId?: string
   /** Installed equipment and airframe upgrades. */
