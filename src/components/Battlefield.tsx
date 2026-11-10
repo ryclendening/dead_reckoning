@@ -1,3 +1,5 @@
+import { debriefMapSites, primaryDebriefEvent } from '../game/debriefMap'
+import { DebriefSymbol } from './DebriefSymbols'
 import { UnitCard3D } from './UnitCard3D'
 import { aircraftCardData, assetCardData, flightActivityLabel } from '../game/unitCards'
 import { samStatusForPhase, SAM_MISSILES_PER_ROUND } from '../game/airDefense'
@@ -8,7 +10,7 @@ import { Billboard, Html, Line, MapControls, Text, useGLTF, useTexture } from '@
 import * as THREE from 'three'
 import type { MapControls as MapControlsImpl } from 'three-stdlib'
 import { EXECUTION_SECONDS, RADAR_RANGE } from '../game/engine'
-import { debriefHistoryFor, projectGroundAssetAt, projectFriendlyUnitAt, projectHostileUnitAt, sampleUnitTrack, sampleUnitTrackForRender, unitTrackFor, type HostileUnitProjection } from '../game/executionProjection'
+import { projectGroundAssetAt, projectFriendlyUnitAt, projectHostileUnitAt, sampleUnitTrack, sampleUnitTrackForRender, unitTrackFor, type HostileUnitProjection } from '../game/executionProjection'
 import { axialToPoint, HEX_RADIUS, snapToHex } from '../game/hex'
 import { deriveFogMaskSize, MAPPED_RADIUS, updateLiveFogMask, updatePersistentFogMask } from '../game/fog'
 import { fighterEngagementPresentationAt } from '../game/engagementPresentation'
@@ -640,13 +642,20 @@ function ActiveDogfightVisual({engagement}:{engagement:ActiveDogfightPresentatio
   return <group><Billboard position={[engagement.location[0],3.6,engagement.location[1]]} follow lockZ={false}><EngagementCueBackdrop meshRef={backdrop}/><Text ref={labelText} position={[0,.04,0]} fontSize={.2} color="#f4e7b1" anchorX="center" outlineWidth={.014} outlineColor="#080806" renderOrder={55}>{label}</Text><Text ref={contextText} position={[0,-.22,0]} fontSize={.14} color="#f1c65b" anchorX="center" outlineWidth={.01} outlineColor="#080806" renderOrder={55}>{context}</Text></Billboard></group>
 }
 
-function HistoryOverlay({result}:{result:RoundResult}){
-  const history=debriefHistoryFor(result)
-  return <group>
-    {history.friendly.map(track=><Line key={track.unitId} points={track.frames.map(frame=>to3(frame.position,.24))} color={friendly} opacity={.34} transparent dashed dashSize={.2} gapSize={.12} lineWidth={1.2}/>)}
-    {history.hostile.flatMap(({unitId,segments})=>segments.map((segment,index)=><Line key={`${unitId}-${index}`} points={segment.frames.map(frame=>to3(frame.position,.26))} color={segment.visibility==='visual'?hostile:amber} opacity={.58} transparent dashed lineWidth={1.4}/>))}
-    {result.events.filter(e=>e.position).map((e,i)=><group key={e.id} position={to3(e.position!,.31)}><mesh rotation={[-Math.PI/2,0,0]}><ringGeometry args={[.12,.2,12]}/><meshBasicMaterial color={e.tone==='danger'?hostile:e.tone==='warning'?amber:friendly}/></mesh><Text position={[0,.16,0]} fontSize={.18} color="#f0eedc">{i+1}</Text></group>)}
-  </group>
+function HistoryOverlay({result,focusPoint}:{result:RoundResult;focusPoint?:Point}){
+  const sites=useMemo(()=>debriefMapSites(result),[result])
+  return <group>{sites.map(site=>{
+    const event=primaryDebriefEvent(site)
+    const lossLabel=(['friendly','hostile'] as const).flatMap(side=>{const count=site.events.filter(item=>item.kind==='loss'&&item.side===side).reduce((sum,item)=>sum+(item.count??0),0);return count?[`${count} ${side==='friendly'?'friendly':'enemy'} lost`]:[]}).join(' · ')
+    return <Html key={site.id} position={to3(site.position,.65)} center zIndexRange={[7,6]}>
+      <div className={`debrief-map-pin ${event.side} ${focusPoint?.[0]===site.position[0]&&focusPoint?.[1]===site.position[1]?'selected':''}`} tabIndex={0} role="img"
+        aria-label={`Site ${site.number}: ${site.events.map(event=>`${event.title}: ${event.detail}`).join('; ')}`}>
+        <span className="debrief-pin-symbols">{[event,...site.events.filter(item=>item.kind!==event.kind)].filter((item,index,array)=>array.findIndex(other=>other.kind===item.kind)===index).slice(0,3).map(item=><DebriefSymbol key={item.kind} kind={item.kind}/>)}</span><b>{site.number}</b>
+        {lossLabel||site.events.length>1?<small>{lossLabel||`${site.events.length} reports`}</small>:null}
+        <div className="debrief-pin-tooltip">{site.events.map(event=><p key={event.id}><strong>{event.time.toFixed(1)}s · {event.title}</strong><span>{event.detail}</span></p>)}</div>
+      </div>
+    </Html>
+  })}</group>
 }
 
 function friendlyStatusAt(squadron:Squadron,frame:UnitFrame|undefined,initialStrength?:number):FlightStatus{
@@ -793,7 +802,7 @@ function BattlefieldScene({squadrons,assets,playerAssets,mappedAreas,presentatio
     {phase==='execute'?(executionResult?.combatSequences??[]).filter(seq=>enemyVisibleFor(seq.participantIds)).map(seq=><ActiveSequenceVisual key={seq.id} sequence={seq} seconds={seconds} result={executionResult}/>):null}
     {phase==='execute'?(executionResult?.activeDogfights??[]).filter(item=>enemyVisibleFor(item.participantIds)&&!(executionResult?.combatSequences??[]).some(sequence=>sequence.id===item.id)).map(item=><ActiveDogfightVisual key={item.id} engagement={item}/>):null}
     {phase==='execute'?replayWeaponEffects.filter(effect=>weaponVisibleAt(effect,sceneClock.time)&&weaponVisibleFor([effect.sourceId,effect.targetId])).map(effect=>{const targetProjection=hostileProjections.get(effect.targetId);const targetAuthorized=!effect.targetId.startsWith('red-')||Boolean(targetProjection);const targetTrack=targetAuthorized&&(effect.kind==='sam'||effect.kind==='aaa'||effect.kind==='air-to-air-missile')?unitTrackFor(executionResult,effect.targetId):undefined;return <WeaponEffectVisual key={effect.id} effect={effect} seconds={seconds} sceneClock={sceneClock} targetTrack={targetTrack} targetContactStart={targetProjection?.visibleSince} targetAuthorized={targetAuthorized}/> }):null}
-    {phase==='debrief'&&executionResult?<HistoryOverlay result={executionResult}/>:null}
+    {phase==='debrief'&&executionResult?<HistoryOverlay result={executionResult} focusPoint={focusPoint}/>:null}
     {visibleActiveEvent?<CombatEffect key={visibleActiveEvent.id} event={visibleActiveEvent}/>:null}
     <mesh position={[presentationCenter[0],.001,presentationCenter[1]]} rotation={[-Math.PI/2,0,0]} onPointerDown={down} onPointerMove={mapMove} onClick={mapClick} onPointerLeave={()=>setConstructionHover(undefined)}><planeGeometry args={[boundsWidth(resolvedPresentationBounds),boundsDepth(resolvedPresentationBounds)]}/><meshBasicMaterial transparent opacity={0} depthWrite={false}/></mesh>
   </>

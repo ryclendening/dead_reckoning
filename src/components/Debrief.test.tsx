@@ -12,6 +12,9 @@ describe('mission debrief surface',()=>{
     const view={...match,phase:'debrief' as const,lastResult:result,squadrons:result.squadrons}
     const markup=renderToStaticMarkup(<Debrief match={view} onFocus={()=>{}} onAdapt={()=>{}}/>)
 
+    expect(markup).toContain('Round map key')
+    expect(markup).toContain('Round highlights')
+    expect(markup).toContain('debrief-symbol')
     expect(markup).toContain('ORDERS &amp; RESULTS')
     expect(markup).toContain('STRIKE UNSELECTED GROUND TARGET')
     expect(markup).toContain('SELECT A CONFIRMED GROUND TARGET')

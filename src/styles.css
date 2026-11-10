@@ -190,9 +190,9 @@
 .range-key .range-key-items>span{display:grid;grid-template-columns:14px 1fr;column-gap:5px;align-items:center}
 /* After Action is one summary; detailed losses and intel are optional. */
 .phase-debrief .debrief-summary{height:auto;min-height:0;max-height:340px;overflow-y:auto;padding:12px 14px 14px}
-.debrief-summary>header{display:flex;justify-content:space-between;align-items:center;gap:8px}
-.debrief-summary>header small{color:#9aa68e;font:800 8px 'Barlow Condensed';letter-spacing:.8px}
-.debrief-summary>header h2{margin:1px 0 0;font:800 22px 'Barlow Condensed';letter-spacing:.7px}
+.debrief-summary .debrief-content>header{display:flex;justify-content:space-between;align-items:center;gap:8px}
+.debrief-summary .debrief-content>header small{color:#9aa68e;font:800 8px 'Barlow Condensed';letter-spacing:.8px}
+.debrief-summary .debrief-content>header h2{margin:1px 0 0;font:800 22px 'Barlow Condensed';letter-spacing:.7px}
 .debrief-outcome{max-width:48%;color:#e7c376;font:800 11px 'Barlow Condensed';text-align:right}
 .debrief-metrics{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:5px;margin-top:10px}
 .debrief-metrics>div{min-width:0;padding:8px 5px;background:#161d17;border:1px solid #39483b;text-align:center}
@@ -289,3 +289,30 @@
 .command-sheet .shelf-range{align-self:center;max-height:24px;margin:0;overflow:hidden;font-size:9px;line-height:12px;overflow-wrap:anywhere}
 .planning-aircraft-nav button:focus-visible,.command-sheet button:focus-visible,.command-sheet select:focus-visible{outline:2px solid var(--cyan);outline-offset:-2px}
 .command-shelf.expanded{z-index:26}
+/* After-action reports use the same silhouettes on the map and in the report. */
+.debrief-symbol{width:24px;height:24px;flex-shrink:0}
+.debrief-map-key{display:flex;flex-wrap:wrap;gap:8px 14px;margin:12px 0;color:#bdc8b6;font:600 11px 'Barlow Condensed',sans-serif}
+.debrief-map-key>span{display:flex;align-items:center;gap:5px}.debrief-map-key .debrief-symbol{width:17px;height:17px;color:#e5c375}
+.debrief-map-pin{position:relative;display:flex;align-items:center;justify-content:center;width:38px;height:38px;border:1px solid currentColor;border-radius:50%;background:#101810;box-shadow:0 2px 9px #0009;color:#edc36d;cursor:help}
+.debrief-map-pin.friendly,.debrief-site.friendly{color:#70dae3}.debrief-map-pin.hostile,.debrief-site.hostile{color:#f17c6b}
+.debrief-map-pin>b{position:absolute;right:-7px;top:-6px;min-width:17px;height:17px;border-radius:50%;background:#e3e6d4;color:#101810;text-align:center;font:800 12px/17px 'Barlow Condensed',sans-serif}
+.debrief-map-pin>small{position:absolute;top:40px;white-space:nowrap;background:#101810e8;padding:1px 4px;color:#e1e5d4;font:600 10px 'Barlow Condensed',sans-serif}
+.debrief-pin-tooltip{display:none;position:absolute;left:44px;top:0;width:220px;max-height:170px;overflow:auto;padding:8px 10px;background:#101810f5;border:1px solid #748363;color:#dae2d1;font:12px/1.35 'Barlow Condensed',sans-serif;pointer-events:auto}
+.debrief-pin-tooltip p{margin:0 0 7px}.debrief-pin-tooltip strong,.debrief-pin-tooltip span{display:block}.debrief-pin-tooltip span{color:#b2c0a8}.debrief-map-pin:hover .debrief-pin-tooltip,.debrief-map-pin:focus .debrief-pin-tooltip{display:block}
+.debrief-highlights{margin:10px 0}.debrief-highlights>small{display:block;color:#9aaa95;font:700 10px 'Barlow Condensed',sans-serif;letter-spacing:.5px;margin-bottom:5px}
+.debrief-highlights>p{font:12px/1.5 'Barlow Condensed',sans-serif;color:#b2c0a8}
+.debrief-site{display:flex;align-items:center;gap:10px;width:100%;padding:9px 3px;background:none;border:0;border-top:1px solid #35432f;color:#edc36d;text-align:left;cursor:pointer}
+.debrief-site:hover,.debrief-site:focus-visible{background:#213021;outline:1px solid #7f9473;outline-offset:-1px}
+.debrief-site-number{font:800 14px 'Barlow Condensed',sans-serif;min-width:16px}.debrief-site>svg:last-child{width:16px;flex-shrink:0}
+.debrief-site-reports{flex:1;min-width:0}.debrief-site-reports>span{display:grid;grid-template-columns:1fr auto;gap:2px 8px;margin:3px 0;font:600 12px/1.3 'Barlow Condensed',sans-serif}
+.debrief-site-reports b{grid-column:1;color:#e1e8d7;font-size:12px}.debrief-site-reports span span{grid-column:1;color:#afbea5;overflow-wrap:anywhere}.debrief-site-reports time{grid-column:2;grid-row:1;color:#91a585;font-size:11px}
+.debrief-orders p{flex-direction:column;gap:2px;font-size:11px;padding:5px 0}.debrief-orders b,.debrief-orders span{white-space:normal;overflow:visible}.debrief-orders span{text-align:left}
+.phase-debrief .debrief.briefing.debrief-summary{height:45dvh;min-height:320px;max-height:450px;flex:0 0 auto;padding:0 14px;display:flex;flex-direction:column;overflow:hidden}
+.debrief-summary .debrief-continue{position:relative;z-index:2;flex:0 0 auto;min-height:44px;margin:0;background:#26463c;box-shadow:0 -8px 12px #0e110e;padding-bottom:max(8px,env(safe-area-inset-bottom))}
+.debrief-map-note{color:#9bab92;font:11px/1.3 'Barlow Condensed',sans-serif;margin:4px 0 10px}
+.debrief-map-pin{width:auto;min-width:38px;padding:0 8px;border-radius:8px}.debrief-pin-symbols{display:flex;gap:3px;align-items:center}.debrief-pin-symbols .debrief-symbol{width:22px;height:22px}
+.debrief-summary .debrief-metrics span{font-size:9px}.debrief-summary .debrief-metrics strong{font-size:24px}
+
+.debrief-content{overflow-y:auto;min-height:0;flex:1;padding:12px 0}.debrief-summary .debrief-metrics>div{padding:6px 4px}.debrief-summary .debrief-metrics strong{font-size:22px;line-height:1.1}.debrief-summary .debrief-metrics span{font-size:9px;line-height:1.2;margin-top:3px}
+
+.debrief-map-pin.selected{outline:2px solid #f2efd6;outline-offset:3px}

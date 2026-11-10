@@ -26,6 +26,8 @@ import { normalizeMatch } from './game/persistence'
 import { protectTargetSelectionFor } from './game/missionResponsibility'
 import { isGroundStrikeTargeting, planGroundStrike } from './game/groundStrikePlanning'
 import { aircraftInspectionAt } from './game/unitCards'
+import { debriefMapSites, primaryDebriefEvent } from './game/debriefMap'
+import { DebriefLegend, DebriefSymbol } from './components/DebriefSymbols'
 import { missionOrderDebrief } from './game/missionDebrief'
 export { normalizeMatch }
 import { viablePlanningFormationIds } from './game/planningQueue'
@@ -373,13 +375,24 @@ export function Debrief({match,onFocus,onAdapt}:{match:MatchState;onFocus:(point
   const intel=result.intelReports.filter(report=>report.recovered).map(report=>result.assets.find(asset=>asset.id===report.assetId)).filter((asset):asset is Asset=>!!asset)
   const losses=result.friendlyAttrition.filter(item=>item.aircraftLost>0)
   const orders=missionOrderDebrief(match,result)
+  const sites=useMemo(()=>debriefMapSites(result),[result])
   return <section className="debrief briefing debrief-summary" aria-label="After action summary">
+    <div className="debrief-content">
     <header><div><small>MISSION COMPLETE</small><h2>AFTER ACTION</h2></div>{message?<strong className="debrief-outcome">{message.title}</strong>:null}</header>
-    <div className="debrief-metrics"><div><strong>{result.friendlyLosses}</strong><span>FRIENDLY LOST</span></div><div><strong>{result.enemyLosses}</strong><span>ENEMY LOST</span></div><div><strong>{intel.length}</strong><span>INTEL RECOVERED</span></div><div><strong>+{result.logisticsIncome.total}</strong><span>LOGISTICS</span></div></div>
+    <div className="debrief-metrics"><div><strong>{result.friendlyLosses}</strong><span>FRIENDLY LOST</span></div><div><strong>{result.enemyLosses}</strong><span>ENEMY LOST · CONFIRMED</span></div><div><strong>{intel.length}</strong><span>INTEL RECOVERED</span></div><div><strong>+{result.logisticsIncome.total}</strong><span>LOGISTICS</span></div></div>
+    <DebriefLegend/>
+    <p className="debrief-map-note">Reported locations only. Unlocated losses remain in the totals.</p>
+    <div className="debrief-highlights" aria-label="Round highlights"><small>ROUND HIGHLIGHTS · SELECT A SITE TO FOCUS</small>
+      {sites.length?sites.map(site=><button key={site.id} onClick={()=>onFocus([...site.position])} className={`debrief-site ${primaryDebriefEvent(site).side}`}>
+        <span className="debrief-site-number">{site.number}</span><DebriefSymbol kind={primaryDebriefEvent(site).kind}/>
+        <span className="debrief-site-reports">{site.events.map(event=><span key={event.id}><b>{event.title}</b><span>{event.detail}</span><time>{event.time.toFixed(1)}s</time></span>)}</span><ChevronRight/>
+      </button>):<p>No combat, aircraft losses, or new intelligence reported this round.</p>}
+    </div>
     {orders.length?<div className="debrief-orders" aria-label="Mission orders and results"><small>ORDERS & RESULTS</small>{orders.map(order=><p key={order.id}><b>{order.callsign} · {order.purpose}</b><span>{order.result}</span></p>)}</div>:null}
     {isCampaign(match)?<div className="debrief-campaign"><span>HOME BASE <b>{match.playerBaseHealth}%</b></span>{result.enemyBaseDamage>0?<span>ENEMY BASE <b>−{result.enemyBaseDamage}</b></span>:null}</div>:null}
     {message?<p className="debrief-message">{message.message}</p>:null}
     {losses.length||intel.length?<details className="debrief-details"><summary>VIEW FORMATION & INTEL DETAILS</summary><div>{losses.map(item=><p key={item.id}>{item.callsign}: {item.startAircraft} → {item.endAircraft} AIRCRAFT · {item.endStrength}% STRENGTH</p>)}{intel.map(asset=><button key={asset.id} onClick={()=>onFocus(asset.position)}>NEW INTEL · {asset.kind.toUpperCase()} · FOCUS MAP</button>)}</div></details>:null}
+    </div>
     <button className="debrief-continue" onClick={onAdapt}>{message?'VIEW OUTCOME':'OPEN ADAPT'} <ChevronRight/></button>
   </section>
 }
