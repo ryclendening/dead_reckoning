@@ -679,8 +679,13 @@ function BattlefieldScene({squadrons,assets,playerAssets,mappedAreas,presentatio
   const playerBase=playerAssets.find(a=>a.kind==='base')?.position??[-7.8,11.2];const playerRadar=playerAssets.find(a=>a.kind==='radar')
   const resolvedTerritory=useMemo<FriendlyTerritory>(()=>friendlyTerritory??{center:playerBase,radius:4.5},[friendlyTerritory,playerBase[0],playerBase[1]])
   const knownBounds=useMemo(()=>{const bounds=territoryBounds(resolvedTerritory);for(const point of mappedAreas){bounds.minX=Math.min(bounds.minX,point[0]-MAPPED_RADIUS);bounds.maxX=Math.max(bounds.maxX,point[0]+MAPPED_RADIUS);bounds.minZ=Math.min(bounds.minZ,point[1]-MAPPED_RADIUS);bounds.maxZ=Math.max(bounds.maxZ,point[1]+MAPPED_RADIUS)}return bounds},[mappedAreas,resolvedTerritory])
-  const resolvedPlanningBounds=useMemo(()=>planningBounds??expandBounds(knownBounds,4),[knownBounds,planningBounds])
-  const resolvedPresentationBounds=useMemo(()=>presentationBounds??expandBounds(resolvedPlanningBounds,6),[presentationBounds,resolvedPlanningBounds])
+  const debriefSites=useMemo(()=>phase==='debrief'&&executionResult?debriefMapSites(executionResult):[],[phase,executionResult])
+  const resolvedPlanningBounds=useMemo(()=>{
+    const bounds={...(planningBounds??expandBounds(knownBounds,4))}
+    for(const site of debriefSites){bounds.minX=Math.min(bounds.minX,site.position[0]-6);bounds.maxX=Math.max(bounds.maxX,site.position[0]+6);bounds.minZ=Math.min(bounds.minZ,site.position[1]-6);bounds.maxZ=Math.max(bounds.maxZ,site.position[1]+6)}
+    return bounds
+  },[knownBounds,planningBounds,debriefSites])
+  const resolvedPresentationBounds=useMemo(()=>debriefSites.length?expandBounds(resolvedPlanningBounds,6):presentationBounds??expandBounds(resolvedPlanningBounds,6),[presentationBounds,resolvedPlanningBounds,debriefSites])
   const presentationCenter=boundsCenter(resolvedPresentationBounds)
   const placement=playerAssets.find(a=>a.id===placementId)
   const [constructionHover,setConstructionHover]=useState<Point>()

@@ -18,9 +18,14 @@ export interface DebriefMapSite { id: string; position: Point; events: DebriefMa
 export function debriefMapEvents(result: RoundResult): DebriefMapEvent[] {
   const events: DebriefMapEvent[] = []
   const friendlyIds = new Set(result.squadrons.map(unit => unit.id))
-  const name = (id: string, time: number) => result.squadrons.find(unit => unit.id === id)?.callsign
-    ?? (contactProjectionAt(result, id, time)?.identityKnown ? result.enemyFlights.find(unit => unit.id === id)?.callsign : undefined)
-    ?? (result.assets.some(asset => asset.id === id) ? 'HOSTILE AIR DEFENSE' : 'HOSTILE AIRCRAFT')
+  const name = (id: string, time: number): string => {
+    const unit = result.squadrons.find(unit => unit.id === id)
+    if (unit) return unit.callsign
+    const asset = result.playerAssets.find(asset => asset.id === id)
+    if (asset) return asset.name ?? asset.kind.toUpperCase()
+    if (contactProjectionAt(result, id, time)?.identityKnown) return result.enemyFlights.find(unit => unit.id === id)?.callsign ?? 'HOSTILE AIRCRAFT'
+    return result.assets.some(asset => asset.id === id) ? 'HOSTILE AIR DEFENSE' : 'HOSTILE AIRCRAFT'
+  }
   for (const sequence of result.combatSequences) {
     // Enemy-only combat is not a player report. Ground strikes are handled at impact below.
     if (sequence.kind === 'strike') {
@@ -40,7 +45,7 @@ export function debriefMapEvents(result: RoundResult): DebriefMapEvent[] {
     const ownDefense = result.playerAssets.find(asset => sequence.participantIds.includes(asset.id))
     const position = kind === 'defense' ? ownDefense?.position ?? first?.position ?? sequence.location : sequence.location
     events.push({ id: sequence.id, kind, time: sequence.start, position, title,
-      detail: `${sequence.participantIds.map(id => result.playerAssets.find(asset => asset.id === id)?.name ?? name(id, sequence.start)).join(' / ')} · ${sequence.exchanges.reduce((total, exchange) => total + exchange.damage, 0)} DAMAGE`, side: 'neutral' })
+      detail: `${sequence.participantIds.map(id => name(id, sequence.start)).join(' / ')} · ${sequence.exchanges.reduce((total, exchange) => total + exchange.damage, 0)} DAMAGE`, side: 'neutral' })
   }
 
   for (const item of [...result.friendlyAttrition, ...result.enemyAttrition]) {
