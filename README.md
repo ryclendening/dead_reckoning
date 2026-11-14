@@ -17,6 +17,44 @@ that exact build at `http://127.0.0.1:4173`. Use a portrait viewport.
 For quick development iteration without the production gate, run `npm run dev`
 and open `http://127.0.0.1:5173`.
 
+## Play online with a friend
+
+With Node.js 24 or newer, build and start the online server:
+
+```bash
+npm ci
+npm run build:online
+npm run start:online
+```
+
+The server listens on port 4173. On both devices, open the same server address.
+On a shared Wi-Fi network, use the host computer's LAN address, such as
+`http://192.168.1.10:4173`. Choose **Player vs Player → Create Match** on the
+first device. Enter the one-use invite code under **Join** on the other device.
+Each player deploys and locks their own orders. The server resolves after both
+players lock. Use **Continue Online** in the same browser to resume.
+
+Matches survive a server restart in `.online/matches.sqlite`. Set
+`ONLINE_DB_PATH`, `ONLINE_HOST`, or `ONLINE_PORT` to override the defaults.
+For devices on different networks, run the server behind an HTTPS host that
+both devices can reach and keep the database on a persistent volume.
+
+### Worker and D1 prototype
+
+The online build includes a Worker at `dist/server/index.js` with `DB` and
+`ASSETS` bindings. To exercise it with local Wrangler:
+
+```bash
+npx wrangler@4.92.0 d1 execute dead-reckoning-online-local --local --config scripts/online/wrangler.local.json --file scripts/online/schema.sql
+npx wrangler@4.92.0 dev --local --config scripts/online/wrangler.local.json --port 8794
+node scripts/online/smoke.mjs http://localhost:8794
+```
+
+The last command runs from a second terminal. It creates three concurrent
+matches and verifies round resolution and duplicate command handling over HTTP.
+The current managed Site still uses its static build. The Worker and D1
+configuration is available for local testing and a separate hosting rollout.
+
 ## Current playable loop
 
 The detailed, current source of truth is [GAMEPLAY_STATE.md](./GAMEPLAY_STATE.md). This README intentionally summarizes only the active prototype loop.
@@ -40,4 +78,4 @@ Some legacy campaign/economy state remains in the code while the core loop is be
 - `src/components/Battlefield.tsx` renders the Three.js diorama and route input.
 - React owns the HUD, planning controls, debrief, logistics, and phase flow.
 
-This keeps the simulation suitable for a future server-authoritative 1v1 transport without coupling game rules to the 3D renderer.
+The online server uses the same round simulation and sends each player a replay filtered by their own contacts and intelligence.

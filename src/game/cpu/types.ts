@@ -1,4 +1,4 @@
-import type { AssetKind, EconomyActionId, EconomyCommand, FormationRecoveryOutcome, Point, ReconPosture, Role, Squadron, UpgradeId } from '../types'
+import type { AssetKind, ContactInterval, EconomyActionId, EconomyCommand, FormationRecoveryOutcome, Point, ReconPosture, Role, Squadron, UpgradeId } from '../types'
 
 export type CpuDifficulty = 'easy' | 'medium' | 'hard'
 export type CpuIntent = 'discover' | 'protect-base' | 'expand-defense' | 'forward-position' | 'suppress-defenses' | 'strike-base' | 'contest-air'
@@ -23,4 +23,4 @@ export interface CpuState {
   spending: Array<{ round: number; action: 'repair' | 'replace' | EconomyActionId; targetId: string; cost: number }>
   intent?: CpuIntent; adaptTrace?: CpuDecisionTrace; outcomes?: Array<{ round: number; formationId: string; mission: Squadron['mission']; recovered: boolean; damage?: number; targetId?: string }>; mappedAreas?: Point[]; plan?: CpuPlan
 }
-export interface CpuRoundReport { sites: CpuSiteReport[]; traffic: CpuTraffic[]; recoveredIds: string[]; mappedAreas?: Point[]; recoveryOutcomes?: FormationRecoveryOutcome[]; confirmedKills?: number; strikes?: Array<{ targetId: string; damage: number; releasedAt: number; sourceId: string }> }
+export interface CpuRoundReport { sites: CpuSiteReport[]; traffic: CpuTraffic[]; recoveredIds: string[]; mappedAreas?: Point[]; recoveryOutcomes?: FormationRecoveryOutcome[]; confirmedKills?: number; strikes?: Array<{ targetId: string; damage: number; releasedAt: number; sourceId: string }>; opponentContacts?: ContactInterval[]; siteObservers?: Record<string, string> }

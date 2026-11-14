@@ -228,6 +228,7 @@ export interface RoundResult {
 }
 export interface MatchState {
   cpu?: CpuState
+  onlineOutcome?: import('./campaign').CampaignOutcome
   round: number; phase: Phase; logistics: number; command: number; replacements: number; selectedId: string
   squadrons: Squadron[]; enemyAssets: Asset[]; playerAssets: Asset[]; playerBaseHealth: number; enemyBaseHealth: number
   baseExposure: number; campaignScore: number; lastResult?: RoundResult; seed: number; world: CampaignWorld

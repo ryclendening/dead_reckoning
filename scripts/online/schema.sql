@@ -1,0 +1,6 @@
+CREATE TABLE IF NOT EXISTS online_matches (
+  id TEXT PRIMARY KEY NOT NULL,
+  invite TEXT UNIQUE NOT NULL,
+  version INTEGER NOT NULL,
+  state BLOB NOT NULL
+);

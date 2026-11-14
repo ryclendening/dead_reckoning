@@ -361,7 +361,7 @@ function activeDogfightPresentation(engagement:ActiveEngagement):ActiveDogfightP
     location:[...engagement.location],start:engagement.start,...(engagement.mergedAt===undefined?{}:{mergedAt:engagement.mergedAt})}
 }
 
-function* simulateRoundTicks(state:MatchState):Generator<RoundResult,RoundResult,SimulationCommand[]>{
+function* simulateRoundTicks(state:MatchState, recordOpponentView:boolean):Generator<RoundResult,RoundResult,SimulationCommand[]>{
   const normalizedPlayerAssets=normalizeFormationBasing(state.squadrons,state.playerAssets);const simulationState={...state,playerAssets:normalizedPlayerAssets};const base=playerBase(simulationState); const enemyBase=state.enemyAssets.find(asset=>asset.kind==='base')?.position??enemyBaseFor(state.world); const assets=structuredClone(normalizeFormationBasing(state.cpu?.formations??[],state.enemyAssets)); let playerAssets=structuredClone(normalizedPlayerAssets); const squadrons=structuredClone(state.squadrons); const flights=enemyFlights(simulationState);const cpuActive=isCampaign(state)&&!!state.cpu;
   const cpuStrikeReleases:NonNullable<import('./cpu/types').CpuRoundReport['strikes']>=[];const cpuTrackIds=new Map<string,string>();const cpuTrackId=(id:string)=>{if(!cpuTrackIds.has(id))cpuTrackIds.set(id,`cpu-r${state.round}-track-${cpuTrackIds.size+1}`);return cpuTrackIds.get(id)!};const cpuApproaches=new Map<string,CpuTraffic>();const approach=(position:Point,role:CpuTraffic['role'],source:'visual'|'radar',time:number):CpuTraffic=>{const bearing=Math.atan2(position[1]-enemyBase[1],position[0]-enemyBase[0]),sector=(Math.round(bearing/(Math.PI/4))+8)%8;const angle=sector*Math.PI/4,band=Math.max(4,Math.round(distance(position,enemyBase)/4)*4);return {position:[enemyBase[0]+Math.cos(angle)*band,enemyBase[1]+Math.sin(angle)*band],role,source,observedAt:time,bearing:angle,sector,observedRound:state.round}}
   const cpuSites=new Map<string,Map<string,CpuSiteReport>>(),cpuTraffic=new Map<string,Map<string,CpuTraffic>>()
@@ -397,6 +397,8 @@ function* simulateRoundTicks(state:MatchState):Generator<RoundResult,RoundResult
   const record=(time:number)=>units.forEach(u=>u.frames.push({time,position:[...u.position] as Point,facing:[...u.facing] as Point,mode:u.mode,strength:u.strength,morale:u.morale,aircraft:u.aircraft,traveledDistance:u.traveled}))
   const currentContactKeys=new Set<string>()
   const contact=(observerId:string,targetId:string,source:'radar'|'visual',position:Point,active:boolean,time:number)=>{const key=`${observerId}:${targetId}:${source}`;const old=openContacts.get(key);if(active){currentContactKeys.add(key);if(!old){const x={id:`contact-${intervals.length}`,observerId,targetId,source,start:time,end:time,position:[...position] as Point};intervals.push(x);openContacts.set(key,x)}else old.end=time}else if(old)openContacts.delete(key)}
+  const opponentContacts:ContactInterval[]=[];const openOpponentContacts=new Map<string,ContactInterval>(),currentOpponentContactKeys=new Set<string>()
+  const opponentContact=(observerId:string,targetId:string,source:'radar'|'visual',position:Point,active:boolean,time:number)=>{if(!recordOpponentView)return;const key=`${observerId}:${targetId}:${source}`,old=openOpponentContacts.get(key);if(active){currentOpponentContactKeys.add(key);if(!old){const item={id:`opponent-contact-${opponentContacts.length}`,observerId,targetId,source,start:time,end:time,position:[...position] as Point};opponentContacts.push(item);openOpponentContacts.set(key,item)}else old.end=time}else if(old)openOpponentContacts.delete(key)}
   add('info','SORTIES AIRBORNE',`${units.filter(u=>u.friendly&&!u.trapped&&u.mode!=='grounded').reduce((n,u)=>n+u.aircraft,0)} aircraft committed.`,undefined,.8)
   for(const u of units)transition(u,u.mode,0,'round-start')
   record(0)
@@ -404,14 +406,16 @@ function* simulateRoundTicks(state:MatchState):Generator<RoundResult,RoundResult
   let debugFieldDisabled=false
   let pendingCommands:SimulationCommand[]=yield liveResult(0)
   for(let time=TICK_SECONDS;time<=MAX_EXECUTION_SECONDS+1e-6;time+=TICK_SECONDS){
+    currentOpponentContactKeys.clear()
     for(const command of pendingCommands){if(command.type!=='rtb'||command.issuedAtTick!==Math.round(time/TICK_SECONDS)||commands.some(existing=>existing.id===command.id))continue;const unit=byId.get(command.unitId);if(!unit?.friendly||unit.role!=='recon'||terminal(unit)||unit.recoveryCommanded)continue;commands.push(command);unit.recoveryCommanded=true;const homeField=playerAssets.find(asset=>asset.kind==='base');const homeReachable=homeField&&isOperationalAirfield(homeField)&&distance(unit.position,homeField.position)<=flightRangeFor(unit.source)-unit.traveled+.001;if(homeReachable&&homeField){if(unit.recoveryFieldId!==homeField.id){releaseClaim(unit);unit.recoveryFieldId=homeField.id;unit.diverted=true}}const destination=playerAssets.find(asset=>asset.id===unit.recoveryFieldId);transition(unit,'recovering',time,'player-rtb');add('friendly','RTB ORDERED',`${unit.callsign} turns for ${destination?.kind==='base'?'HOME BASE':destination?.name??'planned recovery field'}${homeReachable?'':' (home out of range)'}.`,unit.position,time)}
     for(const pending of pendingImpacts.filter(item=>item.impactTime<=time+.001)){
       const fixedTarget=[...assets,...playerAssets].find(asset=>asset.id===pending.effect.targetId)
       const flightTarget=byId.get(pending.effect.targetId)
       let applied=0
       if(fixedTarget){applied=pending.effect.hit?Math.min(fixedTarget.health,pending.effect.damage):0;fixedTarget.health=Math.max(0,fixedTarget.health-applied);if(applied>0)fixedTarget.struck=true;pending.exchange.targetStrength=fixedTarget.health
-        if(fixedTarget.kind==='base'){if(fixedTarget.id==='e-base')enemyBaseDamage+=applied;else baseDamage+=applied}
-        if(applied>0)add(pending.effect.sourceId.startsWith('red-')?'danger':'friendly',fixedTarget.kind==='base'?(fixedTarget.id==='e-base'?'ENEMY BASE STRUCK':'HOME BASE STRUCK'):'GROUND TARGET STRUCK',`${fixedTarget.name??fixedTarget.kind.toUpperCase()} takes ${applied} damage.`,fixedTarget.position,time)
+        const hostileTarget=assets.includes(fixedTarget)
+        if(fixedTarget.kind==='base'){if(hostileTarget)enemyBaseDamage+=applied;else baseDamage+=applied}
+        if(applied>0)add(hostileTarget?'friendly':'danger',fixedTarget.kind==='base'?(hostileTarget?'ENEMY BASE STRUCK':'HOME BASE STRUCK'):'GROUND TARGET STRUCK',`${fixedTarget.name??fixedTarget.kind.toUpperCase()} takes ${applied} damage.`,fixedTarget.position,time)
       }else if(flightTarget){
         applied=pending.effect.hit&&!terminal(flightTarget)?Math.min(flightTarget.strength,pending.effect.damage):0
         if((pending.pursuit||pending.effect.kind==='aaa')&&terminal(flightTarget)){pending.effect.hit=false;pending.exchange.hit=false;pending.exchange.moraleDamage=0}
@@ -479,16 +483,20 @@ function* simulateRoundTicks(state:MatchState):Generator<RoundResult,RoundResult
       }
       current.set(friendly.id,seen)
     }
-    if(cpuActive)for(const target of units.filter(u=>u.friendly&&!terminal(u)))if(assets.some(a=>a.kind==='radar'&&a.health>0&&a.operational!==false&&distance(a.position,target.position)<=radarRange(a))){const receipt={...approach(target.position,'unknown','radar',time),trackId:cpuTrackId(target.id)};cpuApproaches.set(`${target.id}:${receipt.position}`,receipt)}
+    if(cpuActive)for(const target of units.filter(u=>u.friendly&&!terminal(u))){const radars=assets.filter(a=>a.kind==='radar'&&a.health>0&&a.operational!==false&&distance(a.position,target.position)<=radarRange(a));for(const radar of radars)opponentContact(radar.id,target.id,'radar',target.position,true,time);if(radars.length){const receipt={...approach(target.position,'unknown','radar',time),trackId:cpuTrackId(target.id)};cpuApproaches.set(`${target.id}:${receipt.position}`,receipt)}}
     if(cpuActive)for(const observer of units.filter(unit=>!unit.friendly&&!terminal(unit))){
       const seen:AirContact[]=[]
       for(const target of units.filter(unit=>unit.friendly&&!terminal(unit))){
         const visual=distance(observer.position,target.position)<=effectiveSensorRange(observer.source as Squadron)
+        opponentContact(observer.id,target.id,'visual',target.position,visual,time)
         if(visual){seen.push({target,source:'visual'});const history=cpuTraffic.get(observer.id)??new Map<string,CpuTraffic>();const receipt={...approach(target.position,target.role,'visual',time),trackId:cpuTrackId(target.id),identity:target.callsign,strength:target.strength,aircraft:target.aircraft};history.set(`${target.id}:${receipt.position}`,receipt);cpuTraffic.set(observer.id,history)}
-        if(assets.some(asset=>asset.kind==='radar'&&asset.health>0&&asset.operational!==false&&distance(asset.position,target.position)<=radarRange(asset)))seen.push({target,source:'radar'})
+        const radarDetected=assets.some(asset=>asset.kind==='radar'&&asset.health>0&&asset.operational!==false&&distance(asset.position,target.position)<=radarRange(asset))
+        opponentContact(observer.id,target.id,'radar',target.position,radarDetected,time)
+        if(radarDetected)seen.push({target,source:'radar'})
       }
       current.set(observer.id,seen)
     }
+    for(const [key,interval] of openOpponentContacts)if(!currentOpponentContactKeys.has(key)){interval.end=time-TICK_SECONDS;openOpponentContacts.delete(key)}
     // Do not leave an observer's last contact live after it lands or is lost.
     for(const key of openContacts.keys())if(!currentContactKeys.has(key))openContacts.delete(key)
     // 4-5: shared reaction priority, pursuit, and direct combat. A formation
@@ -573,7 +581,7 @@ function* simulateRoundTicks(state:MatchState):Generator<RoundResult,RoundResult
     if(time>=60&&!units.some(unit=>unit.mode==='stranded')&&pendingImpacts.length===0)break
     pendingCommands=yield liveResult(time)
   }
-  const duration=Math.min(MAX_EXECUTION_SECONDS,units.reduce((m,u)=>Math.max(m,u.frames.at(-1)?.time??0),22));for(const x of openContacts.values())x.end=duration;for(const x of openBehavior.values())x.end=duration
+  const duration=Math.min(MAX_EXECUTION_SECONDS,units.reduce((m,u)=>Math.max(m,u.frames.at(-1)?.time??0),22));for(const x of openContacts.values())x.end=duration;for(const x of openOpponentContacts.values())x.end=duration;for(const x of openBehavior.values())x.end=duration
   for(const unit of units.filter(item=>item.friendly&&(item.source as Squadron).mission==='base-strike'&&(item.source as Squadron).sortieOrdered!==false&&!item.strikeLaunched)){
     const reason=validateGroundStrikeOrder(simulationState,unit.source as Squadron)??(unit.mode==='destroyed'?'FORMATION LOST BEFORE RELEASE':unit.mode==='trapped'?'LAUNCH FIELD UNAVAILABLE':'RELEASE WINDOW NOT REACHED')
     add('warning','GROUND STRIKE FAILED',`${unit.callsign}: ${reason}.`,unit.position,duration)
@@ -581,7 +589,16 @@ function* simulateRoundTicks(state:MatchState):Generator<RoundResult,RoundResult
   for(const flight of flights){const cs=intervals.filter(i=>i.targetId===flight.id);flight.detectionWindows=cs.map(i=>({start:i.start/duration,end:i.end/duration,source:i.source,observer:i.observerId}));flight.identityLearnedAt=cs.find(i=>i.source==='visual')?.start}
   const recoveredRecon=units.filter(u=>u.friendly&&u.role==='recon'&&u.mode==='recovered')
   const recoveredCpu=units.filter(unit=>!unit.friendly&&unit.mode==='recovered')
-  let cpuReport:import('./cpu/types').CpuRoundReport|undefined=cpuActive?{sites:[...new Map(recoveredCpu.flatMap(unit=>[...(cpuSites.get(unit.id)?.values()??[])]).sort((a,b)=>(a.observedAt??0)-(b.observedAt??0)).map(report=>[report.id,report])).values()],traffic:[...cpuApproaches.values(),...recoveredCpu.flatMap(unit=>[...(cpuTraffic.get(unit.id)?.values()??[])])],recoveredIds:recoveredCpu.map(unit=>unit.id)}:undefined
+  const recoveredSites = new Map(recoveredCpu.flatMap(unit => [...(cpuSites.get(unit.id)?.values() ?? [])]
+    .map(report => ({ report, observerId: unit.id })))
+    .sort((a, b) => (a.report.observedAt ?? 0) - (b.report.observedAt ?? 0))
+    .map(site => [site.report.id, site]))
+  let cpuReport:import('./cpu/types').CpuRoundReport|undefined=cpuActive?{
+    sites:[...recoveredSites.values()].map(site => site.report),
+    traffic:[...cpuApproaches.values(),...recoveredCpu.flatMap(unit=>[...(cpuTraffic.get(unit.id)?.values()??[])])],
+    recoveredIds:recoveredCpu.map(unit=>unit.id),
+    ...(recordOpponentView ? { opponentContacts, siteObservers: Object.fromEntries([...recoveredSites].map(([id, site]) => [id, site.observerId])) } : {}),
+  }:undefined
   if(isCampaign(state)){
     let gained=0
     for(const observer of units.filter(unit=>!unit.friendly&&unit.mode==='recovered')){
@@ -604,11 +621,11 @@ function* simulateRoundTicks(state:MatchState):Generator<RoundResult,RoundResult
 }
 
 export interface RoundSimulationController {result:RoundResult;complete:boolean;advance:(commands?:SimulationCommand[])=>RoundResult;nextTick:()=>number}
-export function createRoundSimulation(state:MatchState):RoundSimulationController{
-  const iterator=simulateRoundTicks(state);let cursor=iterator.next(),tick=0;const controller:RoundSimulationController={result:cursor.value,complete:cursor.done??false,advance:(next=[])=>{if(!controller.complete){cursor=iterator.next(next);tick+=1;controller.result=cursor.value;controller.complete=cursor.done??false}return controller.result},nextTick:()=>tick+1};return controller
+export function createRoundSimulation(state:MatchState, { recordOpponentView = false } = {}):RoundSimulationController{
+  const iterator=simulateRoundTicks(state,recordOpponentView);let cursor=iterator.next(),tick=0;const controller:RoundSimulationController={result:cursor.value,complete:cursor.done??false,advance:(next=[])=>{if(!controller.complete){cursor=iterator.next(next);tick+=1;controller.result=cursor.value;controller.complete=cursor.done??false}return controller.result},nextTick:()=>tick+1};return controller
 }
-export function resolveRound(state:MatchState,commands:SimulationCommand[]=[]):RoundResult{
-  const controller=createRoundSimulation(state);while(!controller.complete){const tick=controller.nextTick();controller.advance(commands.filter(command=>command.issuedAtTick===tick))}return controller.result
+export function resolveRound(state:MatchState,commands:SimulationCommand[]=[],options?:{recordOpponentView:boolean}):RoundResult{
+  const controller=createRoundSimulation(state,options);while(!controller.complete){const tick=controller.nextTick();controller.advance(commands.filter(command=>command.issuedAtTick===tick))}return controller.result
 }
 
 export function applyRound(state:MatchState,result:RoundResult):MatchState{

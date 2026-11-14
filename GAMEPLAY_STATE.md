@@ -1,6 +1,6 @@
 # Dead Reckoning: Current Gameplay State
 
-Last updated against the implementation: 2026-11-09
+Last updated against the implementation: 2026-11-14
 
 This is the source of truth for behavior implemented in the current build. It records the net gameplay state, not the sequence of designs that led to it. Use git history for superseded mechanics and earlier implementation notes.
 
@@ -11,6 +11,14 @@ This is the source of truth for behavior implemented in the current build. It re
 3. **Execute / Observe** — The deterministic simulation advances at 20 Hz and can be viewed at 1× or 2×. Recon follows the RTB condition selected during planning: **Aggressive** continues searching through threats; **Conservative** returns to its planned recovery field after direct fighter contact or a SAM/AAA launch. There is no live RTB command or skip-to-debrief control.
 4. **Debrief** — Review an event map with aircraft silhouettes and distinct combat, loss, strike, and intelligence symbols. Numbered sites match selectable round highlights, alongside losses, recovered intelligence, order results, and campaign status.
 5. **Adapt / Conclude** — Review the campaign outcome after Debrief. If the campaign continues, spend Logistics on repairs, replacement aircraft, one main-airfield upgrade, or new assets, then begin the next round.
+
+## Online Player vs Player
+
+- The online build adds **Player vs Player** to the title menu. One player creates a match and shares a one-use invite code. The other enters that code on a separate device connected to the same game server. **Continue Online** resumes the saved seat in the same browser.
+- Both players start with the standard opening force and manually place their four starting assets in separate territories. The server starts planning after both deployments lock. Each player plans or holds their own formations. Locking makes that order package final for the round. The server resolves one round when both packages are locked.
+- Each device receives its own forces, resources, recovered site reports, and a replay filtered by its own sensor contacts. Opponent placement drafts, orders, resources, and undetected movements stay on the server. Playback runs locally from the saved result. Each player can review Debrief, spend their own Logistics in Adapt, and plan the next round while the other finishes reviewing.
+- Online campaigns use the six-round objective, planning-time recon RTB conditions, shared combat and economy rules, and symmetric victory and draw outcomes. Match state and committed actions persist on the server across disconnects. During a submission retry, a previously accepted command does not apply again.
+- See the README for the online build, local server and Worker/D1 prototype. The current managed Site uses the static build.
 
 ## Campaign Objective
 
@@ -270,12 +278,16 @@ Available fixtures:
 - Defense-cue fields do not change in the current resolver.
 - CPU v2 uses analytic package estimates rather than opponent rollouts or a campaign game tree. Competitive ordering remains a tuning question; deterministic scenarios and paired scripted campaigns do not establish a universal Hard > Medium > Easy ordering or substitute for authorized human playtests. Unsupported CPU decoy benefits remain inactive. CPU escort candidates still require the complete drawn recon route to fit fighter recovery/range; fuel-limited partial escort prefixes are not yet enumerated.
 - Reinforcement, legacy service, rearm, readiness-restoration, runway-repair, and separate defense-repair helpers exist in code or tests but are not connected to the current UI flow. The Adapt actions listed above are authoritative.
-- Multiplayer start-placement utilities exist, but multiplayer is not enabled.
+- The managed Site still uses the static build. The server-backed online build can run on the supplied Node/SQLite server or the local Worker/D1 prototype.
 - The README contains older and aspirational mechanics. This document takes precedence for current gameplay.
 
 ## Running Change Log
 
 This log keeps only current net changes. Superseded intermediate states belong in git history.
+
+### 2026-11-14
+
+- Added invite-only online campaigns with private deployment, simultaneous order commitment, one authoritative resolution per round, per-player replay and Debrief, private Adapt, and session resume. The server validates turn commands and persists both players’ settled views together. The online build includes a Node/SQLite server and a local Worker/D1 prototype.
 
 ### 2026-11-09
 

@@ -9,7 +9,9 @@
     "deploy:openai": "node scripts/deploy-openai-site.mjs",
     "test": "vitest run",
     "playtest": "npm run test && npm run build && vite preview --host 127.0.0.1",
-    "preview": "vite preview --host 127.0.0.1"
+    "preview": "vite preview --host 127.0.0.1",
+    "build:online": "tsc -b && vite build --mode online && node scripts/online/build-worker.mjs",
+    "start:online": "node scripts/online/serve.mjs"
   },
   "dependencies": {
     "@react-three/drei": "latest",

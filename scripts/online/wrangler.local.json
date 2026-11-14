@@ -1,0 +1,15 @@
+{
+  "name": "dead-reckoning-online-local",
+  "main": "../../dist/server/index.js",
+  "compatibility_date": "2026-05-22",
+  "assets": {
+    "directory": "../../dist",
+    "binding": "ASSETS",
+    "run_worker_first": ["/api/online/*"]
+  },
+  "d1_databases": [{
+    "binding": "DB",
+    "database_name": "dead-reckoning-online-local",
+    "database_id": "00000000-0000-4000-8000-000000000000"
+  }]
+}

@@ -16,6 +16,7 @@ export type CampaignOutcome = 'enemy-base-destroyed' | 'home-base-destroyed' | '
 
 export function campaignOutcome(state: MatchState): CampaignOutcome | undefined {
   if (!isCampaign(state)) return undefined
+  if (state.onlineOutcome) return state.onlineOutcome
   const homeHealth = Math.min(state.playerBaseHealth, state.playerAssets.find(asset => asset.kind === 'base')?.health ?? state.playerBaseHealth)
   const enemyHealth = Math.min(state.enemyBaseHealth, state.enemyAssets.find(asset => asset.kind === 'base')?.health ?? state.enemyBaseHealth)
   if (homeHealth <= 0 && enemyHealth <= 0) return 'mutual-destruction'
