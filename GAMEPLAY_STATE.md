@@ -290,7 +290,7 @@ This log keeps only current net changes. Superseded intermediate states belong i
 
 - Froze submitted PvP orders on the first lock tap and retained read-only route review through waiting and reconnects. Close opposing fighters now join existing dogfights even during a route-following pass. Ground Strike target taps mark the target without opening its inspector.
 - Extended local and online campaigns to ten rounds, shared the deadline with CPU planning, and replaced the visible score and reserve counters with cash. Resupply introduces direct home-base formation purchases and named repairs with exact prices and effects.
-- Consolidated the mobile header and map tools, enlarged planning and Resupply controls, and capped open panels so the battlefield remains visible.
+- Consolidated the mobile header and map tools, enlarged planning and Resupply controls, and capped open panels so the battlefield remains visible. In phone landscape, active phases use the full display width and the Resupply action row stays visible.
 
 - Made PvP Execute play automatically after both players lock, with 1× and 2× speeds and no skip control. Debrief opens after playback finishes. **Open Adapt** shows a pending state, and an unanswered request times out so the player can retry without applying the phase transition twice.
 

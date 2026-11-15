@@ -157,7 +157,7 @@
 .planning-capsule .shelf-primary { font-size: 15px !important; }
 
 /* Resupply lists scroll inside a bounded drawer, above the sticky actions. */
-.resupply-panel .adapt-content { max-height: min(38dvh, 320px); }
+.resupply-panel .adapt-content { max-height: min(34dvh, 320px); }
 .resupply-controls {
   display: flex;
   align-items: center;
@@ -191,19 +191,19 @@
 .debrief-cash > div { display: grid; gap: 4px; padding: 6px 10px; color: #c1d4ba; }
 .debrief-cash span { display: flex; justify-content: space-between; }
 
-.game-frame:is(.phase-plan, .phase-execute) {
+.game-frame:is(.phase-plan, .phase-execute, .phase-debrief) {
   display: flex;
   flex-direction: column;
   height: 100dvh;
   min-height: 0;
 }
-.game-frame:is(.phase-plan, .phase-execute) .map-wrap {
+.game-frame:is(.phase-plan, .phase-execute, .phase-debrief) .map-wrap {
   flex: 1 1 0;
   height: auto;
   min-height: 0;
 }
 @media (min-width: 700px) {
-  .game-frame:is(.phase-plan, .phase-execute) { height: calc(100dvh - 44px); }
+  .game-frame:is(.phase-plan, .phase-execute, .phase-debrief) { height: calc(100dvh - 44px); }
 }
 .airfield-pip-list {
   flex-wrap: wrap;
@@ -214,3 +214,22 @@
   overflow-y: auto;
 }
 .airfield-pip { min-height: 36px; font-size: 12px; }
+
+@media (orientation: landscape) and (max-height: 500px) {
+  .app-shell:has(.game-frame:is(.phase-plan, .phase-execute, .phase-debrief, .phase-adapt)) {
+    padding: 0;
+  }
+  .game-frame:is(.phase-plan, .phase-execute, .phase-debrief, .phase-adapt) {
+    width: 100%;
+    height: 100dvh;
+    min-height: 0;
+  }
+  .phase-adapt .map-wrap { min-height: 0; }
+  .phase-debrief .debrief.briefing.debrief-summary { height: 52dvh; min-height: 0; }
+  .phase-plan .command-shelf.expanded {
+    left: auto;
+    width: min(390px, calc(100% - 16px));
+  }
+  .phase-plan .command-shelf.expanded .command-sheet { max-height: 69dvh; }
+  .resupply-panel .adapt-actions { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
