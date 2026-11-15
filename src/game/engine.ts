@@ -12,7 +12,7 @@ import { validateGroundStrikeOrder, validateStrikeGeometry } from './routeTempla
 import { facingAfterMove } from './heading'
 import { aircraftAtStrength, EXECUTION_SECONDS, MAX_FLIGHT_DISTANCE, flightRangeFor, flightSpeedFor, missionDistance, routeDistance } from './flightRules'
 import { aircraftSensorRange, aircraftType } from './aircraftTypes'
-import { defenseProfile, effectiveDefenseProfile, radarRange, RADAR_BASE_RANGE, SAM_FLIGHT_SECONDS, AAA_FLIGHT_SECONDS, AAA_BURST_INTERVAL } from './equipmentRules'
+import { defenseProfile, effectiveDefenseProfile, inCoverageCircle, radarRange, RADAR_BASE_RANGE, SAM_FLIGHT_SECONDS, AAA_FLIGHT_SECONDS, AAA_BURST_INTERVAL } from './equipmentRules'
 import { cpuFlights, cpuReportAt } from './cpu/planner'
 import { settleCpuRound } from './cpu/settlement'
 import type { CpuSiteReport, CpuTraffic } from './cpu/types'
@@ -594,7 +594,7 @@ function* simulateRoundTicks(state:MatchState, recordOpponentView:boolean):Gener
       const profile=effectiveDefenseProfile(asset,sites);if(!profile)continue
       for(const target of units.filter(u=>!terminal(u)&&u.friendly===hostile).sort((a,b)=>distance(asset.position,a.position)-distance(asset.position,b.position)||a.id.localeCompare(b.id))){
         const separation=distance(asset.position,target.position),key=`${asset.id}:${target.id}`
-        if(separation>profile.range+1e-9)continue
+        if(!profile.coverage.some(circle=>inCoverageCircle(target.position,circle)))continue
         if(asset.kind==='sam'){const status=samStatusAt(asset.id,effects,time,asset);if(status.remaining===0||status.cooldown>.000001)continue}
         else {if(fired.has(key))continue;fired.add(key)}
         if(target.role==='recon')reconThreat(target,asset.kind==='sam'?'sam-launch':'aaa-launch',asset.id,time)
@@ -606,7 +606,7 @@ function* simulateRoundTicks(state:MatchState, recordOpponentView:boolean):Gener
           pendingImpacts.push({effect,impactTime:effect.end,exchange})
         }
         const extended=!hostile&&separation>profile.baseRange+1e-9
-        add('warning',kind==='sam'?'SAM LAUNCH':'AAA FIRING',kind==='sam'?`SAM site fires on ${target.callsign}${extended?' at radar-extended range':''}; missile impact is pending.`:`AAA site opens a tracer burst on ${target.callsign}${extended?' at radar-extended range':''}; impacts are pending.`,asset.position,time)
+        add('warning',kind==='sam'?'SAM LAUNCH':'AAA FIRING',kind==='sam'?`SAM site fires on ${target.callsign}${extended?' with radar guidance':''}; missile impact is pending.`:`AAA site opens a tracer burst on ${target.callsign}${extended?' at radar-extended range':''}; impacts are pending.`,asset.position,time)
       }
     }
     // Every damage source updates strength first; this single conversion keeps the aircraft-pip model authoritative.

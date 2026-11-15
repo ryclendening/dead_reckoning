@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest'
 import { samStatusAt, samStatusForPhase } from './airDefense'
 import { createRoundSimulation, resolveRound } from './engine'
 import { createMatch, enemyAssetsFor } from './data'
-import { effectiveDefenseProfile } from './equipmentRules'
+import { effectiveDefenseProfile, inCoverageCircle } from './equipmentRules'
 import { projectGroundAssetAt } from './executionProjection'
 import { createScenario } from './scenarios'
 import { generateCampaignWorld } from './world'
@@ -68,7 +68,7 @@ describe('radar-assisted ground defense',()=>{
       const sites=enemyAssetsFor(generateCampaignWorld(seed))
       const radar=sites.find(site=>site.kind==='radar')!
       for(const battery of sites.filter(site=>site.kind==='sam'||site.kind==='aaa')){
-        expect(effectiveDefenseProfile(battery,sites)?.radarId,`Seed ${seed}: ${battery.kind}`).toBe(radar.id)
+        expect(effectiveDefenseProfile(battery,sites)?.radarLinks.map(link=>link.id),`Seed ${seed}: ${battery.kind}`).toContain(radar.id)
       }
     }
   })
@@ -77,11 +77,15 @@ describe('radar-assisted ground defense',()=>{
     const state=createMatch(),sam={...state.playerAssets.find(a=>a.kind==='sam')!,position:[0,0] as Point}
     const aaa={...sam,kind:'aaa' as const}
     const radar={...state.playerAssets.find(a=>a.kind==='radar')!,position:[6.4,0] as Point}
-    expect(effectiveDefenseProfile(sam,[sam,radar])).toMatchObject({baseRange:3.2,range:6.4,radarId:radar.id})
+    const linked=effectiveDefenseProfile(sam,[sam,radar])!
+    const canFire=(position:Point)=>linked.coverage.some(circle=>inCoverageCircle(position,circle))
+    expect(canFire([12.8,0])).toBe(true) // Inside the radar zone, far beyond the launcher.
+    expect(canFire([-4,0])).toBe(false) // Inside the old launcher-centered 6.4 radius.
+    expect(canFire([-3,0])).toBe(true) // Standalone range remains available.
     expect(effectiveDefenseProfile(aaa,[radar,{...radar,id:'spare'}])?.range).toBeCloseTo(2.85)
     for(const unavailable of [{...radar,position:[6.41,0] as Point},{...radar,health:0},{...radar,operational:false}]) {
-      expect(effectiveDefenseProfile(sam,[unavailable])).toMatchObject({range:3.2,radarId:undefined})
-      expect(effectiveDefenseProfile(aaa,[unavailable])).toMatchObject({range:1.9,radarId:undefined})
+      expect(effectiveDefenseProfile(sam,[unavailable])).toMatchObject({range:3.2,radarLinks:[],coverage:[{position:sam.position,radius:3.2}]})
+      expect(effectiveDefenseProfile(aaa,[unavailable])).toMatchObject({range:1.9,radarLinks:[]})
     }
     expect(effectiveDefenseProfile({...sam,operational:false},[radar])).toBeUndefined()
   })

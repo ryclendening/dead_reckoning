@@ -1,7 +1,11 @@
 import { axialToPoint, HEX_RADIUS, snapToHex } from '../hex'
+import type { CoverageCircle } from '../equipmentRules'
 import type { Point } from '../types'
 
-export interface RouteThreat { position:Point; radius:number; costPerUnit:number }
+export interface RouteThreat extends CoverageCircle {
+  costPerUnit: number
+  additionalCircles?: readonly CoverageCircle[]
+}
 export interface ThreatRouteRequest {
   from:Point; goals:Point[]; recovery:Point; maxDistance:number; threats:RouteThreat[]
   maxWaypoints:number; expansionBudget:number
@@ -12,16 +16,42 @@ export interface ThreatRouteResult {
 const distance=(a:Point,b:Point)=>Math.hypot(a[0]-b[0],a[1]-b[1])
 const EPS=1e-8
 
-/** Exact length of a line segment inside a circular threat envelope. */
-export function threatExposure(a:Point,b:Point,threat:Pick<RouteThreat,'position'|'radius'>):number {
+function circleInterval(a:Point,b:Point,circle:CoverageCircle):[number,number]|undefined {
   const dx=b[0]-a[0],dy=b[1]-a[1],lengthSquared=dx*dx+dy*dy
-  if(lengthSquared<EPS)return 0
-  const x=a[0]-threat.position[0],y=a[1]-threat.position[1]
-  const projection=x*dx+y*dy,discriminant=projection*projection-lengthSquared*(x*x+y*y-threat.radius*threat.radius)
-  if(discriminant<=0)return 0
+  if(lengthSquared<1e-10)return undefined
+  const x=a[0]-circle.position[0],y=a[1]-circle.position[1]
+  const projection=x*dx+y*dy,discriminant=projection*projection-lengthSquared*(x*x+y*y-circle.radius*circle.radius)
+  if(discriminant<=0)return undefined
   const root=Math.sqrt(discriminant)
   const enter=Math.max(0,(-projection-root)/lengthSquared),exit=Math.min(1,(-projection+root)/lengthSquared)
-  return Math.max(0,exit-enter)*Math.sqrt(lengthSquared)
+  return exit>enter?[enter,exit]:undefined
+}
+
+/** Merge overlapping intervals so one launcher contributes only once. */
+export function coverageIntervals(a:Point,b:Point,circles:readonly CoverageCircle[]):[number,number][] {
+  const intervals: [number,number][] = []
+  for (const circle of circles) {
+    const interval = circleInterval(a,b,circle)
+    if (interval) intervals.push(interval)
+  }
+  if (intervals.length < 2) return intervals
+  intervals.sort((a,b)=>a[0]-b[0])
+  const union = [intervals[0]]
+  for (const [enter,exit] of intervals.slice(1)) {
+    const last = union.at(-1)!
+    if (enter <= last[1]) last[1] = Math.max(last[1],exit)
+    else union.push([enter,exit])
+  }
+  return union
+}
+
+/** Exact length of a segment inside one threat's firing area. */
+export function threatExposure(a:Point,b:Point,threat:Omit<RouteThreat,'costPerUnit'>):number {
+  if (threat.additionalCircles?.length) {
+    return distance(a,b)*coverageIntervals(a,b,[threat,...threat.additionalCircles]).reduce((total,[enter,exit])=>total+exit-enter,0)
+  }
+  const interval = circleInterval(a,b,threat)
+  return interval ? distance(a,b)*(interval[1]-interval[0]) : 0
 }
 export function threatSegmentCost(a:Point,b:Point,threats:RouteThreat[]):number {
   return distance(a,b)+threats.reduce((n,t)=>n+threatExposure(a,b,t)*t.costPerUnit,0)

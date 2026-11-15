@@ -40,7 +40,7 @@ export const PROCUREMENT_CATALOG: readonly ProcurementDefinition[] = [
   { actionId: 'build-fob', kind: 'fob', cost: LOGISTICS_COSTS.fobConstruction, maxHealth: 100, capacity: FOB_INITIAL_CAPACITY, detail: `Operational forward field with capacity for ${FOB_INITIAL_CAPACITY} formations. Place within ${FOB_PLACEMENT_MAX_TERRITORY_GAP} units of the current territory edge.` },
   { actionId: 'build-decoy', kind: 'decoy', cost: LOGISTICS_COSTS.decoyConstruction, maxHealth: 60, detail: 'Creates a false airfield target that can draw hostile attacks.' },
   { actionId: 'build-aaa', kind: 'aaa', cost: LOGISTICS_COSTS.aaaConstruction, maxHealth: 100, detail: 'Gun defense: 1.9 locally, 2.85 with radar support.' },
-  { actionId: 'build-sam', kind: 'sam', cost: LOGISTICS_COSTS.samConstruction, maxHealth: 100, detail: 'Missile defense: 3.2 locally, 6.4 with standard radar support.' },
+  { actionId: 'build-sam', kind: 'sam', cost: LOGISTICS_COSTS.samConstruction, maxHealth: 100, detail: 'Fires within 3.2 map units and anywhere inside a linked radar’s detection zone.' },
 ]
 
 export const AIRFIELD_UPGRADE_CATALOG = UPGRADE_CATALOG.filter(upgrade=>upgrade.targets.includes('base'))

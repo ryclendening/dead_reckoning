@@ -33,7 +33,11 @@ describe('fighter engagement records',()=>{
   })
 
   it('records the current duel through the new schema without changing legacy replay fields',()=>{
-    const result=resolveRound(createScenario('fighter-duel'))
+    const state=createScenario('fighter-duel')
+    // This checks air-to-air pip reconciliation. Ground hits apply their own aircraft losses immediately.
+    state.playerAssets=state.playerAssets.filter(asset=>asset.kind!=='sam'&&asset.kind!=='aaa')
+    state.enemyAssets=state.enemyAssets.filter(asset=>asset.kind!=='sam'&&asset.kind!=='aaa')
+    const result=resolveRound(state)
     const sequence=result.combatSequences.find(item=>item.kind==='dogfight')
     expect(sequence?.kind).toBe('dogfight')
     if(!sequence||sequence.kind!=='dogfight')throw new Error('Expected fighter-duel to produce a dogfight.')

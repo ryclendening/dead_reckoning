@@ -1,4 +1,4 @@
-import { effectiveDefenseProfile, SAM_FLIGHT_SECONDS, AAA_FLIGHT_SECONDS, AAA_BURST_INTERVAL, type DefenseProfile, type DefenseSite } from '../equipmentRules'
+import { effectiveDefenseProfile, type DefenseSite } from '../equipmentRules'
 import { FLIGHT_SPEED, flightRangeFor } from '../flightRules'
 import { BASE_STRIKE_RANGE } from '../campaign'
 import { axialToPoint } from '../hex'
@@ -19,24 +19,18 @@ export function observedThreat(view: CpuPlanningView): number {
   }
   return Math.min(1,(100-view.homeHealth)/100+[...contacts.values()].reduce((a,b)=>a+b,0))
 }
-/** Expected strength removed before a radial six-unit strike release. A site
- * beyond the release ring can deliver another volley; a late hit cannot stop it. */
-function approachDamage(view:CpuPlanningView,site:DefenseSite,profile:DefenseProfile,angle:number):number {
-  const dx=site.position[0]-view.home[0],dy=site.position[1]-view.home[1],kind=site.kind
-  const along=dx*Math.cos(angle)+dy*Math.sin(angle), lateral=Math.abs(-dx*Math.sin(angle)+dy*Math.cos(angle))
-  const radius=profile.range
-  if(lateral>radius)return 0
-  const reach=Math.sqrt(radius*radius-lateral*lateral),enter=Math.min(20,along+reach),exit=Math.max(BASE_STRIKE_RANGE,along-reach)
-  const time=(enter-BASE_STRIKE_RANGE)/(40/22),last=(enter-exit)/(40/22)
-  if(enter<BASE_STRIKE_RANGE||time<(kind==='sam'?SAM_FLIGHT_SECONDS:AAA_FLIGHT_SECONDS))return 0
-  const shots=kind==='sam'?Math.min(profile.magazine,1+Math.floor(Math.min(time-SAM_FLIGHT_SECONDS,last)/Math.max(.01,profile.cooldown))):Math.min(profile.burstShots,1+Math.floor((time-AAA_FLIGHT_SECONDS)/AAA_BURST_INTERVAL))
-  return shots*profile.hitChance*profile.damage
-}
 function batteries(sites:readonly DefenseSite[]) {
   return sites.flatMap(site=>{const profile=effectiveDefenseProfile(site,sites);return profile?[{site,profile}]:[]})
 }
+function radialRoute(home:Point,angle:number,radii:number[]):Point[]{
+  return radii.map(radius=>[home[0]+Math.cos(angle)*radius,home[1]+Math.sin(angle)*radius])
+}
+function forecastDamage(defenses:ReturnType<typeof batteries>,route:Point[],speed:number,deadline:number):number{
+  return defenses.reduce((n,{site,profile})=>n+defenseDamageBy(route,speed,site.kind,deadline,profile),0)
+}
 function approachSurvival(view:CpuPlanningView,angle:number,defenses:ReturnType<typeof batteries>):number {
-  const damage=defenses.reduce((n,{site,profile})=>n+approachDamage(view,site,profile,angle),0)
+  const route=radialRoute(view.home,angle,[20,BASE_STRIKE_RANGE])
+  const damage=forecastDamage(defenses,route,FLIGHT_SPEED.fighter,(20-BASE_STRIKE_RANGE)/FLIGHT_SPEED.fighter)
   // The opening opponent has two fighter formations. Coverage is shared capacity,
   // rather than assuming every missile protects against every aircraft at once.
   return Math.max(0,1-damage/200)
@@ -74,14 +68,12 @@ export function defenseBenefits(view:CpuPlanningView,point:Point,kind:'sam'|'aaa
 }
 export function defenseNetworkBenefits(view:CpuPlanningView,nextSites:readonly DefenseSite[]):DefenseBenefits {
   const before=batteries(view.assets),after=batteries(nextSites)
-  const path=(angle:number,turn:number):Point[]=>[20,turn,20].map(r=>[view.home[0]+Math.cos(angle)*r,view.home[1]+Math.sin(angle)*r])
-  const damage=(defenses:typeof before,route:Point[],speed:number,deadline:number)=>defenses.reduce((n,{site,profile})=>n+defenseDamageBy(route,speed,site,deadline,profile),0)
   const reconTracks=new Set(view.cpu.traffic.filter(t=>t.role==='recon'&&t.trackId).map(t=>`${t.observedRound}:${t.trackId}`))
   const fighterView={...view,cpu:{...view.cpu,traffic:view.cpu.traffic.filter(t=>t.role!=='recon'&&!(t.role==='unknown'&&t.trackId&&reconTracks.has(`${t.observedRound}:${t.trackId}`)))}}
   const angles=approachBearings(fighterView),fighterThreat=observedThreat(fighterView)
   const opponentAttrition=angles.reduce((n,angle)=>{
-    const route=path(angle,BASE_STRIKE_RANGE),release=(20-BASE_STRIKE_RANGE)/FLIGHT_SPEED.fighter,end=release*2
-    const late=(defenses:typeof before)=>Math.min(200,damage(defenses,route,FLIGHT_SPEED.fighter,end))-Math.min(200,damage(defenses,route,FLIGHT_SPEED.fighter,release))
+    const route=radialRoute(view.home,angle,[20,BASE_STRIKE_RANGE,20]),release=(20-BASE_STRIKE_RANGE)/FLIGHT_SPEED.fighter,end=release*2
+    const late=(defenses:typeof before)=>Math.min(200,forecastDamage(defenses,route,FLIGHT_SPEED.fighter,end))-Math.min(200,forecastDamage(defenses,route,FLIGHT_SPEED.fighter,release))
     // Two opening fighter formations share finite defensive capacity. Do not
     // reward a pre-release hit again as damage to a future attacker.
     return n+Math.max(0,late(after)-late(before))/200
@@ -93,9 +85,9 @@ export function defenseNetworkBenefits(view:CpuPlanningView,nextSites:readonly D
     const angle=t.bearing??Math.atan2(t.position[1]-view.home[1],t.position[0]-view.home[0])
     // A radial collect-and-return envelope is an uncertain opportunity, not a
     // claim that this aircraft saw home or will repeat its previous mission.
-    const route=path(angle,3.8),end=2*(20-3.8)/FLIGHT_SPEED.recon
+    const route=radialRoute(view.home,angle,[20,3.8,20]),end=2*(20-3.8)/FLIGHT_SPEED.recon
     const strength=Math.max(25,Math.min(100,(t.strength??100)+25*Math.max(0,view.round-t.observedRound)))
-    reconDenial+=(Math.min(strength,damage(after,route,FLIGHT_SPEED.recon,end))-Math.min(strength,damage(before,route,FLIGHT_SPEED.recon,end)))/strength/(1+view.round-t.observedRound)
+    reconDenial+=(Math.min(strength,forecastDamage(after,route,FLIGHT_SPEED.recon,end))-Math.min(strength,forecastDamage(before,route,FLIGHT_SPEED.recon,end)))/strength/(1+view.round-t.observedRound)
   }
   return {coverage:coverageGain(view,before,after),opponentAttrition,reconDenial:reconDenial/Math.max(1,recon.size)}
 }

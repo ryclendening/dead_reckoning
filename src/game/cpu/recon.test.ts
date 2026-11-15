@@ -10,6 +10,7 @@ import { cpuReportAt,planCpu,prepareCpuRound } from './planner'
 import { generateActions,emptyEffects } from './actions'
 import { choosePackage } from './strategy'
 import { orderRisk,cpuRouteRisk,routeThreats } from './routes'
+import { threatExposure } from './routeSearch'
 import { collectionScorer } from './search'
 import { reconForecasts } from './recon'
 
@@ -47,12 +48,12 @@ describe('shared committed recon posture',()=>{
       const sites=side==='cpu'?state.playerAssets:state.enemyAssets
       const battery=sites.find(a=>a.kind===kind)!
       const baseline=resolveRound(state).weaponEffects.find(e=>e.sourceId===battery.id)!
-      sites.push({...battery,id:'opponent-radar',kind:'radar',position:[10,5]})
+      sites.push({...battery,id:'opponent-radar',kind:'radar',position:kind==='sam'?[5,2]:[10,5]})
       const result=resolveRound(state),track=result.unitTracks.find(t=>t.unitId===id)!
       const launch=result.weaponEffects.find(e=>e.sourceId===battery.id)!
       expect(launch.targetId).toBe(id)
       expect(launch.start).toBeLessThan(baseline.start)
-      expect(track.frames.find(frame=>frame.time===launch.start)!.position[0]).toBeLessThan(kind==='sam'?6.8:8.1)
+      expect(track.frames.find(frame=>frame.time===launch.start)!.position[0]).toBeLessThan(kind==='sam'?3.6:8.1)
       expect(result.behaviorIntervals.find(i=>i.unitId===id&&i.reason==='recon-conservative-condition')?.start).toBe(launch.start)
       launches.push(launch.start)
     }
@@ -105,16 +106,18 @@ describe('route and posture valuation',()=>{
   it('accounts for recovered radar links in route avoidance, impact risk and conservative turnback',()=>{
     const view=planningView(),recon=view.cpu.formations.find(f=>f.role==='recon')!
     const sam={id:'known-sam',kind:'sam' as const,position:[10,0] as Point,health:100,maxHealth:100,observedRound:1}
-    const radar={...sam,id:'known-radar',kind:'radar' as const,position:[10,5] as Point}
+    const radar={...sam,id:'known-radar',kind:'radar' as const,position:[7,0] as Point}
     const route:Point[]=[[0,0],[6,0]],order={...recon,reconPosture:'conservative' as const,route,routeIngress:route,plannedRecoveryFieldId:'e-base',sortieOrdered:true}
     view.cpu.sites=[sam]
     expect(routeThreats(view,'recon')[0].radius).toBe(3.2)
     expect(cpuRouteRisk(route,'recon',view.cpu.sites,recon,3)).toBe(0)
     expect(reconForecasts(view).paths(order)[0].order).toBe(order)
     view.cpu.sites=[sam,radar]
-    expect(routeThreats(view,'recon')[0].radius).toBe(6.4)
+    const samThreat=routeThreats(view,'recon')[0]
+    expect(samThreat).toMatchObject({position:sam.position,radius:3.2,additionalCircles:[{position:radar.position,radius:6.4}]})
+    expect(threatExposure([0,0],[14,0],samThreat)).toBeCloseTo(12.8)
     expect(cpuRouteRisk(route,'recon',view.cpu.sites,recon,3)).toBeGreaterThan(20)
-    expect(reconForecasts(view).paths(order)[0].order.route[1][0]).toBeCloseTo(3.6)
+    expect(reconForecasts(view).paths(order)[0].order.route[1][0]).toBeCloseTo(.6)
     view.cpu.sites=[sam,{...radar,operational:false}]
     expect(cpuRouteRisk(route,'recon',view.cpu.sites,recon,3)).toBe(0)
   })

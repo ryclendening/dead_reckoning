@@ -1,4 +1,4 @@
-import type { Asset } from './types'
+import type { Asset, Point } from './types'
 import { modifiedStat } from './upgrades'
 
 export const SAM_FLIGHT_SECONDS=1.05
@@ -13,8 +13,16 @@ export const RADAR_BASE_RANGE = 6.4
 export const RADAR_AAA_MULTIPLIER = 1.5
 export const radarRange = (asset: Pick<Asset, 'upgrades'>) => modifiedStat(asset, 'ground.radar.range', RADAR_BASE_RANGE)
 export type DefenseSite = Pick<Asset, 'id' | 'kind' | 'position' | 'health' | 'operational' | 'upgrades'>
-export interface EffectiveDefenseProfile extends DefenseProfile { baseRange: number; radarId?: string }
+export interface CoverageCircle { position: Point; radius: number }
+export interface RadarLink extends CoverageCircle { id: string }
+export interface EffectiveDefenseProfile extends DefenseProfile {
+  baseRange: number
+  radarLinks: RadarLink[]
+  coverage: CoverageCircle[]
+}
 export const isOperationalSite = (asset: Pick<DefenseSite, 'health' | 'operational'>) => asset.health > 0 && asset.operational !== false
+export const inCoverageCircle = (point: Point, { position, radius }: CoverageCircle) =>
+  Math.hypot(point[0] - position[0], point[1] - position[1]) <= radius + 1e-9
 
 export function defenseProfile(asset: Pick<Asset, 'kind' | 'upgrades'>): DefenseProfile | undefined {
   if (asset.kind === 'sam') return {
@@ -34,21 +42,21 @@ export function defenseProfile(asset: Pick<Asset, 'kind' | 'upgrades'>): Defense
   return undefined
 }
 
-/** A battery inside a same-side radar's coverage can engage to its own
- * extended radius. Callers supply only same-side sites they are allowed to know. */
+/** SAMs fire in their local circle or a linked radar's detection circle.
+ * AAA keeps one circle centered on the gun. Callers supply known same-side sites. */
 export function effectiveDefenseProfile(site: DefenseSite, sameSideSites: readonly DefenseSite[]): EffectiveDefenseProfile | undefined {
   const base = isOperationalSite(site) ? defenseProfile(site) : undefined
   if (!base) return undefined
-  let range = base.range, radarId: string | undefined
+  const links: RadarLink[] = []
   for (const radar of sameSideSites) {
     if (radar.kind !== 'radar' || !isOperationalSite(radar)) continue
-    const radius = radarRange(radar)
-    if (Math.hypot(site.position[0] - radar.position[0], site.position[1] - radar.position[1]) > radius) continue
-    const extended = site.kind === 'sam' ? radius : base.range * RADAR_AAA_MULTIPLIER
-    if (extended > range || extended === range && radarId !== undefined && radar.id < radarId) {
-      range = extended
-      radarId = radar.id
-    }
+    const link = { id: radar.id, position: radar.position, radius: radarRange(radar) }
+    if (inCoverageCircle(site.position, link)) links.push(link)
   }
-  return { ...base, range, baseRange: base.range, radarId }
+  links.sort((a, b) => a.id.localeCompare(b.id))
+  const range = site.kind === 'aaa' && links.length ? base.range * RADAR_AAA_MULTIPLIER : base.range
+  const radarLinks = site.kind === 'sam' ? links : links.slice(0, 1)
+  const coverage = [{ position: site.position, radius: range }]
+  if (site.kind === 'sam') coverage.push(...radarLinks)
+  return { ...base, range, baseRange: base.range, radarLinks, coverage }
 }

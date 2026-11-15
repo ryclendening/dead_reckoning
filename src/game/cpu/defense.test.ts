@@ -36,7 +36,7 @@ describe('territory-aware defensive capabilities',()=>{
     const s=fixture()
     const base=s.enemyAssets[0]
     s.cpu!.logistics=2
-    s.enemyAssets.push({...base,id:'e-sam',kind:'sam',position:[3,0],health:100},{...base,id:'e-radar',kind:'radar',position:[1,1],health:0})
+    s.enemyAssets.push({...base,id:'e-sam',kind:'sam',position:[3,0],health:100},{...base,id:'e-radar',kind:'radar',position:[3,1],health:0})
     const restored=maintainCpu(s),after=cpuPlanningView(restored)!
     expect(restored.cpu!.spending).toMatchObject([{action:'repair-defense',targetId:'e-radar'}])
     expect(after.assets.find(a=>a.id==='e-radar')?.health).toBe(25)

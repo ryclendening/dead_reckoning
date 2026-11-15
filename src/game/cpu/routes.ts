@@ -1,10 +1,10 @@
-import { effectiveDefenseProfile, isOperationalSite, radarRange, SAM_FLIGHT_SECONDS, AAA_FLIGHT_SECONDS, AAA_BURST_INTERVAL, type DefenseProfile } from '../equipmentRules'
+import { effectiveDefenseProfile, inCoverageCircle, isOperationalSite, radarRange, SAM_FLIGHT_SECONDS, AAA_FLIGHT_SECONDS, AAA_BURST_INTERVAL, type EffectiveDefenseProfile } from '../equipmentRules'
 import { BASE_STRIKE_RANGE } from '../campaign'
 import { FLIGHT_SPEED, MAX_FLIGHT_DISTANCE, flightRangeFor, flightSpeedFor, routeDistance } from '../flightRules'
 import { deriveRecoveryPlanningView, formationField, isOperationalAirfield } from '../forwardBasing'
 import { generateRouteTemplate, validateStrikeGeometry } from '../routeTemplates'
-import { findThreatAwareRoute, type RouteThreat, type ThreatRouteResult } from './routeSearch'
-import type { Asset, Point, Squadron } from '../types'
+import { coverageIntervals, findThreatAwareRoute, type RouteThreat, type ThreatRouteResult } from './routeSearch'
+import type { AssetKind, Point, Squadron } from '../types'
 import type { CpuPlanningView } from './planningView'
 import type { CpuDifficulty, CpuSiteReport } from './types'
 export const distance = (a: Point, b: Point) => Math.hypot(a[0]-b[0], a[1]-b[1])
@@ -15,25 +15,20 @@ export const CPU_PROFILES = {
 } satisfies Record<CpuDifficulty, { offsets: number[]; releases: number[]; expansions: number; sectors: number; purchases: number }>
 /** Expected known-site hits that can arrive by the chosen release time.
  * Geometry follows the planned ingress; no enemy orders or future rolls enter. */
-export function defenseDamageBy(route:Point[],speed:number,site:Pick<Asset,'kind'|'position'>,deadline:number,profile:DefenseProfile):number {
+export function defenseDamageBy(route:Point[],speed:number,kind:AssetKind,deadline:number,profile:EffectiveDefenseProfile):number {
   const windows:Array<[number,number]>=[]
   let elapsed=0
   for(let i=1;i<route.length;i++) {
-    const a=route[i-1],b=route[i],dx=b[0]-a[0],dy=b[1]-a[1],lengthSquared=dx*dx+dy*dy,duration=Math.sqrt(lengthSquared)/speed
-    if(lengthSquared>1e-10) {
-      const x=a[0]-site.position[0],y=a[1]-site.position[1],projection=x*dx+y*dy
-      const discriminant=projection*projection-lengthSquared*(x*x+y*y-profile.range*profile.range)
-      if(discriminant>0) {
-        const root=Math.sqrt(discriminant),enter=Math.max(0,(-projection-root)/lengthSquared),exit=Math.min(1,(-projection+root)/lengthSquared)
-        if(exit>enter)windows.push([elapsed+enter*duration,elapsed+exit*duration])
-      }
+    const a=route[i-1],b=route[i],duration=distance(a,b)/speed
+    for(const [enter,exit] of coverageIntervals(a,b,profile.coverage)){
+      windows.push([elapsed+enter*duration,elapsed+exit*duration])
     }
     elapsed+=duration
   }
   let hits=0
-  if(site.kind==='aaa'&&windows.length) {
+  if(kind==='aaa'&&windows.length) {
     for(let shot=0;shot<profile.burstShots;shot++)if(windows[0][0]+shot*AAA_BURST_INTERVAL+AAA_FLIGHT_SECONDS<=deadline+1e-8)hits++
-  }else if(site.kind==='sam') {
+  }else if(kind==='sam') {
     let nextFire=0,launched=0
     for(const [enter,exit] of windows) {
       let fire=Math.max(enter,nextFire)
@@ -51,12 +46,16 @@ export function cpuRouteRisk(route: Point[], role: Squadron['role'], sites: CpuS
   const speed=flightSpeedFor({role,...(typeof configuration==='string'?{aircraftTypeId:configuration}:configuration)})
   for (const site of sites) {
     if(!isOperationalSite(site)||!['sam','aaa','radar'].includes(site.kind))continue
-    const profile=effectiveDefenseProfile(site,sites),radius=profile?.range??radarRange(site)
-    if(profile&&impactBy!==undefined){risk+=defenseDamageBy(route,speed,site,impactBy,profile);continue}
+    const profile=effectiveDefenseProfile(site,sites)
+    if(profile&&impactBy!==undefined){risk+=defenseDamageBy(route,speed,site.kind,impactBy,profile);continue}
+    const circles=profile?.coverage??[{position:site.position,radius:radarRange(site)}]
     let inside = 0
     for (let i=1;i<route.length;i++) {
       const a=route[i-1], b=route[i], length=distance(a,b), samples=Math.max(1,Math.ceil(length/.35))
-      for (let j=0;j<samples;j++) { const t=(j+.5)/samples; if(distance([a[0]+(b[0]-a[0])*t,a[1]+(b[1]-a[1])*t],site.position)<=radius) inside+=length/samples }
+      for (let j=0;j<samples;j++) {
+        const t=(j+.5)/samples, point:Point=[a[0]+(b[0]-a[0])*t,a[1]+(b[1]-a[1])*t]
+        if(circles.some(circle=>inCoverageCircle(point,circle)))inside+=length/samples
+      }
     }
     const seconds=inside/speed
     // Three available rounds, site-wide cooldown; stale ammunition is conservatively replenished.
@@ -69,8 +68,22 @@ export interface RouteWork { expansions: number; rejected: string[]; routeCache?
  * payload/loss estimates and mission choice still use the shared engine model. */
 export function routeThreats(view:CpuPlanningView,role:Squadron['role'],formation?:Squadron):RouteThreat[] {
   const sites=view.cpu.sites
-  const threats:RouteThreat[]=sites.filter(s=>isOperationalSite(s)&&['sam','aaa','radar'].includes(s.kind)).map(s=>{const p=effectiveDefenseProfile(s,sites);return {position:s.position,
-    radius:p?.range??radarRange(s),costPerUnit:s.kind==='sam'?.35*p!.hitChance*p!.damage/Math.max(.01,p!.cooldown)/flightSpeedFor(formation??{role}):s.kind==='aaa'?.35*p!.hitChance*p!.damage*p!.burstShots/(p!.range*2):.35*1.5/flightSpeedFor(formation??{role})}})
+  const speed=flightSpeedFor(formation??{role})
+  const threats:RouteThreat[]=[]
+  for(const site of sites){
+    if(!isOperationalSite(site))continue
+    if(site.kind==='radar'){
+      threats.push({position:site.position,radius:radarRange(site),costPerUnit:.35*1.5/speed})
+      continue
+    }
+    const profile=effectiveDefenseProfile(site,sites)
+    if(!profile)continue
+    const [local,...additionalCircles]=profile.coverage
+    const costPerUnit=site.kind==='sam'
+      ? .35*profile.hitChance*profile.damage/Math.max(.01,profile.cooldown)/speed
+      : .35*profile.hitChance*profile.damage*profile.burstShots/(profile.range*2)
+    threats.push({...local,costPerUnit,additionalCircles})
+  }
   const tracks=new Map<string,typeof view.cpu.traffic>()
   for(const contact of view.cpu.traffic.filter(t=>t.role==='fighter'&&view.round-t.observedRound<=2)) {
     const key=contact.identity??contact.trackId??contact.position.join(',')

@@ -273,25 +273,36 @@ function DefenseRangeLabel({radius,color,children}:{radius:number;color:string;c
   return <Text position={[0,.14,-radius-.22]} rotation={[-Math.PI/2,0,0]} fontSize={.19} color={color} outlineWidth={.015} outlineColor="#0b1816">{children}</Text>
 }
 
-function RadarCoverage({asset,enemy}:{asset:Asset;enemy:boolean}){
-  const radius=radarRange(asset),color=enemy?'#f8a0a1':'#75cfff'
+function RadarCoverage({asset,enemy,samGuidance,samPreview}:{asset:Asset;enemy:boolean;samGuidance:boolean;samPreview:boolean}){
+  const radius=radarRange(asset)
+  const guidesSam=samGuidance||samPreview
+  const color=enemy?'#f8a0a1':guidesSam?'#a9efae':'#75cfff'
+  const label=samGuidance?'RADAR · SAM COVERAGE':samPreview?'RADAR · SAM PREVIEW':'RADAR DETECTION'
   return <group position={to3(asset.position,.1)}>
-    <Ring radius={radius} color={color} opacity={.72} dashSize={.4} gapSize={.23} lineWidth={1.5}/>
-    <DefenseRangeLabel radius={radius} color={color}>{`${enemy?'ENEMY ':''}RADAR · ${formatDefenseRange(radius)}`}</DefenseRangeLabel>
+    <Ring radius={radius} color={color} opacity={.78} dashSize={.4} gapSize={.23} lineWidth={guidesSam?2:1.5}/>
+    <DefenseRangeLabel radius={radius} color={color}>{`${enemy?'ENEMY ':''}${label} · ${formatDefenseRange(radius)}`}</DefenseRangeLabel>
   </group>
 }
 
-function BatteryCoverage({asset,profile,radar,enemy=false,preview=false}:{asset:Asset;profile:EffectiveDefenseProfile;radar?:Asset;enemy?:boolean;preview?:boolean}){
+function RadarLinkLine({battery,radar,color}:{battery:Point;radar:Point;color:string}){
+  const [x,z]=battery,[radarX,radarZ]=radar
+  const points=useMemo<[number,number,number][]>(()=>[[radarX,.2,radarZ],[x,.2,z]],[x,z,radarX,radarZ])
+  return <Line points={points} color={color} transparent opacity={.65} dashed dashSize={.18} gapSize={.12} depthTest={false}/>
+}
+
+function BatteryCoverage({asset,profile,enemy=false,preview=false}:{asset:Asset;profile:EffectiveDefenseProfile;enemy?:boolean;preview?:boolean}){
   const {range,baseRange}=profile
-  const color=enemy?'#ff9b76':radar?'#a9efae':'#f1c878'
-  const [x,z]=asset.position,radarX=radar?.position[0],radarZ=radar?.position[1]
-  const link=useMemo<[number,number,number][]|undefined>(()=>radarX!==undefined&&radarZ!==undefined?[[radarX,.2,radarZ],[x,.2,z]]:undefined,[x,z,radarX,radarZ])
-  const label=`${preview?'PREVIEW · ':enemy?'ENEMY ':''}${asset.kind.toUpperCase()} · ${radar?`${formatDefenseRange(baseRange)} → ` : ''}${formatDefenseRange(range)}${radar?' · RADAR LINKED':''}`
+  const linked=profile.radarLinks.length>0
+  const color=enemy?'#ff9b76':linked?'#a9efae':'#f1c878'
+  const description=asset.kind==='sam'? `SAM LOCAL · ${formatDefenseRange(range)}`
+    : linked? `AAA · ${formatDefenseRange(baseRange)} → ${formatDefenseRange(range)} · RADAR LINKED`
+    : `AAA LOCAL · ${formatDefenseRange(range)}`
+  const label=`${preview?'PREVIEW · ':enemy?'ENEMY ':''}${description}`
   return <>
     <group position={to3(asset.position,.12)}><Ring radius={range} color={color} opacity={.68} dashed={false} lineWidth={1.5}/>
       <DefenseRangeLabel radius={range} color={color}>{label}</DefenseRangeLabel>
     </group>
-    {link?<Line points={link} color={color} transparent opacity={.65} dashed dashSize={.18} gapSize={.12} depthTest={false}/>:null}
+    {profile.radarLinks.map(radar=><RadarLinkLine key={radar.id} battery={asset.position} radar={radar.position} color={color}/>)}
   </>
 }
 function Defense({asset,enemy=true,selected=false,missiles=SAM_MISSILES_PER_ROUND,onSelect}:{asset:Asset;missiles?:number;enemy?:boolean;selected?:boolean;onSelect?:()=>void}){
@@ -723,15 +734,27 @@ function BattlefieldScene({squadrons,assets,playerAssets,mappedAreas,presentatio
     ? displayedPlayerAssets.filter(asset=>positionedPlacementIds.includes(asset.id))
     : displayedPlayerAssets
   const knownEnemyDefenseSites=displayedEnemyAssets.filter(asset=>!asset.hidden&&asset.intel==='confirmed')
+  const constructionPoint=construction?.placement??constructionHover
+  const previewBattery:Asset|undefined=constructionPoint&&construction&&(construction.kind==='sam'||construction.kind==='aaa')&&construction.isValid(constructionPoint)
+    ? {id:'construction-preview',kind:construction.kind,position:constructionPoint,health:100,maxHealth:100,intel:'confirmed',confidence:100,hidden:false,struck:false}:undefined
+  const previewDefense=previewBattery?effectiveDefenseProfile(previewBattery,friendlyDefenseSites):undefined
+  const previewSamRadars=previewBattery?.kind==='sam'?previewDefense?.radarLinks??[]:[]
+  const selectedDefenseId=phase==='adapt'?economySelectionId:selectedAssetId
   const defenseOverlays=phase==='debrief'?[]:([
     {sites:friendlyDefenseSites,enemy:false},{sites:knownEnemyDefenseSites,enemy:true}
-  ]).flatMap(({sites,enemy})=>sites.map(asset=>{
-    const selected=asset.id===(phase==='adapt'?economySelectionId:selectedAssetId)
-    if((phase==='deploy'&&enemy)||(!showDefenseCoverage&&phase!=='deploy'&&!selected))return null
-    const profile=effectiveDefenseProfile(asset,sites)
-    return profile?<BatteryCoverage key={asset.id} asset={asset} profile={profile} radar={sites.find(site=>site.id===profile.radarId)} enemy={enemy}/>
-      :asset.kind==='radar'&&isOperationalSite(asset)?<RadarCoverage key={asset.id} asset={asset} enemy={enemy}/>:null
-  }))
+  ]).flatMap(({sites,enemy})=>{
+    if(phase==='deploy'&&enemy)return []
+    const profiles=sites.map(asset=>({asset,profile:effectiveDefenseProfile(asset,sites)}))
+    const samRadarIds=new Set(profiles.flatMap(({asset,profile})=>asset.kind==='sam'?profile?.radarLinks.map(radar=>radar.id)??[]:[]))
+    const selectedRadars=profiles.find(({asset})=>asset.id===selectedDefenseId)?.profile?.radarLinks??[]
+    return profiles.map(({asset,profile})=>{
+      const samPreview=!enemy&&previewSamRadars.some(radar=>radar.id===asset.id)
+      const show=showDefenseCoverage||phase==='deploy'||asset.id===selectedDefenseId||samPreview||selectedRadars.some(radar=>radar.id===asset.id)
+      if(!show)return null
+      if(profile)return <BatteryCoverage key={asset.id} asset={asset} profile={profile} enemy={enemy}/>
+      return asset.kind==='radar'&&isOperationalSite(asset)?<RadarCoverage key={asset.id} asset={asset} enemy={enemy} samGuidance={samRadarIds.has(asset.id)} samPreview={samPreview}/>:null
+    })
+  })
   const selectFriendlyAsset=(asset:Asset)=>{
     const airfield=asset.kind==='base'||asset.kind==='fob'
     if(phase==='deploy'){onPlacementSelect?.(asset.id);return}
@@ -793,10 +816,6 @@ function BattlefieldScene({squadrons,assets,playerAssets,mappedAreas,presentatio
     applyDraft(next)
   }
   const mapMove=(e:ThreeEvent<PointerEvent>)=>{if(phase==='adapt'&&construction){const hit=e.ray.intersectPlane(groundPlane,new THREE.Vector3());setConstructionHover(snapToHex(hit?[hit.x,hit.z]:[e.point.x,e.point.z]))}}
-  const constructionPoint=construction?.placement??constructionHover
-  const previewBattery:Asset|undefined=constructionPoint&&construction&&(construction.kind==='sam'||construction.kind==='aaa')&&construction.isValid(constructionPoint)
-    ? {id:'construction-preview',kind:construction.kind,position:constructionPoint,health:100,maxHealth:100,intel:'confirmed',confidence:100,hidden:false,struck:false}:undefined
-  const previewDefense=previewBattery?effectiveDefenseProfile(previewBattery,friendlyDefenseSites):undefined
   const editableWaypoints=editingReturn?(recoveryRoute??[]).slice(1,-1).map((position,index)=>({position,routeIndex:index+1,label:`R${index+1}`,release:false})):selected.mission==='base-strike'?selected.routeIngress.slice(1).map((position,index,array)=>({position,routeIndex:index+1,label:index===array.length-1?'S':String(index+1),release:index===array.length-1})):selected.routeIngress.slice(1,6).map((position,index)=>({position,routeIndex:index+1,label:String(index+1),release:false}))
   return <>
     <CameraRig phase={phase} friendlyTerritory={resolvedTerritory} planningBounds={resolvedPlanningBounds} presentationBounds={resolvedPresentationBounds} focusPoint={cameraFocus} focusRequestKey={focusRequestKey} followKey={followId} poseMemory={poseMemory}/>
@@ -804,7 +823,7 @@ function BattlefieldScene({squadrons,assets,playerAssets,mappedAreas,presentatio
     <ambientLight intensity={1.1}/><directionalLight position={[-5,10,5]} intensity={2.1} castShadow shadow-mapSize={[1024,1024]}/>
     <Terrain phase={phase} presentationBounds={resolvedPresentationBounds} planningBounds={resolvedPlanningBounds} isPlacementValid={phase==='deploy'?isPlacementValid:phase==='adapt'?construction?.isValid:undefined}/><FogOfWar mappedAreas={mappedAreas} observations={liveMapObservations} presentationBounds={resolvedPresentationBounds} friendlyTerritory={resolvedTerritory}/><TerritoryOverlay territory={resolvedTerritory} showFobPlacementReach={phase==='adapt'&&construction?.kind==='fob'}/>{phase==='deploy'&&placement?<PlacementHex position={placement.position} placed={positionedPlacementIds?.includes(placement.id)??false}/>:null}{construction&&constructionPoint?<ConstructionPlacementGhost kind={construction.kind} position={constructionPoint} valid={construction.isValid(constructionPoint)}/>:null}
     {defenseOverlays}
-    {previewBattery&&previewDefense?<BatteryCoverage asset={previewBattery} profile={previewDefense} radar={friendlyDefenseSites.find(site=>site.id===previewDefense.radarId)} preview/>:null}
+    {previewBattery&&previewDefense?<BatteryCoverage asset={previewBattery} profile={previewDefense} preview/>:null}
     {assignedStrike?<StrikeReleasePreview center={assignedStrike.position}/>:null}
     {displayedPlayerAssets.map(a=>{const chosen=a.id===selectedAssetId||phase==='deploy'&&a.id===placementId||phase==='plan'&&a.id===planningBaseId||phase==='execute'&&a.id===executionBaseId||phase==='adapt'&&a.id===economySelectionId;return a.kind==='base'||a.kind==='fob'||a.kind==='decoy'?<Runway key={a.id} asset={a} selected={chosen} onSelect={()=>selectFriendlyAsset(a)}/>:<Defense key={a.id} asset={a} enemy={false} selected={chosen} missiles={samStatusForPhase(a.id,phase,executionResult?.weaponEffects,seconds,a).remaining} onSelect={()=>selectFriendlyAsset(a)}/>})}
     {phase==='plan'||phase==='adapt'&&!construction?formationBaseGroups(squadrons,playerAssets).map(group=><AirfieldFormationPips key={`airfield-pips-${group.base.id}`} base={group.base} formations={group.formationIds.flatMap(id=>squadrons.find(item=>item.id===id)??[])} selectedId={phase==='adapt'?economySelectionId??'':selectedId} plannedFormationIds={phase==='adapt'?[]:plannedFormationIds} selectingProtectTarget={selectingProtectTarget} resupply={phase==='adapt'} readOnly={lockedPlan} onSelect={id=>phase==='adapt'?onEconomyFormationSelect?.(id):selectingProtectTarget?onPlanningProtectFlight?.(id):onPlanningFormationSelect?.(id)}/>):null}

@@ -36,11 +36,17 @@ export function reconForecasts(view:CpuPlanningView):ReconForecasts {
       const recovery=view.assets.find(a=>a.id===order.plannedRecoveryFieldId)?.position??view.home
       const hazards:Array<{key:string;distance:number;prefix:Point[];probability:number;launchRisk?:number}>=[]
       for(const site of view.cpu.sites.filter(s=>s.health>0)) {
-        const profile=effectiveDefenseProfile(site,view.cpu.sites),entry=profile&&firstEntry(order.route,site.position,profile.range)
+        const profile=effectiveDefenseProfile(site,view.cpu.sites)
+        if(!profile)continue
+        let entry:ReturnType<typeof firstEntry>
+        for(const circle of profile.coverage){
+          const candidate=firstEntry(order.route,circle.position,circle.radius)
+          if(candidate&&(!entry||candidate.distance<entry.distance))entry=candidate
+        }
         if(entry){
           const returnSeconds=distance(entry.prefix.at(-1)!,recovery)/flightSpeedFor(order)
-          const shots=site.kind==='sam'?(SAM_FLIGHT_SECONDS<=returnSeconds?1:0):Math.max(0,Math.min(profile!.burstShots,1+Math.floor((returnSeconds-AAA_FLIGHT_SECONDS)/AAA_BURST_INTERVAL)))
-          hazards.push({key:site.id,...entry,probability:1,launchRisk:shots*profile!.hitChance*profile!.damage})
+          const shots=site.kind==='sam'?(SAM_FLIGHT_SECONDS<=returnSeconds?1:0):Math.max(0,Math.min(profile.burstShots,1+Math.floor((returnSeconds-AAA_FLIGHT_SECONDS)/AAA_BURST_INTERVAL)))
+          hazards.push({key:site.id,...entry,probability:1,launchRisk:shots*profile.hitChance*profile.damage})
         }
       }
       const strength=order.strength??order.aircraft/Math.max(1,order.maxAircraft)*100

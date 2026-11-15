@@ -36,6 +36,15 @@ describe('expanded tactical cards',()=>{
     expect(render(0)).toContain('Local range · 1.9 map units · No radar link')
   })
 
+  it('keeps the local SAM radius distinct from the radar detection zone',()=>{
+    const assets=createMatch().playerAssets
+    const sam={...assets.find(asset=>asset.kind==='sam')!,position:[0,0] as [number,number]}
+    const radar={...assets.find(asset=>asset.kind==='radar')!,position:[5,0] as [number,number],name:'WATCH'}
+    const html=renderToStaticMarkup(<AssetInspector asset={sam} sites={[sam,radar]} phase="plan" seconds={0} onClose={noop}/>)
+    expect(html).toContain('Local range · 3.2 map units')
+    expect(html).toContain('Radar guided · Covers the detection zone of WATCH')
+  })
+
   it('keeps friendly aircraft count, activity, and morale in the selected card',()=>{
     const flight=createMatch().squadrons[0]
     const html=renderToStaticMarkup(<AircraftInspector flight={flight} frame={frame} visibility="friendly" onClose={noop}/>)
