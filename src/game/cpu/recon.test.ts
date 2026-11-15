@@ -9,7 +9,7 @@ import { cpuPlanningView } from './planningView'
 import { cpuReportAt,planCpu,prepareCpuRound } from './planner'
 import { generateActions,emptyEffects } from './actions'
 import { choosePackage } from './strategy'
-import { orderRisk,cpuRouteRisk } from './routes'
+import { orderRisk,cpuRouteRisk,routeThreats } from './routes'
 import { collectionScorer } from './search'
 import { reconForecasts } from './recon'
 
@@ -40,6 +40,25 @@ function planningView() {
 }
 
 describe('shared committed recon posture',()=>{
+  it.each(['sam','aaa'] as const)('lets %s engage at extended range for both sides',kind=>{
+    const launches=[]
+    for(const side of ['player','cpu'] as const) {
+      const {state,id}=scenario(side,'conservative',kind)
+      const sites=side==='cpu'?state.playerAssets:state.enemyAssets
+      const battery=sites.find(a=>a.kind===kind)!
+      const baseline=resolveRound(state).weaponEffects.find(e=>e.sourceId===battery.id)!
+      sites.push({...battery,id:'opponent-radar',kind:'radar',position:[10,5]})
+      const result=resolveRound(state),track=result.unitTracks.find(t=>t.unitId===id)!
+      const launch=result.weaponEffects.find(e=>e.sourceId===battery.id)!
+      expect(launch.targetId).toBe(id)
+      expect(launch.start).toBeLessThan(baseline.start)
+      expect(track.frames.find(frame=>frame.time===launch.start)!.position[0]).toBeLessThan(kind==='sam'?6.8:8.1)
+      expect(result.behaviorIntervals.find(i=>i.unitId===id&&i.reason==='recon-conservative-condition')?.start).toBe(launch.start)
+      launches.push(launch.start)
+    }
+    expect(launches[0]).toBe(launches[1])
+  })
+
   it.each(['sam','aaa','fighter'] as const)('applies the same conservative %s trigger on both sides',threat=>{
     const retreats=[]
     for(const side of ['player','cpu'] as const) {
@@ -83,6 +102,23 @@ describe('shared committed recon posture',()=>{
 })
 
 describe('route and posture valuation',()=>{
+  it('accounts for recovered radar links in route avoidance, impact risk and conservative turnback',()=>{
+    const view=planningView(),recon=view.cpu.formations.find(f=>f.role==='recon')!
+    const sam={id:'known-sam',kind:'sam' as const,position:[10,0] as Point,health:100,maxHealth:100,observedRound:1}
+    const radar={...sam,id:'known-radar',kind:'radar' as const,position:[10,5] as Point}
+    const route:Point[]=[[0,0],[6,0]],order={...recon,reconPosture:'conservative' as const,route,routeIngress:route,plannedRecoveryFieldId:'e-base',sortieOrdered:true}
+    view.cpu.sites=[sam]
+    expect(routeThreats(view,'recon')[0].radius).toBe(3.2)
+    expect(cpuRouteRisk(route,'recon',view.cpu.sites,recon,3)).toBe(0)
+    expect(reconForecasts(view).paths(order)[0].order).toBe(order)
+    view.cpu.sites=[sam,radar]
+    expect(routeThreats(view,'recon')[0].radius).toBe(6.4)
+    expect(cpuRouteRisk(route,'recon',view.cpu.sites,recon,3)).toBeGreaterThan(20)
+    expect(reconForecasts(view).paths(order)[0].order.route[1][0]).toBeCloseTo(3.6)
+    view.cpu.sites=[sam,{...radar,operational:false}]
+    expect(cpuRouteRisk(route,'recon',view.cpu.sites,recon,3)).toBe(0)
+  })
+
   it('does not credit observations beyond a conservative launch-triggered turnback, or erase the triggering shot',()=>{
     const view=planningView(),recon=view.cpu.formations.find(f=>f.role==='recon')!
     view.cpu.sites=[{id:'known-sam',kind:'sam',position:[10,0],health:100,maxHealth:100,observedRound:1}]

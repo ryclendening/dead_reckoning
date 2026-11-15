@@ -3,7 +3,7 @@ import { Check, ChevronRight, X } from 'lucide-react'
 import { economyAttentionTargets, economyCommandForQuote, economyQuotesFor, findMatchingEconomyQuote } from '../game/economy'
 import { formatCash } from '../game/economyRules'
 import { upgradeDefinition } from '../game/upgrades'
-import { defenseProfile } from '../game/equipmentRules'
+import { DefenseSiteDetails } from './DefenseSiteDetails'
 import { assetCardData } from '../game/unitCards'
 import type { EconomyActionId, EconomyActionQuote, EconomyCommand, EconomyTarget, MatchState } from '../game/types'
 
@@ -106,7 +106,6 @@ export function ResupplyPanel({
     else buy(quote)
   }
 
-  const defense = selectedAsset ? defenseProfile(selectedAsset) : undefined
   const repairUnavailable = friendlyAsset && friendlyAsset.health < friendlyAsset.maxHealth && !quotes.some(quote => quote.id.startsWith('repair-'))
     ? friendlyAsset.kind === 'sam' ? 'SAM damage is permanent.' : 'This site has no available repairs.'
     : undefined
@@ -145,8 +144,9 @@ export function ResupplyPanel({
         </header>
         {assetData ? <progress value={assetData.health} max={assetData.maxHealth} aria-label="Site health"/> : null}
         {assetData ? <p className="adapt-site-status">
-          {friendlyAsset ? '' : 'Enemy · '}{assetData.status}{defense ? ` · Range ${defense.range.toFixed(1)}` : ''}
+          {friendlyAsset ? '' : 'Enemy · '}{assetData.status}
         </p> : null}
+        {selectedAsset ? <DefenseSiteDetails asset={selectedAsset} sites={friendlyAsset ? match.playerAssets : match.enemyAssets.filter(asset => !asset.hidden && asset.intel === 'confirmed')} enemy={!friendlyAsset}/> : null}
         {repairUnavailable ? <p className="adapt-site-status">{repairUnavailable}</p> : null}
         {based.length ? <div className="adapt-based-flights" aria-label="Based formations">{based.map(item =>
           <button type="button" key={item.id} onClick={() => chooseTarget({kind:'squadron',id:item.id})}>{item.callsign} <span>{item.aircraft}/{item.maxAircraft}</span></button>

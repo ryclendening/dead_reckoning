@@ -73,8 +73,11 @@ describe('campaign outcomes',()=>{
   })
 
   it('queues one deterministic missile and applies health only after impact',()=>{
-    const original={...createMatch(7302),cpu:undefined},target=original.enemyAssets.find(asset=>asset.id==='e-base')!
-    const confirmed={...original,enemyAssets:original.enemyAssets.map(asset=>asset.id===target.id?{...asset,intel:'confirmed' as const,confidence:100,hidden:false}:asset)}
+    const original=createMatch(7302),target=original.enemyAssets.find(asset=>asset.id==='e-base')!
+    // Isolate launch and impact timing from interception and ground fire.
+    original.cpu!.plan={round:original.round,objective:'defend',reason:'Grounded for impact timing.',candidates:[],
+      orders:original.cpu!.formations.map(formation=>({...formation,sortieOrdered:false}))}
+    const confirmed={...original,enemyAssets:original.enemyAssets.map(asset=>asset.id===target.id?{...asset,intel:'confirmed' as const,confidence:100,hidden:false}:{...asset,operational:false})}
     const fighter=confirmed.squadrons.find(squadron=>squadron.id==='viper')!,route=buildGroundStrikeRoute(confirmed,fighter.id,'e-base')!
     const state={...confirmed,squadrons:confirmed.squadrons.map(squadron=>squadron.id===fighter.id?{...squadron,mission:'base-strike' as const,strikeTargetId:'e-base',route,routeIngress:route,plannedRecoveryFieldId:'p-base'}:{...squadron,aircraft:0,strength:0})}
     const simulation=createRoundSimulation(state)

@@ -59,6 +59,9 @@
   top: 8px;
   right: 8px;
   display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  max-width: calc(100% - 16px);
   gap: 4px;
 }
 .game-frame .map-tools > *, .game-frame .map-tools > .world-map-toggle {
@@ -84,6 +87,9 @@
 }
 .map-tools > details > summary::-webkit-details-marker { display: none; }
 .map-tools > details[open] > summary { background: #263f34; }
+.game-frame .map-tools > .defense-map-toggle[aria-pressed="true"] { background: #263f34; color: #b5efbc; }
+.defense-site-detail { display: block; color: #b5efbc; line-height: 1.4; }
+.deployment-panel > .defense-site-detail { margin: 0 0 8px; }
 .map-tools > details svg, .map-tools > button svg { width: 14px; height: 14px; flex: none; }
 .game-frame .map-tools > details > div, .phase-execute .map-tools .observe-feed {
   position: absolute;

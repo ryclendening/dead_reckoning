@@ -1,4 +1,5 @@
 import { axialToPoint, HEX_ROW, HEX_WIDTH } from './hex'
+import { RADAR_BASE_RANGE } from './equipmentRules'
 import type { Point, WorldBounds } from './types'
 
 // Leave enough room for a full opening territory and a direct, fuel-valid
@@ -68,6 +69,7 @@ export function campaignEnemySites(seed: number, bounds: WorldBounds, base: Poin
   const rings = [['aaa', 1.2, 1.9], ['sam', 1.8, 3.2], ['radar', 2, 4], ['decoy', 2.5, 4]] as const
   for (const [kind, min, max] of rings) {
     const position = candidates.find(point => distance(point, base) >= min && distance(point, base) <= max
+      && (kind !== 'radar' || [sites.sam, sites.aaa].every(battery => distance(point, battery) <= RADAR_BASE_RANGE))
       && occupied.every(other => distance(point, other) >= ENEMY_SITE_SPACING))
     if (!position) throw new Error(`No legal opening ${kind} site.`)
     sites[kind] = position

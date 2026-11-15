@@ -1,5 +1,5 @@
 import { aircraftSensorRange } from '../aircraftTypes'
-import { defenseProfile, SAM_FLIGHT_SECONDS, AAA_FLIGHT_SECONDS, AAA_BURST_INTERVAL } from '../equipmentRules'
+import { effectiveDefenseProfile, SAM_FLIGHT_SECONDS, AAA_FLIGHT_SECONDS, AAA_BURST_INTERVAL } from '../equipmentRules'
 import { flightSpeedFor } from '../flightRules'
 import type { Point, Squadron } from '../types'
 import type { CpuPlanningView } from './planningView'
@@ -36,7 +36,7 @@ export function reconForecasts(view:CpuPlanningView):ReconForecasts {
       const recovery=view.assets.find(a=>a.id===order.plannedRecoveryFieldId)?.position??view.home
       const hazards:Array<{key:string;distance:number;prefix:Point[];probability:number;launchRisk?:number}>=[]
       for(const site of view.cpu.sites.filter(s=>s.health>0)) {
-        const profile=defenseProfile(site),entry=profile&&firstEntry(order.route,site.position,profile.range)
+        const profile=effectiveDefenseProfile(site,view.cpu.sites),entry=profile&&firstEntry(order.route,site.position,profile.range)
         if(entry){
           const returnSeconds=distance(entry.prefix.at(-1)!,recovery)/flightSpeedFor(order)
           const shots=site.kind==='sam'?(SAM_FLIGHT_SECONDS<=returnSeconds?1:0):Math.max(0,Math.min(profile!.burstShots,1+Math.floor((returnSeconds-AAA_FLIGHT_SECONDS)/AAA_BURST_INTERVAL)))

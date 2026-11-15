@@ -12,7 +12,7 @@ import { validateGroundStrikeOrder, validateStrikeGeometry } from './routeTempla
 import { facingAfterMove } from './heading'
 import { aircraftAtStrength, EXECUTION_SECONDS, MAX_FLIGHT_DISTANCE, flightRangeFor, flightSpeedFor, missionDistance, routeDistance } from './flightRules'
 import { aircraftSensorRange, aircraftType } from './aircraftTypes'
-import { defenseProfile, radarRange, RADAR_BASE_RANGE, SAM_FLIGHT_SECONDS, AAA_FLIGHT_SECONDS, AAA_BURST_INTERVAL } from './equipmentRules'
+import { defenseProfile, effectiveDefenseProfile, radarRange, RADAR_BASE_RANGE, SAM_FLIGHT_SECONDS, AAA_FLIGHT_SECONDS, AAA_BURST_INTERVAL } from './equipmentRules'
 import { cpuFlights, cpuReportAt } from './cpu/planner'
 import { settleCpuRound } from './cpu/settlement'
 import type { CpuSiteReport, CpuTraffic } from './cpu/types'
@@ -589,21 +589,25 @@ function* simulateRoundTicks(state:MatchState, recordOpponentView:boolean):Gener
       else if(isCampaign(state)&&state.baseExposure>=ENEMY_TARGETING_THRESHOLD&&closestSegmentDistance(followingLeg,unit.position,base)<=BASE_STRIKE_RANGE+.001){const home=playerAssets.find(asset=>asset.kind==='base');if(home&&home.health>0)launchStrike(unit,home,'air-to-ground-missile',closestPointOnSegment(followingLeg,unit.position,base))}
     }
     // 6-7: tick-level defense launches; damage resolves through queued impacts.
-    for(const asset of [...assets,...playerAssets].filter((a):a is Asset&{kind:'sam'|'aaa'}=>(a.kind==='sam'||a.kind==='aaa')&&a.health>0&&a.operational!==false))for(const target of units.filter(u=>!terminal(u)&&u.friendly===assets.includes(asset)).sort((a,b)=>distance(asset.position,a.position)-distance(asset.position,b.position)||a.id.localeCompare(b.id))){
-      const profile=defenseProfile(asset);if(!profile)continue
-      const range=profile.range,key=`${asset.id}:${target.id}`
-      if(distance(asset.position,target.position)>range)continue
-      if(asset.kind==='sam'){const status=samStatusAt(asset.id,effects,time,asset);if(status.remaining===0||status.cooldown>.000001)continue}
-      else {if(fired.has(key))continue;fired.add(key)}
-      if(target.role==='recon')reconThreat(target,asset.kind==='sam'?'sam-launch':'aaa-launch',asset.id,time)
-      const kind:WeaponKind=asset.kind,shots=profile.burstShots
-      for(let shot=0;shot<shots;shot++){
-        const start=time+shot*AAA_BURST_INTERVAL,hit=rand(roll++)<profile.hitChance,amount=hit?kind==='sam'?profile.damage:Math.round(profile.damage-3+rand(roll++)*6):0,effect:WeaponEffect={id:`weapon-${effects.length}`,kind,sourceId:asset.id,targetId:target.id,start,end:start+(kind==='sam'?SAM_FLIGHT_SECONDS:AAA_FLIGHT_SECONDS),from:[...asset.position],to:kind==='aaa'?[target.position[0]+(rand(roll++)-.5)*.55,target.position[1]+(rand(roll++)-.5)*.55]:[...target.position],hit,damage:amount}
-        effects.push(effect)
-        const exchange:CombatExchange={id:`defense-${effects.length}`,time:effect.end,attackerId:asset.id,defenderId:target.id,weapon:kind,damage:amount,moraleDamage:hit?(kind==='sam'?amount*.45:8):0,hit,position:[...target.position],targetStrength:target.strength,targetMorale:target.morale}
-        pendingImpacts.push({effect,impactTime:effect.end,exchange})
+    for(const [sites,hostile] of [[assets,true],[playerAssets,false]] as const)for(const asset of sites){
+      if(asset.kind!=='sam'&&asset.kind!=='aaa')continue
+      const profile=effectiveDefenseProfile(asset,sites);if(!profile)continue
+      for(const target of units.filter(u=>!terminal(u)&&u.friendly===hostile).sort((a,b)=>distance(asset.position,a.position)-distance(asset.position,b.position)||a.id.localeCompare(b.id))){
+        const separation=distance(asset.position,target.position),key=`${asset.id}:${target.id}`
+        if(separation>profile.range+1e-9)continue
+        if(asset.kind==='sam'){const status=samStatusAt(asset.id,effects,time,asset);if(status.remaining===0||status.cooldown>.000001)continue}
+        else {if(fired.has(key))continue;fired.add(key)}
+        if(target.role==='recon')reconThreat(target,asset.kind==='sam'?'sam-launch':'aaa-launch',asset.id,time)
+        const kind:WeaponKind=asset.kind,shots=profile.burstShots
+        for(let shot=0;shot<shots;shot++){
+          const start=time+shot*AAA_BURST_INTERVAL,hit=rand(roll++)<profile.hitChance,amount=hit?kind==='sam'?profile.damage:Math.round(profile.damage-3+rand(roll++)*6):0,effect:WeaponEffect={id:`weapon-${effects.length}`,kind,sourceId:asset.id,targetId:target.id,start,end:start+(kind==='sam'?SAM_FLIGHT_SECONDS:AAA_FLIGHT_SECONDS),from:[...asset.position],to:kind==='aaa'?[target.position[0]+(rand(roll++)-.5)*.55,target.position[1]+(rand(roll++)-.5)*.55]:[...target.position],hit,damage:amount}
+          effects.push(effect)
+          const exchange:CombatExchange={id:`defense-${effects.length}`,time:effect.end,attackerId:asset.id,defenderId:target.id,weapon:kind,damage:amount,moraleDamage:hit?(kind==='sam'?amount*.45:8):0,hit,position:[...target.position],targetStrength:target.strength,targetMorale:target.morale}
+          pendingImpacts.push({effect,impactTime:effect.end,exchange})
+        }
+        const extended=!hostile&&separation>profile.baseRange+1e-9
+        add('warning',kind==='sam'?'SAM LAUNCH':'AAA FIRING',kind==='sam'?`SAM site fires on ${target.callsign}${extended?' at radar-extended range':''}; missile impact is pending.`:`AAA site opens a tracer burst on ${target.callsign}${extended?' at radar-extended range':''}; impacts are pending.`,asset.position,time)
       }
-      add('warning',kind==='sam'?'SAM LAUNCH':'AAA FIRING',kind==='sam'?`SAM site fires on ${target.callsign}; missile impact is pending.`:`AAA site opens a five-shot tracer burst on ${target.callsign}; impacts are pending.`,asset.position,time)
     }
     // Every damage source updates strength first; this single conversion keeps the aircraft-pip model authoritative.
     for(const unit of units)if(unit.mode!=='dogfighting')unit.aircraft=aircraftFor(unit.strength,unit.maxAircraft)

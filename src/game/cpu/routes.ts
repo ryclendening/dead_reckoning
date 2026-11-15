@@ -1,5 +1,4 @@
-import { SAM_MISSILES_PER_ROUND, SAM_COOLDOWN_SECONDS } from '../airDefense'
-import { defenseProfile, radarRange, SAM_FLIGHT_SECONDS, AAA_FLIGHT_SECONDS, AAA_BURST_INTERVAL } from '../equipmentRules'
+import { effectiveDefenseProfile, isOperationalSite, radarRange, SAM_FLIGHT_SECONDS, AAA_FLIGHT_SECONDS, AAA_BURST_INTERVAL, type DefenseProfile } from '../equipmentRules'
 import { BASE_STRIKE_RANGE } from '../campaign'
 import { FLIGHT_SPEED, MAX_FLIGHT_DISTANCE, flightRangeFor, flightSpeedFor, routeDistance } from '../flightRules'
 import { deriveRecoveryPlanningView, formationField, isOperationalAirfield } from '../forwardBasing'
@@ -16,8 +15,7 @@ export const CPU_PROFILES = {
 } satisfies Record<CpuDifficulty, { offsets: number[]; releases: number[]; expansions: number; sectors: number; purchases: number }>
 /** Expected known-site hits that can arrive by the chosen release time.
  * Geometry follows the planned ingress; no enemy orders or future rolls enter. */
-export function defenseDamageBy(route:Point[],speed:number,site:Pick<Asset,'kind'|'position'|'upgrades'>,deadline:number):number {
-  const profile=defenseProfile(site)!
+export function defenseDamageBy(route:Point[],speed:number,site:Pick<Asset,'kind'|'position'>,deadline:number,profile:DefenseProfile):number {
   const windows:Array<[number,number]>=[]
   let elapsed=0
   for(let i=1;i<route.length;i++) {
@@ -50,10 +48,11 @@ export function defenseDamageBy(route:Point[],speed:number,site:Pick<Asset,'kind
 /** Expected damage integrated along every segment, including the recovery reserve. */
 export function cpuRouteRisk(route: Point[], role: Squadron['role'], sites: CpuSiteReport[], configuration?:Pick<Squadron,'aircraftTypeId'|'upgrades'>|string,impactBy?:number): number {
   let risk = 0
-  for (const site of sites.filter(s => s.health > 0 && ['sam','aaa','radar'].includes(s.kind))) {
-    const profile=defenseProfile(site),radius=profile?.range??radarRange(site)
-    const speed=flightSpeedFor({role,...(typeof configuration==='string'?{aircraftTypeId:configuration}:configuration)})
-    if(profile&&impactBy!==undefined){risk+=defenseDamageBy(route,speed,site,impactBy);continue}
+  const speed=flightSpeedFor({role,...(typeof configuration==='string'?{aircraftTypeId:configuration}:configuration)})
+  for (const site of sites) {
+    if(!isOperationalSite(site)||!['sam','aaa','radar'].includes(site.kind))continue
+    const profile=effectiveDefenseProfile(site,sites),radius=profile?.range??radarRange(site)
+    if(profile&&impactBy!==undefined){risk+=defenseDamageBy(route,speed,site,impactBy,profile);continue}
     let inside = 0
     for (let i=1;i<route.length;i++) {
       const a=route[i-1], b=route[i], length=distance(a,b), samples=Math.max(1,Math.ceil(length/.35))
@@ -69,7 +68,8 @@ export interface RouteWork { expansions: number; rejected: string[]; routeCache?
 /** Additive route-ranking costs, not promises about combat damage. Actual
  * payload/loss estimates and mission choice still use the shared engine model. */
 export function routeThreats(view:CpuPlanningView,role:Squadron['role'],formation?:Squadron):RouteThreat[] {
-  const threats:RouteThreat[]=view.cpu.sites.filter(s=>s.health>0&&['sam','aaa','radar'].includes(s.kind)).map(s=>{const p=defenseProfile(s);return {position:s.position,
+  const sites=view.cpu.sites
+  const threats:RouteThreat[]=sites.filter(s=>isOperationalSite(s)&&['sam','aaa','radar'].includes(s.kind)).map(s=>{const p=effectiveDefenseProfile(s,sites);return {position:s.position,
     radius:p?.range??radarRange(s),costPerUnit:s.kind==='sam'?.35*p!.hitChance*p!.damage/Math.max(.01,p!.cooldown)/flightSpeedFor(formation??{role}):s.kind==='aaa'?.35*p!.hitChance*p!.damage*p!.burstShots/(p!.range*2):.35*1.5/flightSpeedFor(formation??{role})}})
   const tracks=new Map<string,typeof view.cpu.traffic>()
   for(const contact of view.cpu.traffic.filter(t=>t.role==='fighter'&&view.round-t.observedRound<=2)) {

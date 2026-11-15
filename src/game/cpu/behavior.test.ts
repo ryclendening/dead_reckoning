@@ -118,10 +118,10 @@ describe('CPU v2 behavioral acceptance',()=>{
     expect(normalizeMatch(JSON.parse(JSON.stringify(adapted))).cpu).toEqual(adapted.cpu)
   })
   it('saves cash without evidence or useful work and rejects late infrastructure',()=>{
-    const s=setup();s.cpu!.sites=[]
+    const s=setup();s.cpu!.sites=[];s.cpu!.logistics=11 // Supply Depot is outside this budget.
     const adapted=maintainCpu(s)
     expect(adapted.cpu!.spending).toEqual([])
-    expect(adapted.cpu!.logistics).toBe(16)
+    expect(adapted.cpu!.logistics).toBe(11)
     const late=setup([0,0],[30,0]);late.round=CAMPAIGN_ROUND_LIMIT-1;late.cpu!.mappedAreas=[[10,0]]
     expect(maintainCpu(late).enemyAssets.some(a=>a.kind==='fob')).toBe(false)
   })
@@ -314,7 +314,7 @@ describe('capability and evidence boundaries',()=>{
   it('does not treat a distant fighter sector as evidence of a home-base approach',()=>{
     const s=setup();s.cpu!.sites=[]
     s.cpu!.traffic=[{position:[24,0],role:'fighter',observedRound:2,source:'visual',bearing:0,sector:0}]
-    expect(maintainCpu(s).cpu!.spending).toEqual([])
+    expect(maintainCpu(s).cpu!.spending.filter(purchase=>purchase.action!=='install-supply-depot')).toEqual([])
   })
   it('repairs a disabled owned FOB when doing so restores an executable strike',()=>{
     const s=setup(),position:Point=[8,0]

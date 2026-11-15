@@ -27,6 +27,15 @@ describe('expanded tactical cards',()=>{
     expect(html).not.toContain('GROUND STRIKE')
   })
 
+  it('shows the range gained and the supporting radar, then shows local range when the radar is lost',()=>{
+    const assets=createMatch().playerAssets
+    const aaa={...assets.find(asset=>asset.kind==='aaa')!,position:[0,0] as [number,number]}
+    const radar={...assets.find(asset=>asset.kind==='radar')!,position:[1,0] as [number,number],name:'WATCH'}
+    const render=(health:number)=>renderToStaticMarkup(<AssetInspector asset={aaa} sites={[aaa,{...radar,health}]} phase="execute" seconds={0} onClose={noop}/>)
+    expect(render(100)).toContain('Radar-linked · 1.9 → 2.85 map units · WATCH')
+    expect(render(0)).toContain('Local range · 1.9 map units · No radar link')
+  })
+
   it('keeps friendly aircraft count, activity, and morale in the selected card',()=>{
     const flight=createMatch().squadrons[0]
     const html=renderToStaticMarkup(<AircraftInspector flight={flight} frame={frame} visibility="friendly" onClose={noop}/>)

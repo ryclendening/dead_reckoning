@@ -3,13 +3,14 @@ import { DebriefSymbol } from './DebriefSymbols'
 import { UnitCard3D } from './UnitCard3D'
 import { aircraftCardData, assetCardData, flightActivityLabel } from '../game/unitCards'
 import { samStatusForPhase, SAM_MISSILES_PER_ROUND } from '../game/airDefense'
-import { defenseProfile } from '../game/equipmentRules'
+import { defenseProfile, effectiveDefenseProfile, isOperationalSite, radarRange, type EffectiveDefenseProfile } from '../game/equipmentRules'
+import { formatDefenseRange } from './DefenseSiteDetails'
 import { memo, Suspense, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { Canvas, ThreeEvent, useFrame, useThree } from '@react-three/fiber'
 import { Billboard, Html, Line, MapControls, Text, useGLTF, useTexture } from '@react-three/drei'
 import * as THREE from 'three'
 import type { MapControls as MapControlsImpl } from 'three-stdlib'
-import { EXECUTION_SECONDS, RADAR_RANGE } from '../game/engine'
+import { EXECUTION_SECONDS } from '../game/engine'
 import { projectGroundAssetAt, projectFriendlyUnitAt, projectHostileUnitAt, sampleUnitTrack, sampleUnitTrackForRender, unitTrackFor, type HostileUnitProjection } from '../game/executionProjection'
 import { axialToPoint, HEX_RADIUS, snapToHex } from '../game/hex'
 import { deriveFogMaskSize, MAPPED_RADIUS, updateLiveFogMask, updatePersistentFogMask } from '../game/fog'
@@ -21,11 +22,10 @@ import { cameraPresentationForPhase, commandMapFitZoomForBounds } from '../game/
 import { FOB_PLACEMENT_MAX_TERRITORY_GAP } from '../game/economy'
 import { territoryBounds, territoryRegions } from '../game/territory'
 import { firstRouteFobLatch, MAX_RECOVERY_WAYPOINTS, recoveryPath } from '../game/forwardBasing'
-import type { ActiveDogfightPresentation, Asset, BoundarySegment, CombatEvent, CombatSequence, ConstructibleAssetKind, DefenseCue, EnemyFlight, FriendlyTerritory, Phase, Point, ReinforcementCall, RoundResult, Squadron, UnitFrame, UnitTrack, WeaponEffect, WorldBounds } from '../game/types'
+import type { ActiveDogfightPresentation, Asset, BoundarySegment, CombatEvent, CombatSequence, ConstructibleAssetKind, EnemyFlight, FriendlyTerritory, Phase, Point, ReinforcementCall, RoundResult, Squadron, UnitFrame, UnitTrack, WeaponEffect, WorldBounds } from '../game/types'
 import { advanceFrameClock, createFrameClock, type FrameClock } from '../game/frameClock'
 import { identifiedAircraftType } from '../game/contactTracks'
 import { aircraftType } from '../game/aircraftTypes'
-import { radarRange } from '../game/equipmentRules'
 import type { FogMaskInput, MapObservation } from '../game/fog'
 import { authorizedWeaponTarget, combatManeuver, combatWindow, headingAngle, sampledBank, weaponPath, weaponTangent, weaponTrail, weaponVisibleAt, weaponVisualLifecycle } from './graphicsPresentation'
 
@@ -245,13 +245,6 @@ function Radar({asset,enemy=false,selected=false,onSelect}:{asset:Asset,enemy?:b
   return <group position={to3(asset.position,.15)} onClick={event=>{event.stopPropagation();onSelect?.()}}>{selected?<mesh position={[0,.01,0]} rotation={[-Math.PI/2,0,0]}><ringGeometry args={[.56,.64,32]}/><meshBasicMaterial color="#7ceaf0" depthTest={false}/></mesh>:null}<mesh castShadow position={[0,.18,0]}><cylinderGeometry args={[.24,.3,.36,8]}/><meshStandardMaterial color={asset.health>0?'#55584d':'#292522'}/></mesh><group ref={ref} position={[0,.5,0]} rotation={[0,0,.2]}><mesh castShadow><sphereGeometry args={[.32,8,5,0,Math.PI]}/><meshStandardMaterial color={enemy?'#8f604d':'#b9c1ac'} side={THREE.DoubleSide}/></mesh></group>{asset.struck&&asset.health<asset.maxHealth?<DamageSmoke severity={1-asset.health/asset.maxHealth} position={[0,.45,0]}/>:null}</group>
 }
 
-function DefenseNetworkCue({cue,radar}:{cue:DefenseCue;radar:Asset}){
-  const ref=useRef<THREE.Group>(null)
-  useFrame(({clock})=>{if(ref.current){const pulse=1+Math.sin(clock.elapsedTime*4)*.018;ref.current.scale.setScalar(pulse)}})
-  const radius=radarRange(radar)+cue.rangeBonus
-  return <group ref={ref} position={to3(radar.position,.2)}><Ring radius={radius} color="#9ee6a8" opacity={.5}/><Text position={[0,.18,-radius-.35]} rotation={[-Math.PI/2,0,0]} fontSize={.24} color="#9ee6a8">CUED DEFENSE +{cue.rangeBonus.toFixed(1)}</Text></group>
-}
-
 function Ring({radius,color,opacity=.32,dashSize=.18,gapSize=.12,lineWidth=1,dashed=true}:{radius:number,color:string,opacity?:number,dashSize?:number,gapSize?:number,lineWidth?:number,dashed?:boolean}){
   const pts=useMemo(()=>Array.from({length:49},(_,i)=>{const a=i/48*Math.PI*2;return [Math.cos(a)*radius,.07,Math.sin(a)*radius] as [number,number,number]}),[radius])
   return dashed?<Line points={pts} color={color} transparent opacity={opacity} dashed dashSize={dashSize} gapSize={gapSize} lineWidth={lineWidth} depthTest={false}/>:<Line points={pts} color={color} transparent opacity={opacity} lineWidth={lineWidth} depthTest={false}/>
@@ -276,34 +269,32 @@ function TerritoryOverlay({territory,showFobPlacementReach=false}:{territory:Fri
   </group>
 }
 
-function CoverageDome({radius,color='#4aa9e8',illuminated=false}:{radius:number;color?:string;illuminated?:boolean}){
-  const material=useRef<THREE.MeshStandardMaterial>(null)
-  useFrame(({clock})=>{if(!material.current)return;const pulse=illuminated?(Math.sin(clock.elapsedTime*5)+1)/2:0;material.current.opacity=illuminated?.18+pulse*.08:.095;material.current.emissiveIntensity=illuminated?.42+pulse*.48:0})
-  return <mesh position={[0,.02,0]} renderOrder={0}>
-    <sphereGeometry args={[radius,32,12,0,Math.PI*2,0,Math.PI/2]}/>
-    <meshStandardMaterial ref={material} color={color} emissive={color} transparent opacity={.095} depthWrite={false} side={THREE.DoubleSide} roughness={.8}/>
-  </mesh>
+function DefenseRangeLabel({radius,color,children}:{radius:number;color:string;children:string}){
+  return <Text position={[0,.14,-radius-.22]} rotation={[-Math.PI/2,0,0]} fontSize={.19} color={color} outlineWidth={.015} outlineColor="#0b1816">{children}</Text>
 }
 
-function SensorRangeOverlay({phase,radar,position,losRange,showLos}:{phase:Phase;radar?:Asset;position:Point;losRange:number;showLos:boolean}){
-  const showGround=phase==='deploy'&&radar?.health!>0
-  const radius=radar?radarRange(radar):RADAR_RANGE
-  return <group renderOrder={1}>
-    {showGround?<group position={to3(radar!.position,.1)}><CoverageDome radius={radius}/><Ring radius={radius} color="#4aa9e8" opacity={.58} dashSize={.42} gapSize={.16} lineWidth={1.5}/></group>:null}
-    {showLos?<group position={to3(position,.16)} renderOrder={7}><mesh rotation={[-Math.PI/2,0,0]} renderOrder={7}><circleGeometry args={[losRange,96]}/><meshBasicMaterial color="#4debf2" transparent opacity={phase==='plan'?.055:.025} depthTest={false} depthWrite={false}/></mesh><mesh rotation={[-Math.PI/2,0,0]} renderOrder={9}><ringGeometry args={[Math.max(.05,losRange-.055),losRange+.055,96]}/><meshBasicMaterial color="#65f2f6" transparent opacity={.96} depthTest={false} depthWrite={false}/></mesh><Text position={[0,.04,-losRange-.28]} rotation={[-Math.PI/2,0,0]} fontSize={.14} color="#9affff" anchorX="center" outlineWidth={.012} outlineColor="#0b2021">{phase==='plan'?'LOS':'DETECTION'} · {losRange.toFixed(1)}</Text></group>:null}
-  </group>
-}
-
-function ActiveCoverageOverlay({asset}:{asset:Asset}){
-  const radius=defenseProfile(asset)?.range??0
-  const color='#d99a25'
+function RadarCoverage({asset,enemy}:{asset:Asset;enemy:boolean}){
+  const radius=radarRange(asset),color=enemy?'#f8a0a1':'#75cfff'
   return <group position={to3(asset.position,.1)}>
-    {asset.kind!=='aaa'?<CoverageDome radius={radius} color={color} illuminated/>:null}
-    <Ring radius={radius} color={color} opacity={.88} dashSize={.16} gapSize={.08} lineWidth={2}/>
+    <Ring radius={radius} color={color} opacity={.72} dashSize={.4} gapSize={.23} lineWidth={1.5}/>
+    <DefenseRangeLabel radius={radius} color={color}>{`${enemy?'ENEMY ':''}RADAR · ${formatDefenseRange(radius)}`}</DefenseRangeLabel>
   </group>
 }
 
-function Defense({asset,enemy=true,selected=false,showRange=true,missiles=SAM_MISSILES_PER_ROUND,onSelect}:{asset:Asset;missiles?:number;enemy?:boolean;selected?:boolean;showRange?:boolean;onSelect?:()=>void}){
+function BatteryCoverage({asset,profile,radar,enemy=false,preview=false}:{asset:Asset;profile:EffectiveDefenseProfile;radar?:Asset;enemy?:boolean;preview?:boolean}){
+  const {range,baseRange}=profile
+  const color=enemy?'#ff9b76':radar?'#a9efae':'#f1c878'
+  const [x,z]=asset.position,radarX=radar?.position[0],radarZ=radar?.position[1]
+  const link=useMemo<[number,number,number][]|undefined>(()=>radarX!==undefined&&radarZ!==undefined?[[radarX,.2,radarZ],[x,.2,z]]:undefined,[x,z,radarX,radarZ])
+  const label=`${preview?'PREVIEW · ':enemy?'ENEMY ':''}${asset.kind.toUpperCase()} · ${radar?`${formatDefenseRange(baseRange)} → ` : ''}${formatDefenseRange(range)}${radar?' · RADAR LINKED':''}`
+  return <>
+    <group position={to3(asset.position,.12)}><Ring radius={range} color={color} opacity={.68} dashed={false} lineWidth={1.5}/>
+      <DefenseRangeLabel radius={range} color={color}>{label}</DefenseRangeLabel>
+    </group>
+    {link?<Line points={link} color={color} transparent opacity={.65} dashed dashSize={.18} gapSize={.12} depthTest={false}/>:null}
+  </>
+}
+function Defense({asset,enemy=true,selected=false,missiles=SAM_MISSILES_PER_ROUND,onSelect}:{asset:Asset;missiles?:number;enemy?:boolean;selected?:boolean;onSelect?:()=>void}){
   const shown=!enemy||asset.intel!=='unknown'; if(!shown)return null
   if(asset.kind==='radar')return <Radar asset={asset} enemy={enemy} selected={selected} onSelect={onSelect}/>
   const profile=defenseProfile(asset),magazine=Math.max(0,Math.floor(profile?.magazine??SAM_MISSILES_PER_ROUND))
@@ -311,7 +302,6 @@ function Defense({asset,enemy=true,selected=false,showRange=true,missiles=SAM_MI
     {selected?<mesh position={[0,.01,0]} rotation={[-Math.PI/2,0,0]}><ringGeometry args={[.56,.64,32]}/><meshBasicMaterial color="#7ceaf0" depthTest={false}/></mesh>:null}
     <mesh castShadow><cylinderGeometry args={[.34,.42,.15,8]}/><meshStandardMaterial color={asset.health>0?'#7a493d':'#292522'}/></mesh>
     {asset.kind==='sam'?Array.from({length:magazine},(_,index)=><mesh key={index} position={[(index-(magazine-1)/2)*.18,.35,0]} rotation={[0,0,-.28]} castShadow><cylinderGeometry args={[.045,.065,index<missiles&&asset.health>0?.62:.25,6]}/><meshStandardMaterial color={index<missiles&&asset.health>0?'#c9b981':'#383e36'}/></mesh>):<mesh position={[0,.28,0]}><boxGeometry args={[.45,.28,.2]}/><meshStandardMaterial color="#4d4036"/></mesh>}
-    {showRange&&profile?<Ring radius={profile.range} color="#d99a25" opacity={selected ? .65 : .32} dashSize={.16} gapSize={.08}/>:null}
     {asset.struck&&asset.health<asset.maxHealth?<DamageSmoke severity={1-asset.health/asset.maxHealth} position={[0,.3,0]}/>:null}
   </group>
 }
@@ -678,11 +668,11 @@ function enemyStatusAt(flight:EnemyFlight,frame:UnitFrame,initialStrength?:numbe
 }
 
 
-export interface BattlefieldProps {cameraMemory?:{current:CameraPoseSnapshot|undefined};squadrons:Squadron[]; assets:Asset[]; playerAssets:Asset[]; mappedAreas:Point[]; discoveredBoundaries?:BoundarySegment[]; presentationBounds?:WorldBounds; planningBounds?:WorldBounds; friendlyTerritory?:FriendlyTerritory; selectedId:string; followId?:string; focusPoint?:Point; focusRequestKey?:number; placementId:string; positionedPlacementIds?:string[]; onPlacementSelect?:(id:string)=>void; planningBaseId?:string; executionBaseId?:string; planningRecoveryFieldId?:string; plannedFormationIds?:string[]; routeOrigin?:Point; editingReturn?:boolean; recoveryRoute?:Point[]; onReturnWaypoints?:(waypoints:Point[])=>boolean|void; routePlanningEnabled?:boolean; lockedPlan?:boolean; showMissionPreview?:boolean; selectingProtectTarget?:boolean; selectingGroundTarget?:boolean; onGroundTargetSelect?:(id:string)=>void; selectedAssetId?:string; inspectedFlightId?:string; onAssetInspect?:(id:string)=>void; onFlightInspect?:(id:string)=>void; escortPreview?:{targetId:string}; phase:Phase; progress:number; activeEvent?:CombatEvent; executionResult?:RoundResult; packageReview?:boolean; economySelectionId?:string; onPlanningBaseSelect?:(id:string)=>void; onPlanningFormationSelect?:(id:string)=>void; onPlanningProtectTarget?:(id:string)=>void; onPlanningProtectPoint?:(point:Point)=>void; onPlanningProtectFlight?:(id:string)=>void; onPlanningRecoverySelect?:(id:string)=>void; onExecutionBaseSelect?:(id:string)=>void; onEconomySelect?:(id:string)=>void; onEconomyFormationSelect?:(id:string)=>void; construction?:{kind:ConstructibleAssetKind;placement?:Point;isValid:(point:Point)=>boolean;onStage:(point:Point)=>void}; isPlacementValid?:(point:Point)=>boolean; onRoute:(route:Point[])=>boolean|void; onPlace:(id:string,position:Point)=>void}
+export interface BattlefieldProps {cameraMemory?:{current:CameraPoseSnapshot|undefined};squadrons:Squadron[]; assets:Asset[]; playerAssets:Asset[]; mappedAreas:Point[]; discoveredBoundaries?:BoundarySegment[]; presentationBounds?:WorldBounds; planningBounds?:WorldBounds; friendlyTerritory?:FriendlyTerritory; selectedId:string; followId?:string; focusPoint?:Point; focusRequestKey?:number; placementId:string; positionedPlacementIds?:string[]; showDefenseCoverage?:boolean; onPlacementSelect?:(id:string)=>void; planningBaseId?:string; executionBaseId?:string; planningRecoveryFieldId?:string; plannedFormationIds?:string[]; routeOrigin?:Point; editingReturn?:boolean; recoveryRoute?:Point[]; onReturnWaypoints?:(waypoints:Point[])=>boolean|void; routePlanningEnabled?:boolean; lockedPlan?:boolean; showMissionPreview?:boolean; selectingProtectTarget?:boolean; selectingGroundTarget?:boolean; onGroundTargetSelect?:(id:string)=>void; selectedAssetId?:string; inspectedFlightId?:string; onAssetInspect?:(id:string)=>void; onFlightInspect?:(id:string)=>void; escortPreview?:{targetId:string}; phase:Phase; progress:number; activeEvent?:CombatEvent; executionResult?:RoundResult; packageReview?:boolean; economySelectionId?:string; onPlanningBaseSelect?:(id:string)=>void; onPlanningFormationSelect?:(id:string)=>void; onPlanningProtectTarget?:(id:string)=>void; onPlanningProtectPoint?:(point:Point)=>void; onPlanningProtectFlight?:(id:string)=>void; onPlanningRecoverySelect?:(id:string)=>void; onExecutionBaseSelect?:(id:string)=>void; onEconomySelect?:(id:string)=>void; onEconomyFormationSelect?:(id:string)=>void; construction?:{kind:ConstructibleAssetKind;placement?:Point;isValid:(point:Point)=>boolean;onStage:(point:Point)=>void}; isPlacementValid?:(point:Point)=>boolean; onRoute:(route:Point[])=>boolean|void; onPlace:(id:string,position:Point)=>void}
 type BattlefieldSceneProps=BattlefieldProps&{poseMemory:{current:CameraPoseSnapshot|undefined}}
-function BattlefieldScene({squadrons,assets,playerAssets,mappedAreas,presentationBounds,planningBounds,friendlyTerritory,selectedId,followId,focusPoint,focusRequestKey,placementId,positionedPlacementIds=[],onPlacementSelect,planningBaseId,executionBaseId,planningRecoveryFieldId,plannedFormationIds=[],routeOrigin,editingReturn=false,recoveryRoute,onReturnWaypoints,routePlanningEnabled=false,lockedPlan=false,showMissionPreview=false,selectingProtectTarget=false,selectingGroundTarget=false,onGroundTargetSelect,selectedAssetId,inspectedFlightId,onAssetInspect,onFlightInspect,escortPreview,phase,progress,activeEvent,executionResult,packageReview,economySelectionId,onPlanningBaseSelect,onPlanningFormationSelect,onPlanningProtectTarget,onPlanningProtectPoint,onPlanningProtectFlight,onPlanningRecoverySelect,onExecutionBaseSelect,onEconomySelect,onEconomyFormationSelect,construction,isPlacementValid,onRoute,onPlace,poseMemory}:BattlefieldSceneProps){
+function BattlefieldScene({squadrons,assets,playerAssets,mappedAreas,presentationBounds,planningBounds,friendlyTerritory,selectedId,followId,focusPoint,focusRequestKey,placementId,positionedPlacementIds,showDefenseCoverage=true,onPlacementSelect,planningBaseId,executionBaseId,planningRecoveryFieldId,plannedFormationIds=[],routeOrigin,editingReturn=false,recoveryRoute,onReturnWaypoints,routePlanningEnabled=false,lockedPlan=false,showMissionPreview=false,selectingProtectTarget=false,selectingGroundTarget=false,onGroundTargetSelect,selectedAssetId,inspectedFlightId,onAssetInspect,onFlightInspect,escortPreview,phase,progress,activeEvent,executionResult,packageReview,economySelectionId,onPlanningBaseSelect,onPlanningFormationSelect,onPlanningProtectTarget,onPlanningProtectPoint,onPlanningProtectFlight,onPlanningRecoverySelect,onExecutionBaseSelect,onEconomySelect,onEconomyFormationSelect,construction,isPlacementValid,onRoute,onPlace,poseMemory}:BattlefieldSceneProps){
   const selected=squadrons.find(s=>s.id===selectedId)!
-  const playerBase=playerAssets.find(a=>a.kind==='base')?.position??[-7.8,11.2];const playerRadar=playerAssets.find(a=>a.kind==='radar')
+  const playerBase=playerAssets.find(a=>a.kind==='base')?.position??[-7.8,11.2]
   const resolvedTerritory=useMemo<FriendlyTerritory>(()=>friendlyTerritory??{center:playerBase,radius:4.5},[friendlyTerritory,playerBase[0],playerBase[1]])
   const knownBounds=useMemo(()=>{const bounds=territoryBounds(resolvedTerritory);for(const point of mappedAreas){bounds.minX=Math.min(bounds.minX,point[0]-MAPPED_RADIUS);bounds.maxX=Math.max(bounds.maxX,point[0]+MAPPED_RADIUS);bounds.minZ=Math.min(bounds.minZ,point[1]-MAPPED_RADIUS);bounds.maxZ=Math.max(bounds.maxZ,point[1]+MAPPED_RADIUS)}return bounds},[mappedAreas,resolvedTerritory])
   const debriefSites=useMemo(()=>phase==='debrief'&&executionResult?debriefMapSites(executionResult):[],[phase,executionResult])
@@ -711,7 +701,6 @@ function BattlefieldScene({squadrons,assets,playerAssets,mappedAreas,presentatio
   const followFrame=followId?(friendlyProjections.get(followId)?.frame??hostileProjections.get(followId)?.frame):undefined
   const followingDogfight=phase==='execute'&&followFrame?.mode==='dogfighting'
   const cameraFocus=focusPoint??(followId?(followFrame?.position??(phase==='execute'?undefined:followSquadron?.route[0])):undefined)
-  const friendlyRadar=playerAssets.find(asset=>asset.kind==='radar'&&asset.health>0)
   const detectedEnemyIds=new Set(hostileProjections.keys())
   const knownEnemyAssetIds=new Set(assets.filter(asset=>!asset.hidden&&asset.intel==='confirmed').map(asset=>asset.id))
   const strikeTarget=assets.find(asset=>asset.id===selected.strikeTargetId&&asset.intel==='confirmed'&&!asset.hidden&&asset.health>0)
@@ -730,12 +719,19 @@ function BattlefieldScene({squadrons,assets,playerAssets,mappedAreas,presentatio
   const displayedPlayerAssets=playerAssets.map(asset=>phase==='execute'?projectGroundAssetAt(asset,executionResult,seconds):asset)
   const displayedEnemyAssets=assets.map(asset=>{const timed=phase==='execute'?projectGroundAssetAt(asset,executionResult,seconds):asset;return observedAssetIds.has(asset.id)&&timed.intel==='unknown'?{...timed,intel:'probable' as const,confidence:70,hidden:false}:timed})
   const recoveryById=useMemo(()=>new globalThis.Map((executionResult?.recoveryOutcomes??[]).map(outcome=>[outcome.formationId,outcome])),[executionResult])
-  const followedAircraftIsHostile=followId?.startsWith('red-')
-  const activeCoverageAssets=phase==='execute'&&followId&&followFrame&&followFrame.aircraft>0?[...displayedPlayerAssets.map(asset=>({asset,friendlyOwner:true})),...displayedEnemyAssets.filter(asset=>asset.intel!=='unknown').map(asset=>({asset,friendlyOwner:false}))].filter(({asset,friendlyOwner})=>{
-    if(asset.health<=0||asset.kind==='base'||asset.kind==='fob'||asset.kind==='decoy'||asset.kind==='radar')return false
-    const range=defenseProfile(asset)?.range??0
-    return followedAircraftIsHostile===friendlyOwner&&distance2(asset.position,followFrame.position)<=range
-  }):[]
+  const friendlyDefenseSites=phase==='deploy'&&positionedPlacementIds
+    ? displayedPlayerAssets.filter(asset=>positionedPlacementIds.includes(asset.id))
+    : displayedPlayerAssets
+  const knownEnemyDefenseSites=displayedEnemyAssets.filter(asset=>!asset.hidden&&asset.intel==='confirmed')
+  const defenseOverlays=phase==='debrief'?[]:([
+    {sites:friendlyDefenseSites,enemy:false},{sites:knownEnemyDefenseSites,enemy:true}
+  ]).flatMap(({sites,enemy})=>sites.map(asset=>{
+    const selected=asset.id===(phase==='adapt'?economySelectionId:selectedAssetId)
+    if((phase==='deploy'&&enemy)||(!showDefenseCoverage&&phase!=='deploy'&&!selected))return null
+    const profile=effectiveDefenseProfile(asset,sites)
+    return profile?<BatteryCoverage key={asset.id} asset={asset} profile={profile} radar={sites.find(site=>site.id===profile.radarId)} enemy={enemy}/>
+      :asset.kind==='radar'&&isOperationalSite(asset)?<RadarCoverage key={asset.id} asset={asset} enemy={enemy}/>:null
+  }))
   const selectFriendlyAsset=(asset:Asset)=>{
     const airfield=asset.kind==='base'||asset.kind==='fob'
     if(phase==='deploy'){onPlacementSelect?.(asset.id);return}
@@ -798,20 +794,23 @@ function BattlefieldScene({squadrons,assets,playerAssets,mappedAreas,presentatio
   }
   const mapMove=(e:ThreeEvent<PointerEvent>)=>{if(phase==='adapt'&&construction){const hit=e.ray.intersectPlane(groundPlane,new THREE.Vector3());setConstructionHover(snapToHex(hit?[hit.x,hit.z]:[e.point.x,e.point.z]))}}
   const constructionPoint=construction?.placement??constructionHover
+  const previewBattery:Asset|undefined=constructionPoint&&construction&&(construction.kind==='sam'||construction.kind==='aaa')&&construction.isValid(constructionPoint)
+    ? {id:'construction-preview',kind:construction.kind,position:constructionPoint,health:100,maxHealth:100,intel:'confirmed',confidence:100,hidden:false,struck:false}:undefined
+  const previewDefense=previewBattery?effectiveDefenseProfile(previewBattery,friendlyDefenseSites):undefined
   const editableWaypoints=editingReturn?(recoveryRoute??[]).slice(1,-1).map((position,index)=>({position,routeIndex:index+1,label:`R${index+1}`,release:false})):selected.mission==='base-strike'?selected.routeIngress.slice(1).map((position,index,array)=>({position,routeIndex:index+1,label:index===array.length-1?'S':String(index+1),release:index===array.length-1})):selected.routeIngress.slice(1,6).map((position,index)=>({position,routeIndex:index+1,label:String(index+1),release:false}))
   return <>
     <CameraRig phase={phase} friendlyTerritory={resolvedTerritory} planningBounds={resolvedPlanningBounds} presentationBounds={resolvedPresentationBounds} focusPoint={cameraFocus} focusRequestKey={focusRequestKey} followKey={followId} poseMemory={poseMemory}/>
     <color attach="background" args={['#11140f']}/><fog attach="fog" args={['#11140f',34,60]}/>
     <ambientLight intensity={1.1}/><directionalLight position={[-5,10,5]} intensity={2.1} castShadow shadow-mapSize={[1024,1024]}/>
-    <Terrain phase={phase} presentationBounds={resolvedPresentationBounds} planningBounds={resolvedPlanningBounds} isPlacementValid={phase==='deploy'?isPlacementValid:phase==='adapt'?construction?.isValid:undefined}/><FogOfWar mappedAreas={mappedAreas} observations={liveMapObservations} presentationBounds={resolvedPresentationBounds} friendlyTerritory={resolvedTerritory}/><TerritoryOverlay territory={resolvedTerritory} showFobPlacementReach={phase==='adapt'&&construction?.kind==='fob'}/>{phase==='deploy'&&placement?<PlacementHex position={placement.position} placed={positionedPlacementIds.includes(placement.id)}/>:null}{construction&&constructionPoint?<ConstructionPlacementGhost kind={construction.kind} position={constructionPoint} valid={construction.isValid(constructionPoint)}/>:null}
-    {phase==='deploy'?<SensorRangeOverlay phase={phase} radar={friendlyRadar} position={playerBase} losRange={0} showLos={false}/>:null}
+    <Terrain phase={phase} presentationBounds={resolvedPresentationBounds} planningBounds={resolvedPlanningBounds} isPlacementValid={phase==='deploy'?isPlacementValid:phase==='adapt'?construction?.isValid:undefined}/><FogOfWar mappedAreas={mappedAreas} observations={liveMapObservations} presentationBounds={resolvedPresentationBounds} friendlyTerritory={resolvedTerritory}/><TerritoryOverlay territory={resolvedTerritory} showFobPlacementReach={phase==='adapt'&&construction?.kind==='fob'}/>{phase==='deploy'&&placement?<PlacementHex position={placement.position} placed={positionedPlacementIds?.includes(placement.id)??false}/>:null}{construction&&constructionPoint?<ConstructionPlacementGhost kind={construction.kind} position={constructionPoint} valid={construction.isValid(constructionPoint)}/>:null}
+    {defenseOverlays}
+    {previewBattery&&previewDefense?<BatteryCoverage asset={previewBattery} profile={previewDefense} radar={friendlyDefenseSites.find(site=>site.id===previewDefense.radarId)} preview/>:null}
     {assignedStrike?<StrikeReleasePreview center={assignedStrike.position}/>:null}
-    {displayedPlayerAssets.map(a=>{const chosen=a.id===selectedAssetId||phase==='deploy'&&a.id===placementId||phase==='plan'&&a.id===planningBaseId||phase==='execute'&&a.id===executionBaseId||phase==='adapt'&&a.id===economySelectionId;return a.kind==='base'||a.kind==='fob'||a.kind==='decoy'?<Runway key={a.id} asset={a} selected={chosen} onSelect={()=>selectFriendlyAsset(a)}/>:<Defense key={a.id} asset={a} enemy={false} selected={chosen} missiles={samStatusForPhase(a.id,phase,executionResult?.weaponEffects,seconds,a).remaining} showRange={phase==='deploy'||a.id===selectedAssetId} onSelect={()=>selectFriendlyAsset(a)}/>})}
+    {displayedPlayerAssets.map(a=>{const chosen=a.id===selectedAssetId||phase==='deploy'&&a.id===placementId||phase==='plan'&&a.id===planningBaseId||phase==='execute'&&a.id===executionBaseId||phase==='adapt'&&a.id===economySelectionId;return a.kind==='base'||a.kind==='fob'||a.kind==='decoy'?<Runway key={a.id} asset={a} selected={chosen} onSelect={()=>selectFriendlyAsset(a)}/>:<Defense key={a.id} asset={a} enemy={false} selected={chosen} missiles={samStatusForPhase(a.id,phase,executionResult?.weaponEffects,seconds,a).remaining} onSelect={()=>selectFriendlyAsset(a)}/>})}
     {phase==='plan'||phase==='adapt'&&!construction?formationBaseGroups(squadrons,playerAssets).map(group=><AirfieldFormationPips key={`airfield-pips-${group.base.id}`} base={group.base} formations={group.formationIds.flatMap(id=>squadrons.find(item=>item.id===id)??[])} selectedId={phase==='adapt'?economySelectionId??'':selectedId} plannedFormationIds={phase==='adapt'?[]:plannedFormationIds} selectingProtectTarget={selectingProtectTarget} resupply={phase==='adapt'} readOnly={lockedPlan} onSelect={id=>phase==='adapt'?onEconomyFormationSelect?.(id):selectingProtectTarget?onPlanningProtectFlight?.(id):onPlanningFormationSelect?.(id)}/>):null}
-    {displayedEnemyAssets.map(a=>{const chosen=a.id===selectedAssetId||selectingGroundTarget&&a.intel==='confirmed'||a.id===assignedStrike?.id;return (a.kind==='base'||a.kind==='fob'||a.kind==='decoy')&&a.intel!=='unknown'?<Runway key={a.id} asset={a} enemy selected={chosen} onSelect={()=>selectEnemyAsset(a)}/>:<Defense key={a.id} asset={a} selected={chosen} missiles={samStatusForPhase(a.id,phase,executionResult?.weaponEffects,seconds,a).remaining} showRange={a.id===selectedAssetId} onSelect={()=>selectEnemyAsset(a)}/>})}
+    {displayedEnemyAssets.map(a=>{const chosen=a.id===selectedAssetId||selectingGroundTarget&&a.intel==='confirmed'||a.id===assignedStrike?.id;return (a.kind==='base'||a.kind==='fob'||a.kind==='decoy')&&a.intel!=='unknown'?<Runway key={a.id} asset={a} enemy selected={chosen} onSelect={()=>selectEnemyAsset(a)}/>:<Defense key={a.id} asset={a} selected={chosen} missiles={samStatusForPhase(a.id,phase,executionResult?.weaponEffects,seconds,a).remaining} onSelect={()=>selectEnemyAsset(a)}/>})}
     {[...displayedPlayerAssets.map(asset=>({asset,enemy:false})),...displayedEnemyAssets.map(asset=>({asset,enemy:true}))].map(({asset,enemy})=>{const data=assetCardData(asset,enemy,phase,executionResult,seconds);return data?<group key={`${asset.id}-card`} position={to3(asset.position,.1)}><UnitCard3D data={data} color={enemy?asset.intel==='confirmed'?hostile:amber:friendly} position={[0,.88,asset.kind==='base'||asset.kind==='fob'?1:.3]} selected={asset.id===selectedAssetId||enemy&&asset.id===assignedStrike?.id} actionLabel={enemy&&asset.id===assignedStrike?.id?'STRIKE TARGET ASSIGNED':enemy&&selectingGroundTarget&&asset.intel==='confirmed'&&asset.health>0?'CLICK TO STRIKE':undefined} onSelect={()=>enemy?selectEnemyAsset(asset):selectFriendlyAsset(asset)}/></group>:null})}
 
-    {activeCoverageAssets.map(({asset})=><ActiveCoverageOverlay key={`${asset.id}-active-coverage`} asset={asset}/>)}
     {phase==='plan'&&(showMissionPreview||plannedFormationIds.includes(selected.id))&&selected.route.length>=2&&!planningRecoveryFieldId&&!selected.protectedTargetId?<ResponsibilityOverlay squadron={selected} protectedPosition={selected.protectedPoint} selected/>:phase==='execute'&&followId&&!followingDogfight?squadrons.filter(s=>s.id===followId).map(s=>{const protectedId=s.protectedTargetId;const protectedPosition=protectedId?friendlyProjections.get(protectedId)?.frame.position:s.protectedPoint;return <ResponsibilityOverlay key={`${s.id}-responsibility`} squadron={s} protectedPosition={protectedPosition} selected/>}):null}
     {phase==='plan'&&routePlanningEnabled&&!selectingProtectTarget?editableWaypoints.map(({position,routeIndex,label,release})=><RouteWaypoint key={`${selected.id}-waypoint-${routeIndex}`} position={position} index={label} release={release} returnLeg={editingReturn} selected={activeWaypoint===routeIndex} onSelect={()=>selectWaypoint(routeIndex)} onMove={point=>moveWaypoint(routeIndex,point)}/>):null}
     {phase==='plan'&&showMissionPreview&&selected.mission==='base-strike'&&selected.routeIngress.length>=2?<><group position={to3(selected.routeIngress[0],.18)}><Ring radius={.3} color="#7ceaf0" opacity={.9}/><Text position={[0,.35,0]} fontSize={.2} rotation={[-Math.PI/2,0,0]} color="#7ceaf0">TAKEOFF · FIXED</Text></group><Billboard position={to3([selected.routeIngress.at(-1)![0],selected.routeIngress.at(-1)![1]+.38],.19)} follow lockZ={false}><Text fontSize={.17} color="#edc16d" anchorX="center" outlineWidth={.012} outlineColor="#21190a">{editingReturn||lockedPlan?'STRIKE POINT':'STRIKE POINT · DRAG TO MOVE'}</Text></Billboard></>:null}
@@ -826,7 +825,6 @@ function BattlefieldScene({squadrons,assets,playerAssets,mappedAreas,presentatio
     {squadrons.filter(s=>phase==='execute'&&friendlyProjections.has(s.id)).map(s=>{const plannedFieldId=recoveryById.get(s.id)?.plannedFieldId;const recoveryLabel=plannedFieldId?playerAssets.find(asset=>asset.id===plannedFieldId)?.name??'HOME BASE':undefined;const frame=friendlyProjections.get(s.id)?.frame,track=unitTrackFor(executionResult,s.id);const initialStrength=track?.frames[0]?.strength;return <Flight key={s.id} squadron={s} route={s.route} frame={frame} track={track} sceneClock={sceneClock} authoritativeSeconds={seconds} active selected={inspectedFlightId===s.id} onInspect={()=>onFlightInspect?.(s.id)} status={friendlyStatusAt(s,frame,initialStrength)} activeEvent={visibleActiveEvent} recoveryLabel={recoveryLabel}/>}) }
     {phase==='execute'?executionResult?.enemyFlights.flatMap(f=>{const projection=hostileProjections.get(f.id);if(!projection)return [];const track=unitTrackFor(executionResult,f.id),initialStrength=track?.frames[0]?.strength;return [<EnemyContact key={f.id} flight={f} projection={projection} selected={inspectedFlightId===f.id} onInspect={()=>onFlightInspect?.(f.id)} status={enemyStatusAt(f,projection.frame,initialStrength)} track={track} sceneClock={sceneClock} authoritativeSeconds={seconds} activeEvent={visibleActiveEvent}/>]}):null}
     {phase==='execute'?executionResult?.reinforcementCalls.map(call=><ReinforcementFlight key={call.id} call={call} progress={progress}/>):null}
-    {phase==='execute'&&playerRadar?executionResult?.defenseCues?.filter(c=>progress>=c.start&&progress<=c.end).map(c=><DefenseNetworkCue key={c.id} cue={c} radar={playerRadar}/>):null}
     {phase==='execute'?(executionResult?.combatSequences??[]).filter(seq=>enemyVisibleFor(seq.participantIds)).map(seq=><ActiveSequenceVisual key={seq.id} sequence={seq} seconds={seconds} result={executionResult}/>):null}
     {phase==='execute'?(executionResult?.activeDogfights??[]).filter(item=>enemyVisibleFor(item.participantIds)&&!(executionResult?.combatSequences??[]).some(sequence=>sequence.id===item.id)).map(item=><ActiveDogfightVisual key={item.id} engagement={item}/>):null}
     {phase==='execute'?replayWeaponEffects.filter(effect=>weaponVisibleAt(effect,sceneClock.time)&&weaponVisibleFor([effect.sourceId,effect.targetId])).map(effect=>{const targetProjection=hostileProjections.get(effect.targetId);const targetAuthorized=!effect.targetId.startsWith('red-')||Boolean(targetProjection);const targetTrack=targetAuthorized&&(effect.kind==='sam'||effect.kind==='aaa'||effect.kind==='air-to-air-missile')?unitTrackFor(executionResult,effect.targetId):undefined;return <WeaponEffectVisual key={effect.id} effect={effect} seconds={seconds} sceneClock={sceneClock} targetTrack={targetTrack} targetContactStart={targetProjection?.visibleSince} targetAuthorized={targetAuthorized}/> }):null}
@@ -835,7 +833,6 @@ function BattlefieldScene({squadrons,assets,playerAssets,mappedAreas,presentatio
     <mesh position={[presentationCenter[0],.001,presentationCenter[1]]} rotation={[-Math.PI/2,0,0]} onPointerDown={down} onPointerMove={mapMove} onClick={mapClick} onPointerLeave={()=>setConstructionHover(undefined)}><planeGeometry args={[boundsWidth(resolvedPresentationBounds),boundsDepth(resolvedPresentationBounds)]}/><meshBasicMaterial transparent opacity={0} depthWrite={false}/></mesh>
   </>
 }
-const distance2=(a:Point,b:Point)=>Math.hypot(a[0]-b[0],a[1]-b[1])
 const clamp01=(value:number)=>Math.max(0,Math.min(1,value))
 
 export const Battlefield=memo(function Battlefield({cameraMemory,...props}:BattlefieldProps){const localPoseMemory=useRef<CameraPoseSnapshot|undefined>(undefined),poseMemory=cameraMemory??localPoseMemory;return <Canvas orthographic shadows="basic" dpr={[1,1.5]} gl={{antialias:true,powerPreference:'high-performance'}}><BattlefieldScene {...props} poseMemory={poseMemory}/></Canvas>})

@@ -22,7 +22,9 @@ function openingPackage(seed: number): MatchState {
     placedAssetIds: selectedAssetIds,
   }
   expect(validateCampaignSetup({ ...draft, setup }, setup)).toEqual([])
-  return confirmCampaignSetup({ ...draft, setup })
+  // This fixed flight script does not plan around extended SAM coverage.
+  return confirmCampaignSetup({ ...draft, setup, enemyAssets: draft.enemyAssets.map(asset =>
+    asset.kind === 'radar' ? { ...asset, operational: false } : asset) })
 }
 
 function searchFrontier(state: MatchState): Point {

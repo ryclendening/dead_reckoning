@@ -7,7 +7,7 @@ import type { CpuPlanningView } from './planningView'
 import { generateActions } from './actions'
 import { choosePackage, contribution } from './strategy'
 import { CPU_PROFILES, type RouteWork } from './routes'
-import { defenseBenefits, forwardValue, legalPlacements, observedThreat } from './placement'
+import { defenseBenefits, defenseNetworkBenefits, forwardValue, legalPlacements, observedThreat } from './placement'
 import type { TacticalPackage } from './types'
 
 function withContext(view:CpuPlanningView,ctx:SidePlanningContext):CpuPlanningView {
@@ -105,7 +105,8 @@ export function planPurchases(view:CpuPlanningView):ReturnType<typeof choosePack
       return commands(current).flatMap(command=>{
         const next=executeEconomyCommand(node.ctx,command);if(next===node.ctx)return []
         const kind=command.actionId==='build-sam'?'sam':command.actionId==='build-aaa'?'aaa':undefined
-        const effects=kind&&command.placement?defenseBenefits(current,command.placement,kind):{coverage:0,reconDenial:0,opponentAttrition:0}
+        const restored=command.actionId==='repair-defense'&&node.ctx.assets.some(a=>a.id===command.target.id&&a.health<=0&&a.operational!==false)
+        const effects=kind||restored?defenseNetworkBenefits(current,next.assets):{coverage:0,reconDenial:0,opponentAttrition:0}
         const forward=command.actionId==='build-fob'&&command.placement?forwardValue(current,command.placement)?.gain??0:0
         return [{ctx:next,commands:[...node.commands,command],coverage:node.coverage+effects.coverage,forward:Math.max(node.forward,forward),reconDenial:Math.min(1,node.reconDenial+effects.reconDenial),opponentAttrition:Math.min(1,node.opponentAttrition+effects.opponentAttrition)}]
       })

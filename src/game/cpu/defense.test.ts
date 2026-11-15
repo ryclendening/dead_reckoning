@@ -7,7 +7,7 @@ import { validateAssetPlacement } from '../sideEconomy'
 import { friendlyTerritoryForAssets, territoryContains } from '../territory'
 import { cpuPlanningView } from './planningView'
 import { maintainCpu } from './settlement'
-import { defenseBenefits, defenseCoverage, legalPlacements } from './placement'
+import { defenseBenefits, defenseCoverage, legalPlacements, residualApproachRisk } from './placement'
 import { contribution } from './strategy'
 import { emptyEffects } from './actions'
 import type { MatchState, Point } from '../types'
@@ -32,6 +32,17 @@ function strike(s:MatchState):MatchState {
 }
 
 describe('territory-aware defensive capabilities',()=>{
+  it('can restore an offline radar when it makes existing SAM cover useful against an observed strike approach',()=>{
+    const s=fixture()
+    const base=s.enemyAssets[0]
+    s.cpu!.logistics=2
+    s.enemyAssets.push({...base,id:'e-sam',kind:'sam',position:[3,0],health:100},{...base,id:'e-radar',kind:'radar',position:[1,1],health:0})
+    const restored=maintainCpu(s),after=cpuPlanningView(restored)!
+    expect(restored.cpu!.spending).toMatchObject([{action:'repair-defense',targetId:'e-radar'}])
+    expect(after.assets.find(a=>a.id==='e-radar')?.health).toBe(25)
+    expect(residualApproachRisk(after)).toBeLessThan(residualApproachRisk(cpuPlanningView(s)!))
+  })
+
   it('values home SAM return attrition without crediting it as stopping the released missile',()=>{
     const s=fixture(),view=cpuPlanningView(s)!,point:Point=[4.05,0]
     const effects=defenseBenefits(view,point,'sam')
@@ -97,7 +108,7 @@ describe('territory-aware defensive capabilities',()=>{
   })
 
   it('does not fund empty territory, assume hidden reconnaissance, or reward future effects after the last round',()=>{
-    const s=fixture(),quiet={...s,enemyBaseHealth:100,enemyAssets:s.enemyAssets.map(a=>({...a,health:100})),cpu:{...s.cpu!,traffic:[]}}
+    const s=fixture(),quiet={...s,enemyBaseHealth:100,enemyAssets:s.enemyAssets.map(a=>({...a,health:100})),cpu:{...s.cpu!,logistics:11,traffic:[]}}
     expect(maintainCpu(quiet).enemyAssets).toEqual(quiet.enemyAssets)
     expect(maintainCpu({...s,cpu:{...s.cpu!,logistics:13}}).enemyAssets.some(a=>a.kind==='fob')).toBe(false)
     const recon=fixture(0,'recon'),view=cpuPlanningView(recon)!

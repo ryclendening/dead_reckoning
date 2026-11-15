@@ -1,6 +1,7 @@
 import type { ReactNode } from 'react'
 import { samStatusForPhase } from '../game/airDefense'
-import { defenseProfile, radarRange } from '../game/equipmentRules'
+import { defenseProfile } from '../game/equipmentRules'
+import { DefenseSiteDetails } from './DefenseSiteDetails'
 import { aircraftCardData, assetCardData, type UnitCardData } from '../game/unitCards'
 import type { Asset, EnemyFlight, Phase, RoundResult, Squadron, UnitFrame } from '../game/types'
 
@@ -13,15 +14,16 @@ export function UnitInspector({data,onClose,children,enemy=false}:{data:UnitCard
   </aside>
 }
 
-export function AssetInspector({asset,phase,result,seconds,enemy=false,onClose}:{asset:Asset;phase:Phase;result?:RoundResult;seconds:number;enemy?:boolean;onClose:()=>void}){
+export function AssetInspector({asset,sites=[],phase,result,seconds,enemy=false,onClose}:{asset:Asset;sites?:readonly Asset[];phase:Phase;result?:RoundResult;seconds:number;enemy?:boolean;onClose:()=>void}){
   const data=assetCardData(asset,enemy,phase,result,seconds)
   if(!data)return null
   const profile=defenseProfile(asset)
   const sam=asset.kind==='sam'?samStatusForPhase(asset.id,phase,result?.weaponEffects,seconds,asset):undefined
   const activity=asset.health<=0?'DESTROYED':asset.operational===false?'OFFLINE':sam?.remaining===0?'EMPTY · RELOADS NEXT ROUND':sam&&sam.cooldown>.001?`READY IN ${sam.cooldown.toFixed(1)}s`:phase==='adapt'?'REARMED FOR NEXT ROUND':'READY TO FIRE'
   return <UnitInspector data={data} enemy={enemy} onClose={onClose}>
-    {sam?<><label>{phase==='debrief'?'MISSILES AT ROUND END':'MISSILES THIS ROUND'} <strong>{sam.remaining} / {sam.capacity}</strong></label><div className="sam-ammo" aria-label={`${sam.remaining} missiles remaining`}>{Array.from({length:sam.capacity},(_,index)=><i key={index} className={index<sam.remaining?'loaded':''}/>)}</div><p>{activity}</p><small>{profile?.cooldown}s BETWEEN SHOTS · ENGAGEMENT RANGE {profile?.range.toFixed(1)}</small></>:null}
-    {asset.kind==='radar'?<small>DETECTION RANGE {radarRange(asset).toFixed(1)}</small>:asset.kind==='aaa'?<small>ENGAGEMENT RANGE {profile?.range.toFixed(1)} · {profile?.burstShots} SHOTS PER BURST</small>:asset.kind==='base'||asset.kind==='fob'?<label>BASED FORMATIONS <strong>{asset.basedFormationIds?.length??0}{asset.kind==='fob'?` / ${asset.capacity??2}`:''}</strong></label>:null}
+    {sam?<><label>{phase==='debrief'?'MISSILES AT ROUND END':'MISSILES THIS ROUND'} <strong>{sam.remaining} / {sam.capacity}</strong></label><div className="sam-ammo" aria-label={`${sam.remaining} missiles remaining`}>{Array.from({length:sam.capacity},(_,index)=><i key={index} className={index<sam.remaining?'loaded':''}/>)}</div><p>{activity}</p><small>{profile?.cooldown}s BETWEEN SHOTS</small></>:null}
+    <DefenseSiteDetails asset={asset} sites={sites} enemy={enemy}/>
+    {asset.kind==='aaa'?<small>{profile?.burstShots} SHOTS PER BURST</small>:asset.kind==='base'||asset.kind==='fob'?<label>BASED FORMATIONS <strong>{asset.basedFormationIds?.length??0}{asset.kind==='fob'?` / ${asset.capacity??2}`:''}</strong></label>:null}
   </UnitInspector>
 }
 

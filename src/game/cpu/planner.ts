@@ -38,5 +38,5 @@ export function cpuFlights(state:MatchState):import('../types').EnemyFlight[] {
   return prepareCpuRound(state).cpu!.plan!.orders.map(order=>({...order,initialAircraft:order.aircraft,target:order.strikeTargetId?'base':'decoy',detectionWindows:[]}))
 }
 export function cpuReportAt(asset:Asset,round:number,observedAt?:number):CpuSiteReport {
-  return {id:asset.id,kind:asset.kind,position:copy(asset.position),health:asset.health,maxHealth:asset.maxHealth,observedRound:round,...(observedAt===undefined?{}:{observedAt}),...(asset.upgrades?.length?{upgrades:[...asset.upgrades]}:{})}
+  return {id:asset.id,kind:asset.kind,position:copy(asset.position),health:asset.health,maxHealth:asset.maxHealth,observedRound:round,...(asset.operational===undefined?{}:{operational:asset.operational}),...(observedAt===undefined?{}:{observedAt}),...(asset.upgrades?.length?{upgrades:[...asset.upgrades]}:{})}
 }

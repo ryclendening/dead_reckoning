@@ -1,7 +1,11 @@
 import { describe, expect, it } from 'vitest'
 import { samStatusAt, samStatusForPhase } from './airDefense'
 import { createRoundSimulation, resolveRound } from './engine'
+import { createMatch, enemyAssetsFor } from './data'
+import { effectiveDefenseProfile } from './equipmentRules'
+import { projectGroundAssetAt } from './executionProjection'
 import { createScenario } from './scenarios'
+import { generateCampaignWorld } from './world'
 import type { MatchState, Point } from './types'
 
 function defenseFixture(twoFlights=false):MatchState{
@@ -55,5 +59,61 @@ describe('finite SAM salvos',()=>{
   it.each([{health:0},{operational:false}])('prevents launches by a destroyed or disabled SAM (%j)',overrides=>{
     const state=defenseFixture();Object.assign(state.enemyAssets.find(asset=>asset.id==='e-sam')!,overrides)
     expect(resolveRound(state).weaponEffects.filter(effect=>effect.kind==='sam'&&effect.sourceId==='e-sam')).toHaveLength(0)
+  })
+})
+
+describe('radar-assisted ground defense',()=>{
+  it('places both opening CPU batteries inside radar coverage across seeded layouts',()=>{
+    for(let seed=0;seed<64;seed++){
+      const sites=enemyAssetsFor(generateCampaignWorld(seed))
+      const radar=sites.find(site=>site.kind==='radar')!
+      for(const battery of sites.filter(site=>site.kind==='sam'||site.kind==='aaa')){
+        expect(effectiveDefenseProfile(battery,sites)?.radarId,`Seed ${seed}: ${battery.kind}`).toBe(radar.id)
+      }
+    }
+  })
+
+  it('links only operational batteries and their own in-range radars, without stacking',()=>{
+    const state=createMatch(),sam={...state.playerAssets.find(a=>a.kind==='sam')!,position:[0,0] as Point}
+    const aaa={...sam,kind:'aaa' as const}
+    const radar={...state.playerAssets.find(a=>a.kind==='radar')!,position:[6.4,0] as Point}
+    expect(effectiveDefenseProfile(sam,[sam,radar])).toMatchObject({baseRange:3.2,range:6.4,radarId:radar.id})
+    expect(effectiveDefenseProfile(aaa,[radar,{...radar,id:'spare'}])?.range).toBeCloseTo(2.85)
+    for(const unavailable of [{...radar,position:[6.41,0] as Point},{...radar,health:0},{...radar,operational:false}]) {
+      expect(effectiveDefenseProfile(sam,[unavailable])).toMatchObject({range:3.2,radarId:undefined})
+      expect(effectiveDefenseProfile(aaa,[unavailable])).toMatchObject({range:1.9,radarId:undefined})
+    }
+    expect(effectiveDefenseProfile({...sam,operational:false},[radar])).toBeUndefined()
+  })
+
+  it('drops extended range on the radar-destroying impact and resolves an already-launched missile',()=>{
+    const state=createMatch(7301)
+    const [home,enemyHome,radarPosition,samPosition]:Point[]=[[0,0],[15,0],[3,0],[7,0]]
+    const initialRadar={...state.enemyAssets.find(a=>a.kind==='radar')!,position:radarPosition,health:60,intel:'confirmed' as const,hidden:false}
+    const sampleRoute:Point[]=[home,...Array.from({length:13},(_,i)=>[i%2?.8:2,i%3*.1] as Point),home]
+    state.playerAssets=state.playerAssets.filter(a=>a.kind==='base').map(a=>({...a,position:home}))
+    state.enemyAssets=[...state.enemyAssets.filter(a=>a.kind==='base').map(a=>({...a,position:enemyHome})),
+      initialRadar,{...state.enemyAssets.find(a=>a.kind==='sam')!,position:samPosition}]
+    state.squadrons=state.squadrons.map(f=>{
+      const route:Point[]=f.role==='recon'?sampleRoute:[home,[.1,0]]
+      return {...f,sortieOrdered:f.id==='viper'||f.id==='raven',route,routeIngress:route,plannedRecoveryFieldId:'p-base',
+        ...(f.role==='fighter'?{mission:'base-strike' as const,strikeTargetId:initialRadar.id}:{reconPosture:'aggressive' as const})}
+    })
+    state.cpu!.plan={round:state.round,objective:'defend',reason:'All enemy aircraft grounded.',candidates:[],
+      orders:state.cpu!.formations.map(f=>({...f,sortieOrdered:false}))}
+
+    const result=resolveRound(state)
+    const impact=result.combatSequences.find(s=>s.kind==='strike')!.exchanges[0].time
+    const shots=result.weaponEffects.filter(e=>e.kind==='sam')
+    expect(shots).toHaveLength(1)
+    expect(shots[0]).toMatchObject({targetId:'raven'})
+    expect(shots[0].start).toBeLessThan(impact)
+    expect(shots[0].end).toBeGreaterThan(impact)
+    expect(result.combatSequences.some(s=>s.kind==='defense'&&s.exchanges.some(e=>e.weapon==='sam'&&e.time>impact))).toBe(true)
+    expect(projectGroundAssetAt(initialRadar,result,impact-.05).health).toBe(60)
+    expect(projectGroundAssetAt(initialRadar,result,impact).health).toBe(0)
+
+    const survives={...state,enemyAssets:state.enemyAssets.map(a=>a.kind==='radar'?{...a,health:100}:a)}
+    expect(resolveRound(survives).weaponEffects.filter(e=>e.kind==='sam').length).toBeGreaterThan(1)
   })
 })

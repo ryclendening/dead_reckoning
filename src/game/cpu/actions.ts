@@ -146,7 +146,7 @@ function fighterActions(view: CpuPlanningView, work: RouteWork, fighter: Squadro
       const timely=1-urgency+urgency/(1+Math.exp((releaseTime-threatTime)/.5))
       const baseDamage=site.kind==='base'?Math.min(1,attack.damageNow/site.health)*timely:0
       const suppressionTurns=Math.ceil(site.health/Math.max(1,attack.damageNow)), payoff=suppressionTurns+1
-      const reduction=baseOrders.length?Math.max(0,bestBaseRisk-Math.min(...baseOrders.map(o=>orderRisk(view,o,cpu.sites.filter(s=>s.id!==site.id)))))/100:0
+      const reduction=baseOrders.length?Math.max(0,bestBaseRisk-Math.min(...baseOrders.map(o=>orderRisk(view,o,after))))/100:0
       const suppression=base&&remaining>=payoff?reduction*survive/suppressionTurns:0
       const operation=site.kind==='base'?{...attack,damageNow:attack.damageNow*timely}
         :suppression>0&&followup?{damageNow:0,followupDamage:followup.damageNow*Math.max(0,1-orderRisk(view,order)/Math.max(1,fighter.strength??100)),preparationRounds:suppressionTurns,releaseSeconds:followup.releaseSeconds}:undefined
