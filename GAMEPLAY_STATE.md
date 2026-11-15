@@ -288,6 +288,8 @@ This log keeps only current net changes. Superseded intermediate states belong i
 
 ### 2026-11-14
 
+- Added Supply Depot to CPU purchase evaluation. Its future income is valued over the remaining campaign rounds against the shared upgrade price; Maintenance Wing continues to use the current repair workload and shared quote.
+
 - Split the Resupply purchase catalog into Aircraft and Ground tabs. The tabs stay visible as the list scrolls, and canceling site placement returns to the Ground tab.
 
 - Raised starting cash to $140M and base round pay to $80M per side. Resupply and Debrief now show cash in millions, including $120M for a four-aircraft recon formation and $160M for a fighter formation.

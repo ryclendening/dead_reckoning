@@ -1,5 +1,6 @@
 import { CAMPAIGN_ROUND_LIMIT } from '../campaign'
 import { economyCommandForQuote, economyQuotesFor, executeEconomyCommand, validateAssetPlacement } from '../sideEconomy'
+import { LOGISTICS_EFFECTS } from '../economyRules'
 import type { SidePlanningContext } from '../sideContext'
 import type { EconomyCommand, EconomyTarget } from '../types'
 import type { CpuPlanningView } from './planningView'
@@ -15,7 +16,7 @@ function withContext(view:CpuPlanningView,ctx:SidePlanningContext):CpuPlanningVi
 /** Re-quote each command on the current working copy, including placement/upgrade exclusivity. */
 function commands(view:CpuPlanningView):EconomyCommand[] {
   const ctx=view.context, targets:EconomyTarget[]=[...ctx.formations.map(f=>({kind:'squadron' as const,id:f.id})),...ctx.assets.map(a=>({kind:'asset' as const,id:a.id}))]
-  const result:EconomyCommand[]=targets.flatMap(target=>economyQuotesFor(ctx,target).filter(q=>q.eligible&&q.id!=='install-supply-depot').map(q=>({actionId:q.id,target,expectedCost:q.cost,expectedLogistics:ctx.logistics,expectedReserveAircraft:ctx.reserves})))
+  const result:EconomyCommand[]=targets.flatMap(target=>economyQuotesFor(ctx,target).filter(q=>q.eligible).map(q=>({actionId:q.id,target,expectedCost:q.cost,expectedLogistics:ctx.logistics,expectedReserveAircraft:ctx.reserves})))
   // Consider fixed infrastructure only when its current return can cover the price.
   const work=ctx.formations.reduce((n,f)=>n+Math.ceil(Math.max(0,f.aircraft/f.maxAircraft*100-(f.strength??100))/25),0)
   const filtered=result.filter(c=>c.actionId!=='install-maintenance-wing'||work>12)
@@ -87,7 +88,10 @@ export function planPurchases(view:CpuPlanningView):ReturnType<typeof choosePack
       const current=withContext(nextRound,node.ctx)
       const options=generateActions(current,work).map(p=>({...p,id:`${node.commands.map(c=>c.actionId+':'+c.target.id+':'+c.placement).join('|')}/${p.id}`,purchases:node.commands,
         summary:`${node.commands.length?node.commands.map(c=>`${c.actionId}${c.placement?` at ${c.placement.map(n=>n.toFixed(1))}`:''}`).join(', ')+'. ':''}${p.summary}`,
-        predicted:{...p.predicted,logisticsSpent:original.cpu.logistics-node.ctx.logistics,defenseCoverageGain:node.coverage,
+        predicted:{...p.predicted,logisticsSpent:original.cpu.logistics-node.ctx.logistics,
+          futureLogisticsIncome:node.commands.some(command=>command.actionId==='install-supply-depot')
+            ? LOGISTICS_EFFECTS.supplyDepotIncome*Math.max(0,CAMPAIGN_ROUND_LIMIT-original.round):0,
+          defenseCoverageGain:node.coverage,
           reconDenial:node.reconDenial,opponentAttrition:node.opponentAttrition,
           ownBaseRiskReduced:Math.min(1,p.predicted.ownBaseRiskReduced+node.coverage*observedThreat(original)*1.6),
           futureStrikeAccessGain:Math.max(p.predicted.futureStrikeAccessGain,node.forward),

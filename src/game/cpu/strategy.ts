@@ -78,6 +78,7 @@ export function contribution(view:CpuPlanningView,p:TacticalPackage):Record<stri
     // cost without charging the old full penalty a second time.
     attrition:-resourceLoss*(p.baseAttack||view.round===CAMPAIGN_ROUND_LIMIT?.12:.26),
     spending:-e.logisticsSpent/Math.max(10,view.cpu.logistics)*.18,
+    income:(e.futureLogisticsIncome??0)/Math.max(10,view.cpu.logistics)*.18,
     delay:-e.roundsUntilPayoff/Math.max(1,remaining)*.04,
   }
   return Object.fromEntries(Object.entries(components).map(([k,v])=>[k,v===0?0:v]))
