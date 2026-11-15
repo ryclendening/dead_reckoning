@@ -256,8 +256,13 @@
   .command-sheet .planning-protect-target{margin-top:5px;gap:4px}
   .command-sheet .shelf-range{margin-top:5px}
   .mission-step .mission-effect{margin-top:5px}
-  .mission-step .shelf-route button{min-height:38px}
+  .mission-step .shelf-route button{height:46px;min-height:46px;box-sizing:border-box}
 }
+
+.execute-view-controls{position:absolute;top:11px;left:8px;z-index:8;display:flex;flex-direction:column;gap:3px;pointer-events:auto}
+.execute-view-controls button{width:54px;height:27px;display:flex;align-items:center;justify-content:center;gap:3px;padding:0 3px;border:1px solid #465448;background:rgba(8,11,9,.94);color:#c9d9cb;font:800 7px 'Barlow Condensed';letter-spacing:.35px;cursor:pointer}
+.execute-view-controls button:first-child{color:var(--cyan)}
+.execute-view-controls svg{width:12px;height:12px}
 
 .end-state.draw{background:radial-gradient(circle at 50% 36%,#333b40,#0a0c0a 64%)}.draw .end-icon{border-color:#aaa995}.draw .end-icon svg{color:#aaa995}
 /* One fixed planning frame: aircraft navigation, task content, actions, status. */

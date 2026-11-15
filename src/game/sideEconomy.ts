@@ -47,6 +47,7 @@ export const AIRFIELD_UPGRADE_CATALOG = UPGRADE_CATALOG.filter(upgrade=>upgrade.
 export interface FobPlacementValidation { valid: boolean; reason?: string }
 export function validateAssetPlacement(state: SidePlanningContext, kind: ConstructibleAssetKind, placement: [number, number] | undefined): FobPlacementValidation {
   if (!placement || !Number.isFinite(placement[0]) || !Number.isFinite(placement[1])) return { valid: false, reason: 'SELECT A MAP LOCATION' }
+  if (state.opposingTerritory && territoryContains(placement,state.opposingTerritory)) return { valid: false, reason: 'SITE MUST BE OUTSIDE ENEMY TERRITORY' }
   const territory = friendlyTerritoryForAssets(state.territory,state.assets)
   const owned = territoryContains(placement,territory)
   if (kind !== 'fob' && !owned) return { valid: false, reason: 'SITE MUST BE INSIDE FRIENDLY TERRITORY' }

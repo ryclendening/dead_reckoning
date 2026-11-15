@@ -50,19 +50,11 @@ function anchorCameraViewport(camera:THREE.OrthographicCamera,width:number,heigh
   camera.updateProjectionMatrix()
 }
 
-export type CameraPoseSnapshot={target:[number,number,number];zoom:number;viewportWidth:number;viewportHeight:number;lastFocus?:Point;focusInitialized?:boolean;lastFollowKey?:string}
+export type CameraPoseSnapshot={target:[number,number,number];zoom:number;viewportWidth:number;viewportHeight:number;lastFocus?:Point;focusInitialized?:boolean;lastFocusRequest?:number;lastFollowKey?:string}
 
-function CameraRig({phase,friendlyTerritory,planningBounds,presentationBounds,focusPoint,followKey,poseMemory}:{phase:Phase;friendlyTerritory:FriendlyTerritory;planningBounds:WorldBounds;presentationBounds:WorldBounds;focusPoint?:Point;followKey?:string;poseMemory:{current:CameraPoseSnapshot|undefined}}){
+function CameraRig({phase,friendlyTerritory,planningBounds,presentationBounds,focusPoint,focusRequestKey=0,followKey,poseMemory}:{phase:Phase;friendlyTerritory:FriendlyTerritory;planningBounds:WorldBounds;presentationBounds:WorldBounds;focusPoint?:Point;focusRequestKey?:number;followKey?:string;poseMemory:{current:CameraPoseSnapshot|undefined}}){
   const {camera,size}=useThree(),controls=useRef<MapControlsImpl>(null),focusDestination=useRef<Point|undefined>(undefined),focusPending=useRef(false),initialized=useRef(false)
   const {width:viewportWidth,height:viewportHeight}=size
-  useEffect(()=>{
-    const remembered=poseMemory.current
-    if(remembered?.focusInitialized&&remembered.lastFocus?.[0]===focusPoint?.[0]&&remembered.lastFocus?.[1]===focusPoint?.[1])return
-    const destination=focusPoint?[...focusPoint] as Point:undefined
-    if(remembered){remembered.lastFocus=destination;remembered.focusInitialized=true}
-    focusDestination.current=destination
-    focusPending.current=Boolean(destination)
-  },[focusPoint?.[0],focusPoint?.[1],poseMemory])
   useEffect(()=>{const control=controls.current;if(!control)return;const cancelFocus=()=>{focusPending.current=false};control.addEventListener('start',cancelFocus);return()=>control.removeEventListener('start',cancelFocus)},[])
   const presentation=cameraPresentationForPhase(phase)
   const commandBounds=useMemo(()=>territoryBounds(friendlyTerritory),[friendlyTerritory])
@@ -74,6 +66,15 @@ function CameraRig({phase,friendlyTerritory,planningBounds,presentationBounds,fo
   // Drawers resize the canvas, but must not change which views are legal.
   const limitHeight=Math.max(viewportHeight,poseMemory.current?.viewportWidth===viewportWidth?poseMemory.current.viewportHeight:0)
   const minimumZoom=useMemo(()=>Math.max(viewportWidth/Math.max(1,boundsWidth(presentationBounds)-2),limitHeight/Math.max(1,boundsDepth(presentationBounds)-2)),[presentationBounds,limitHeight,viewportWidth])
+  useEffect(()=>{
+    const remembered=poseMemory.current
+    if(remembered?.focusInitialized&&remembered.lastFocusRequest===focusRequestKey&&remembered.lastFocus?.[0]===focusPoint?.[0]&&remembered.lastFocus?.[1]===focusPoint?.[1])return
+    if(focusRequestKey>0&&remembered?.lastFocusRequest!==focusRequestKey){const c=camera as THREE.OrthographicCamera;c.zoom=Math.min(64,Math.max(minimumZoom,viewportHeight/presentation.worldHeight));c.updateProjectionMatrix()}
+    const destination=focusPoint?[...focusPoint] as Point:undefined
+    if(remembered){remembered.lastFocus=destination;remembered.lastFocusRequest=focusRequestKey;remembered.focusInitialized=true}
+    focusDestination.current=destination
+    focusPending.current=Boolean(destination)
+  },[camera,focusPoint?.[0],focusPoint?.[1],focusRequestKey,minimumZoom,phase,presentation.worldHeight,poseMemory,viewportHeight])
   const needsInitialization=poseMemory.current===undefined
   useLayoutEffect(()=>{
     const c=camera as THREE.OrthographicCamera,control=controls.current
@@ -672,9 +673,9 @@ function enemyStatusAt(flight:EnemyFlight,frame:UnitFrame,initialStrength?:numbe
 }
 
 
-export interface BattlefieldProps {cameraMemory?:{current:CameraPoseSnapshot|undefined};squadrons:Squadron[]; assets:Asset[]; playerAssets:Asset[]; mappedAreas:Point[]; discoveredBoundaries?:BoundarySegment[]; presentationBounds?:WorldBounds; planningBounds?:WorldBounds; friendlyTerritory?:FriendlyTerritory; selectedId:string; followId?:string; focusPoint?:Point; placementId:string; positionedPlacementIds?:string[]; onPlacementSelect?:(id:string)=>void; planningBaseId?:string; executionBaseId?:string; planningRecoveryFieldId?:string; plannedFormationIds?:string[]; routeOrigin?:Point; routePlanningEnabled?:boolean; showMissionPreview?:boolean; selectingProtectTarget?:boolean; selectingGroundTarget?:boolean; onGroundTargetSelect?:(id:string)=>void; selectedAssetId?:string; inspectedFlightId?:string; onAssetInspect?:(id:string)=>void; onFlightInspect?:(id:string)=>void; escortPreview?:{targetId:string}; phase:Phase; progress:number; activeEvent?:CombatEvent; executionResult?:RoundResult; packageReview?:boolean; economySelectionId?:string; onPlanningBaseSelect?:(id:string)=>void; onPlanningFormationSelect?:(id:string)=>void; onPlanningProtectTarget?:(id:string)=>void; onPlanningProtectPoint?:(point:Point)=>void; onPlanningProtectFlight?:(id:string)=>void; onPlanningRecoverySelect?:(id:string)=>void; onExecutionBaseSelect?:(id:string)=>void; onEconomySelect?:(id:string)=>void; construction?:{kind:ConstructibleAssetKind;placement?:Point;isValid:(point:Point)=>boolean;onStage:(point:Point)=>void}; isPlacementValid?:(point:Point)=>boolean; onRoute:(route:Point[])=>boolean|void; onPlace:(id:string,position:Point)=>void}
+export interface BattlefieldProps {cameraMemory?:{current:CameraPoseSnapshot|undefined};squadrons:Squadron[]; assets:Asset[]; playerAssets:Asset[]; mappedAreas:Point[]; discoveredBoundaries?:BoundarySegment[]; presentationBounds?:WorldBounds; planningBounds?:WorldBounds; friendlyTerritory?:FriendlyTerritory; selectedId:string; followId?:string; focusPoint?:Point; focusRequestKey?:number; placementId:string; positionedPlacementIds?:string[]; onPlacementSelect?:(id:string)=>void; planningBaseId?:string; executionBaseId?:string; planningRecoveryFieldId?:string; plannedFormationIds?:string[]; routeOrigin?:Point; routePlanningEnabled?:boolean; showMissionPreview?:boolean; selectingProtectTarget?:boolean; selectingGroundTarget?:boolean; onGroundTargetSelect?:(id:string)=>void; selectedAssetId?:string; inspectedFlightId?:string; onAssetInspect?:(id:string)=>void; onFlightInspect?:(id:string)=>void; escortPreview?:{targetId:string}; phase:Phase; progress:number; activeEvent?:CombatEvent; executionResult?:RoundResult; packageReview?:boolean; economySelectionId?:string; onPlanningBaseSelect?:(id:string)=>void; onPlanningFormationSelect?:(id:string)=>void; onPlanningProtectTarget?:(id:string)=>void; onPlanningProtectPoint?:(point:Point)=>void; onPlanningProtectFlight?:(id:string)=>void; onPlanningRecoverySelect?:(id:string)=>void; onExecutionBaseSelect?:(id:string)=>void; onEconomySelect?:(id:string)=>void; construction?:{kind:ConstructibleAssetKind;placement?:Point;isValid:(point:Point)=>boolean;onStage:(point:Point)=>void}; isPlacementValid?:(point:Point)=>boolean; onRoute:(route:Point[])=>boolean|void; onPlace:(id:string,position:Point)=>void}
 type BattlefieldSceneProps=BattlefieldProps&{poseMemory:{current:CameraPoseSnapshot|undefined}}
-function BattlefieldScene({squadrons,assets,playerAssets,mappedAreas,presentationBounds,planningBounds,friendlyTerritory,selectedId,followId,focusPoint,placementId,positionedPlacementIds=[],onPlacementSelect,planningBaseId,executionBaseId,planningRecoveryFieldId,plannedFormationIds=[],routeOrigin,routePlanningEnabled=false,showMissionPreview=false,selectingProtectTarget=false,selectingGroundTarget=false,onGroundTargetSelect,selectedAssetId,inspectedFlightId,onAssetInspect,onFlightInspect,escortPreview,phase,progress,activeEvent,executionResult,packageReview,economySelectionId,onPlanningBaseSelect,onPlanningFormationSelect,onPlanningProtectTarget,onPlanningProtectPoint,onPlanningProtectFlight,onPlanningRecoverySelect,onExecutionBaseSelect,onEconomySelect,construction,isPlacementValid,onRoute,onPlace,poseMemory}:BattlefieldSceneProps){
+function BattlefieldScene({squadrons,assets,playerAssets,mappedAreas,presentationBounds,planningBounds,friendlyTerritory,selectedId,followId,focusPoint,focusRequestKey,placementId,positionedPlacementIds=[],onPlacementSelect,planningBaseId,executionBaseId,planningRecoveryFieldId,plannedFormationIds=[],routeOrigin,routePlanningEnabled=false,showMissionPreview=false,selectingProtectTarget=false,selectingGroundTarget=false,onGroundTargetSelect,selectedAssetId,inspectedFlightId,onAssetInspect,onFlightInspect,escortPreview,phase,progress,activeEvent,executionResult,packageReview,economySelectionId,onPlanningBaseSelect,onPlanningFormationSelect,onPlanningProtectTarget,onPlanningProtectPoint,onPlanningProtectFlight,onPlanningRecoverySelect,onExecutionBaseSelect,onEconomySelect,construction,isPlacementValid,onRoute,onPlace,poseMemory}:BattlefieldSceneProps){
   const selected=squadrons.find(s=>s.id===selectedId)!
   const playerBase=playerAssets.find(a=>a.kind==='base')?.position??[-7.8,11.2];const playerRadar=playerAssets.find(a=>a.kind==='radar')
   const resolvedTerritory=useMemo<FriendlyTerritory>(()=>friendlyTerritory??{center:playerBase,radius:4.5},[friendlyTerritory,playerBase[0],playerBase[1]])
@@ -782,7 +783,7 @@ function BattlefieldScene({squadrons,assets,playerAssets,mappedAreas,presentatio
   const constructionPoint=construction?.placement??constructionHover
   const editableWaypoints=selected.mission==='base-strike'?selected.routeIngress.slice(1).map((position,index,array)=>({position,routeIndex:index+1,label:index===array.length-1?'S':String(index+1),release:index===array.length-1})):selected.routeIngress.slice(1,6).map((position,index)=>({position,routeIndex:index+1,label:String(index+1),release:false}))
   return <>
-    <CameraRig phase={phase} friendlyTerritory={resolvedTerritory} planningBounds={resolvedPlanningBounds} presentationBounds={resolvedPresentationBounds} focusPoint={cameraFocus} followKey={followId} poseMemory={poseMemory}/>
+    <CameraRig phase={phase} friendlyTerritory={resolvedTerritory} planningBounds={resolvedPlanningBounds} presentationBounds={resolvedPresentationBounds} focusPoint={cameraFocus} focusRequestKey={focusRequestKey} followKey={followId} poseMemory={poseMemory}/>
     <color attach="background" args={['#11140f']}/><fog attach="fog" args={['#11140f',34,60]}/>
     <ambientLight intensity={1.1}/><directionalLight position={[-5,10,5]} intensity={2.1} castShadow shadow-mapSize={[1024,1024]}/>
     <Terrain phase={phase} presentationBounds={resolvedPresentationBounds} planningBounds={resolvedPlanningBounds} isPlacementValid={phase==='deploy'?isPlacementValid:phase==='adapt'?construction?.isValid:undefined}/><FogOfWar mappedAreas={mappedAreas} observations={liveMapObservations} presentationBounds={resolvedPresentationBounds} friendlyTerritory={resolvedTerritory}/><TerritoryOverlay territory={resolvedTerritory} showFobPlacementReach={phase==='adapt'&&construction?.kind==='fob'}/>{phase==='deploy'&&placement?<PlacementHex position={placement.position} placed={positionedPlacementIds.includes(placement.id)}/>:null}{construction&&constructionPoint?<ConstructionPlacementGhost kind={construction.kind} position={constructionPoint} valid={construction.isValid(constructionPoint)}/>:null}
