@@ -2,7 +2,7 @@ import type { Asset, MatchState, MissionId, Point, Role, Squadron } from './type
 import { missionDistance } from './flightRules'
 import { flightRangeFor } from './flightRules'
 import { BASE_STRIKE_RANGE, selectedStrikeTarget } from './campaign'
-import { formationField } from './forwardBasing'
+import { formationField, recoveryPath, routeDistanceForBasing } from './forwardBasing'
 
 export interface RouteBounds { minX:number; maxX:number; minZ:number; maxZ:number }
 export interface RouteTemplateDefinition { id:MissionId; label:string; shortLabel:string; description:string; roles:Role[]; requiresTarget:boolean }
@@ -46,7 +46,8 @@ export function validateStrikeGeometry(squadron:Squadron,launch:Asset|undefined,
   const route=squadron.route
   if(route.length<2||route.length>7||distance(route[0],launch.position)>.001)return 'KEEP THE FIXED TAKEOFF POINT'
   if(distance(route.at(-1)!,target.position)>BASE_STRIKE_RANGE+.001)return 'KEEP THE STRIKE POINT INSIDE THE 6-UNIT RELEASE CIRCLE'
-  if(missionDistance(route,launch.position)>flightRangeFor(squadron)+.001)return 'GROUND STRIKE ROUTE EXCEEDS AVAILABLE RANGE'
+  const recovery = recoveryPath(route.at(-1)!, launch.position, squadron.recoveryWaypoints)
+  if(routeDistanceForBasing(route)+routeDistanceForBasing(recovery)>flightRangeFor(squadron)+.001)return 'GROUND STRIKE ROUTE EXCEEDS AVAILABLE RANGE'
   return undefined
 }
 export function validateGroundStrikeOrder(state:MatchState,squadron:Squadron):string|undefined {

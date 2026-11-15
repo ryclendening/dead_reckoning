@@ -53,6 +53,33 @@ describe('execution airfield chit rail', () => {
 describe('mission planning shelf', () => {
   const noop = () => {}
 
+  it('puts PvP Lock orders in the leftmost slot', () => {
+    const match = createMatch()
+    const markup = renderToStaticMarkup(<CommandShelf
+      squadrons={match.squadrons} bases={match.playerAssets} activeBaseId="p-base" rosterMode="closed"
+      squadron={match.squadrons[0]} routeDistance={0} maxDistance={40} onSelect={noop} onBaseSelect={noop}
+      onRosterMode={noop} onMission={noop} onClear={noop} onCommit={noop}
+      step="idle" onClose={noop} reviewedIds={new Set()} reviewedCount={0} totalCount={4} onlineLock allowEmptyCommit
+    />)
+    expect(markup).toMatch(/online-commit-first"><button[^>]*>.*Lock orders.*planning-base-toggle/s)
+  })
+
+  it('shows the strike target and return controls together', () => {
+    const match = createMatch()
+    const target = { ...match.enemyAssets[0], name: 'TARGET RADAR' }
+    const fighter = { ...match.squadrons[0], mission: 'base-strike' as const, strikeTargetId: target.id }
+    const markup = renderToStaticMarkup(<CommandShelf
+      squadrons={match.squadrons} bases={match.playerAssets} activeBaseId="p-base" rosterMode="closed"
+      squadron={fighter} routeDistance={10} maxDistance={40} onSelect={noop} onBaseSelect={noop}
+      onRosterMode={noop} onMission={noop} onClear={noop} onCommit={noop}
+      step="route" onClose={noop} reviewedIds={new Set()} reviewedCount={0} totalCount={4}
+      onRouteLegChange={noop} editingReturn groundTargets={[target]}
+    />)
+    expect(markup).toContain('aria-pressed="true">Return')
+    expect(markup).toContain('CLEAR RETURN')
+    expect(markup).toContain('TARGET RADAR')
+  })
+
   it('shows fighter task choices without a bottom route-advance button', () => {
     const match = createMatch()
     const fighter = match.squadrons.find(squadron => squadron.role === 'fighter')!

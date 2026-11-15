@@ -134,19 +134,26 @@ describe('invite-only online campaign API', () => {
     for (let round = 1; round <= CAMPAIGN_ROUND_LIMIT; round++) {
       const hold = { type: 'lock-plan' as const, orders: [] }
       const center = a.view.match.world.friendlyTerritory.center
-      const plan = round === 1 ? { type: 'lock-plan' as const, orders: [plannedOrder(a, [center[0] + 1, center[1] + 1])] } : hold
+      const returnPoint: Point = [center[0] + 1, center[1] - 1]
+      const plan = round === 1 ? { type: 'lock-plan' as const, orders: [{
+        ...plannedOrder(a, [center[0] + 1, center[1] + 1]), recoveryWaypoints: [returnPoint],
+      }] } : hold
       if (round === 1) {
         const altered = structuredClone(plan)
         altered.orders[0].route[1] = center
         expect((await next(a, altered, hostToken)).status).toBe(400)
         expect((await next(a, { type: 'lock-plan', orders: [{ ...plan.orders[0], mission: 'base-strike' }] }, hostToken)).status).toBe(400)
+        expect((await next(a, { type: 'lock-plan', orders: [{ ...plan.orders[0], recoveryWaypoints: Array(6).fill(returnPoint) }] }, hostToken)).status).toBe(400)
+        expect((await next(a, { type: 'lock-plan', orders: [{ ...plan.orders[0], recoveryWaypoints: [[500, 500]] }] }, hostToken)).status).toBe(400)
       }
       const aStart = a
       const hostCommand = 'committed-action-' + round
       if (round === 1) {
         const locked = await perform(next(a, plan, hostToken, hostCommand))
         expect(locked.view.locked).toBe(true)
-        expect((await get(hostToken)).view.match.squadrons.find(formation => formation.id === plan.orders[0].id)?.route).toEqual(plan.orders[0].route)
+        expect((await get(hostToken)).view.match.squadrons.find(formation => formation.id === plan.orders[0].id)).toMatchObject({
+          route: plan.orders[0].route, recoveryWaypoints: [returnPoint],
+        })
         expect((await get(guestToken)).view.opponentLocked).toBe(true)
         expect((await next(locked, hold, hostToken)).status).toBe(409)
         await perform(next(b, hold, guestToken))

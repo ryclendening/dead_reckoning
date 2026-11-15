@@ -5,11 +5,13 @@ import { flightRangeFor } from './flightRules'
 
 export const AIRFIELD_LANDING_RADIUS = .6
 export const FOB_MIN_CAPACITY = 2
+export const MAX_RECOVERY_WAYPOINTS = 5
 
 export const isAirfield = (asset: Asset): boolean => asset.kind === 'base' || asset.kind === 'fob'
 export const isOperationalAirfield = (asset: Asset): boolean => isAirfield(asset) && asset.health > 0 && (asset.kind === 'base' || asset.operational !== false)
 export const distanceBetween = (a: Point, b: Point) => Math.hypot(a[0] - b[0], a[1] - b[1])
 export const routeDistanceForBasing = (route: Point[]) => route.slice(1).reduce((sum, point, index) => sum + distanceBetween(route[index], point), 0)
+export const recoveryPath = (from: Point, field: Point, waypoints: Point[] = []): Point[] => [from, ...waypoints, field]
 
 export function normalizeFormationBasing(squadrons: Squadron[], assets: Asset[]): Asset[] {
   const airfields = assets.filter(isAirfield)
@@ -110,6 +112,7 @@ export interface RecoveryPlanningView {
   intendedField: Asset
   alternateField?: Asset
   normalizedRoute: Point[]
+  recoveryRoute: Point[]
   missionDistance: number
   remainingRange: number
   valid: boolean
@@ -162,22 +165,29 @@ export function deriveRecoveryPlanningView(state: BasingContext, formationId: st
   const assets = normalizeFormationBasing(state.squadrons, state.playerAssets)
   const launchField = formationField(assets, formationId)
   if (!launchField) return undefined
-  const strike = state.squadrons.find(item => item.id === formationId)?.mission === 'base-strike'
+  const formation = state.squadrons.find(item => item.id === formationId)
+  const strike = formation?.mission === 'base-strike'
   const normalizedRoute = strike ? route : snapRouteToRecoveryField(route, assets)
   const recognized = strike ? undefined : fieldAtRouteEnd(assets, normalizedRoute)
   const intendedField = recognized ?? launchField
   const flown = routeDistanceForBasing(normalizedRoute)
-  const reserve = recognized ? 0 : distanceBetween(normalizedRoute.at(-1) ?? launchField.position, launchField.position)
+  const waypoints = formation?.recoveryWaypoints ?? []
+  const recoveryRoute = !recognized && normalizedRoute.length >= 2
+    ? recoveryPath(normalizedRoute.at(-1)!, intendedField.position, waypoints)
+    : []
+  const validRecovery = waypoints.length === 0 || (recoveryRoute.length > 0
+    && waypoints.length <= MAX_RECOVERY_WAYPOINTS && waypoints.every(point => point.every(Number.isFinite)))
+  const reserve = routeDistanceForBasing(recoveryRoute)
   const missionDistance = flown + reserve
   const remainingRange = Math.max(0, maxDistance - flown)
   const alternateField = nearestReachableAlternate({ ...state, playerAssets: assets }, formationId, normalizedRoute.at(-1) ?? launchField.position, remainingRange, intendedField.id)
   const validStart = normalizedRoute.length > 0 && distanceBetween(normalizedRoute[0], launchField.position) <= AIRFIELD_LANDING_RADIUS
   const operational = isOperationalAirfield(intendedField)
   const capacity = fieldHasCapacity({ ...state, playerAssets: assets }, intendedField, formationId)
-  const valid = normalizedRoute.length >= 2 && validStart && missionDistance <= maxDistance + .001 && operational && capacity
-  const reason = !validStart ? 'ROUTE MUST START AT THE LAUNCH FIELD' : missionDistance > maxDistance + .001 ? 'ROUTE EXCEEDS AVAILABLE RANGE' : !operational ? `${intendedField.name ?? 'FOB'} IS UNUSABLE` : !capacity ? `${intendedField.name ?? 'FOB'} IS AT CAPACITY` : normalizedRoute.length < 2 ? 'DRAW A VALID ROUTE' : undefined
+  const valid = normalizedRoute.length >= 2 && validStart && validRecovery && missionDistance <= maxDistance + .001 && operational && capacity
+  const reason = !validStart ? 'ROUTE MUST START AT THE LAUNCH FIELD' : !validRecovery ? 'RETURN WAYPOINTS REQUIRE A SEPARATE RECOVERY LEG' : missionDistance > maxDistance + .001 ? 'ROUTE EXCEEDS AVAILABLE RANGE' : !operational ? `${intendedField.name ?? 'FOB'} IS UNUSABLE` : !capacity ? `${intendedField.name ?? 'FOB'} IS AT CAPACITY` : normalizedRoute.length < 2 ? 'DRAW A VALID ROUTE' : undefined
   const alternate = alternateField ? (alternateField.name ?? (alternateField.kind === 'base' ? 'HOME BASE' : 'FORWARD BASE')) : 'NONE'
-  return { launchField, intendedField, alternateField, normalizedRoute, missionDistance, remainingRange, valid, reason, summary: `RECOVERY: ${intendedField.name ?? (intendedField.kind === 'base' ? 'HOME BASE' : 'FORWARD BASE')} · ALTERNATE: ${alternate}` }
+  return { launchField, intendedField, alternateField, normalizedRoute, recoveryRoute, missionDistance, remainingRange, valid, reason, summary: `RECOVERY: ${intendedField.name ?? (intendedField.kind === 'base' ? 'HOME BASE' : 'FORWARD BASE')} · ALTERNATE: ${alternate}` }
 }
 
 export function validateRecoveryPackage(state: BasingContext, maxDistances: Record<Squadron['role'], number> | ((squadron: Squadron) => number), formationIds?: ReadonlySet<string>): { valid: boolean; reason?: string } {

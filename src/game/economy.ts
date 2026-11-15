@@ -49,10 +49,10 @@ export const beginNextRound = (state: MatchState): MatchState => {
   const playerAssets = normalizeFormationBasing(state.squadrons, state.playerAssets)
   const squadrons = state.squadrons.map(squadron => {
     const field = formationField(playerAssets, squadron.id)
-    if (!field || squadron.aircraft <= 0) return { ...squadron, plannedRecoveryFieldId: undefined, sortieOrdered: undefined }
+    if (!field || squadron.aircraft <= 0) return { ...squadron, recoveryWaypoints: undefined, plannedRecoveryFieldId: undefined, sortieOrdered: undefined }
     const trapped = field.kind === 'fob' && field.operational === false
     const origin = [...field.position] as [number, number]
-    return { ...squadron, plannedRecoveryFieldId: undefined, sortieOrdered: undefined, status: trapped ? 'trapped' as const : 'rtb' as const, route: [origin], routeIngress: [origin] }
+    return { ...squadron, recoveryWaypoints: undefined, plannedRecoveryFieldId: undefined, sortieOrdered: undefined, status: trapped ? 'trapped' as const : 'rtb' as const, route: [origin], routeIngress: [origin] }
   })
   const maintained = maintainCpu(state)
   return planNextCpuRound({ ...maintained, playerAssets, squadrons, round: state.round + 1, phase: 'plan', lastResult: undefined })

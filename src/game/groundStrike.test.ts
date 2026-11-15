@@ -84,6 +84,43 @@ describe('explicit ground strike orders',()=>{
     expect(simulation.result.weaponEffects.some(effect=>effect.kind==='air-to-ground-missile')).toBe(true)
   })
 
+  it('follows a planned strike return around a SAM and includes those waypoints in its fuel check',()=>{
+    const state=strikeFixture('radar'),fighter=state.squadrons[0]
+    const [home]=fighter.route
+    const offset=(x:number,y:number):Point=>[home[0]+x,home[1]+y]
+    const release=offset(8,0)
+    const returnPoints=[offset(7,-4),offset(1,-4)]
+    state.enemyAssets.find(asset=>asset.id==='e-sam')!.position=offset(14,0)
+    fighter.route=[home,offset(1,4),offset(7,4),release]
+    fighter.routeIngress=fighter.route
+    fighter.recoveryWaypoints=returnPoints
+    const sam={...state.enemyAssets.find(asset=>asset.id==='e-sam')!,id:'e-return-sam',kind:'sam' as const,position:offset(4,0),health:100}
+    state.enemyAssets.push(sam)
+
+    const view=deriveRecoveryPlanningView(state,fighter.id,fighter.route,40)!
+    expect(view.valid).toBe(true)
+    expect(view.recoveryRoute).toEqual([release,...returnPoints,home])
+    expect(validateGroundStrikeOrder(state,fighter)).toBeUndefined()
+    expect(normalizeMatch(JSON.parse(JSON.stringify(state))).squadrons[0].recoveryWaypoints).toEqual(returnPoints)
+
+    const result=resolveRound(state)
+    expect(result.weaponEffects.find(effect=>effect.kind==='air-to-ground-missile')?.from).toEqual(release)
+    const frames=result.unitTracks.find(track=>track.unitId===fighter.id)!.frames
+    const entered=returnPoints.map(point=>frames.findIndex(frame=>frame.mode==='recovering'&&frame.position[0]===point[0]&&frame.position[1]===point[1]))
+    expect(entered[0]).toBeGreaterThan(0)
+    expect(entered[1]).toBeGreaterThan(entered[0])
+    expect(frames.at(-1)?.mode).toBe('recovered')
+    const attacked=(round:typeof result)=>round.weaponEffects.some(effect=>effect.sourceId===sam.id&&effect.targetId===fighter.id)
+    expect(attacked(result)).toBe(false)
+
+    fighter.recoveryWaypoints=undefined
+    expect(view.missionDistance).toBeGreaterThan(deriveRecoveryPlanningView(state,fighter.id,fighter.route,40)!.missionDistance)
+    expect(attacked(resolveRound(state))).toBe(true)
+    fighter.recoveryWaypoints=[offset(0,-30)]
+    expect(deriveRecoveryPlanningView(state,fighter.id,fighter.route,40)?.valid).toBe(false)
+    expect(validateGroundStrikeOrder(state,fighter)).toBe('GROUND STRIKE ROUTE EXCEEDS AVAILABLE RANGE')
+  })
+
   it('continues the strike through visual or radar contact instead of volunteering to chase',()=>{
     const state=strikeFixture();state.debugScenario='neutral-los'
     state.playerAssets=state.playerAssets.map(asset=>asset.kind==='radar'?{...asset,health:100,position:enemyBaseFor(state.world)}:asset)

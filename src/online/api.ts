@@ -1,4 +1,5 @@
 import { resolveOnlineRound } from '../game/onlineSimulation'
+import { MAX_RECOVERY_WAYPOINTS } from '../game/forwardBasing'
 import type { EconomyActionId, Point } from '../game/types'
 import { applyOnlineAction, canResolve, newOnlineMatch, OnlineError, playerView, type OnlineMatch, type SeatIndex } from './match'
 import type { OnlineAction, OnlineCommand, OnlineOrder, OnlineResponse } from './protocol'
@@ -50,11 +51,14 @@ function parseOrder(value: unknown): OnlineOrder {
   if (typeof mission !== 'string' || !missionPattern.test(mission)) invalid()
   if (reconPosture !== undefined && reconPosture !== 'aggressive' && reconPosture !== 'conservative') invalid()
   const protectedTargetId = optionalId(item.protectedTargetId)
+  const recovery = item.recoveryWaypoints
+  if (recovery !== undefined && (!Array.isArray(recovery) || recovery.length > MAX_RECOVERY_WAYPOINTS)) invalid()
   return {
     id: identifier(item.id),
     mission: mission as OnlineOrder['mission'],
     route: route(item.route, 80),
     routeIngress: route(item.routeIngress, protectedTargetId ? 80 : 7),
+    recoveryWaypoints: recovery?.map(point),
     plannedRecoveryFieldId: identifier(item.plannedRecoveryFieldId),
     reconPosture,
     protectedTargetId,
@@ -71,7 +75,7 @@ function parseAction(value: unknown): OnlineAction {
     case 'debrief':
     case 'next-round': return { type: item.type }
     case 'lock-plan':
-      if (!Array.isArray(item.orders) || item.orders.length > 3) invalid()
+      if (!Array.isArray(item.orders)) invalid()
       return { type: item.type, orders: item.orders.map(parseOrder) }
     case 'purchase': {
       const { actionId } = item

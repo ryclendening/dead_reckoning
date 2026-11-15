@@ -159,9 +159,21 @@
 .command-sheet .recon-posture { grid-template-columns: 1fr; }
 .command-sheet .recon-posture > span, .command-sheet .recon-posture > small { font-size: 12px; line-height: 1.3; }
 .command-sheet .planning-route-actions { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.planning-route-legs { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
+.planning-route-legs button {
+  min-height: 44px;
+  border: 1px solid var(--line);
+  background: #19221b;
+  color: #d8e6d8;
+  font: 700 15px 'Barlow Condensed', sans-serif;
+  cursor: pointer;
+}
+.planning-route-legs button[aria-pressed="true"] { border-color: var(--cyan); background: #25443a; }
+.planning-route-legs button:last-child[aria-pressed="true"] { border-color: #d4b4ff; background: #302343; }
 .planning-capsule .planning-base-toggle b, .planning-capsule .planning-all-toggle { font-size: 15px; }
 .planning-capsule .planning-base-toggle small { font-size: 12px; }
 .planning-capsule .shelf-primary { font-size: 15px !important; }
+.planning-capsule.online-commit-first { grid-template-columns: 108px minmax(0, 1fr) 48px; }
 
 /* Resupply lists scroll inside a bounded drawer, above the sticky actions. */
 .resupply-panel .adapt-content { max-height: min(34dvh, 320px); }

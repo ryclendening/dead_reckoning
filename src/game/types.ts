@@ -26,6 +26,8 @@ export interface Squadron {
   id: string; callsign: string; role: Role; mission: MissionId
   aircraft: number; maxAircraft: number; damaged: number; readiness: number; ammo: number; route: Point[]; routeIngress: Point[]
   strength?: number; morale?: number; status?: ExecutionStatus; plannedRecoveryFieldId?: string; sortieOrdered?: boolean
+  /** Optional waypoints between the mission endpoint and the intended landing field. */
+  recoveryWaypoints?: Point[]
   /** Optional site, map point, or friendly flight assigned to a Protect order. */
   protectedTargetId?: string; protectedPoint?: Point
   /** Explicit recovered enemy ground target; base-strike is the legacy Ground Strike mission ID. */
@@ -50,6 +52,7 @@ export interface EnemyFlight {
   route: Point[]; detectionWindows: DetectionWindow[]; identityLearnedAt?: number; target: 'base' | 'decoy'
   mission?: MissionId; routeIngress?: Point[]; maxAircraft?: number; sortieOrdered?: boolean
   plannedRecoveryFieldId?: string; strikeTargetId?: string; protectedPoint?: Point; protectedTargetId?: string
+  recoveryWaypoints?: Point[]
   aircraftTypeId?: string; upgrades?: UpgradeId[]
 }
 export type AssetKind = 'base' | 'fob' | 'decoy' | 'radar' | 'sam' | 'aaa'

@@ -56,6 +56,27 @@ describe('authoritative online round adapter', () => {
     }
   })
 
+  it('flies the locked return waypoints for both seats', () => {
+    const prepare = (state: MatchState, x: number) => {
+      const home: Point = [x, 0]
+      const route: Point[] = [home, [x, 4]]
+      const returnPoint: Point = [x * .8, 2]
+      state.playerAssets = state.playerAssets.filter(asset => asset.kind === 'base').map(base => ({ ...base, position: home }))
+      state.squadrons = state.squadrons.map(formation => formation.id === 'raven'
+        ? { ...formation, mission: 'search-area', sortieOrdered: true, plannedRecoveryFieldId: 'p-base', route, routeIngress: route, recoveryWaypoints: [returnPoint] }
+        : formation)
+      return { state, returnPoint }
+    }
+    const prepared = [prepare(seat(137), -8), prepare(seat(841), 8)] as const
+    const resolved = resolveOnlineRound([prepared[0].state, prepared[1].state], 991)
+    for (const [i, match] of resolved.entries()) {
+      const frames = match.lastResult!.unitTracks.find(track => track.unitId === 'raven')!.frames
+      const [x,y] = prepared[i].returnPoint
+      expect(frames.some(frame => frame.mode === 'recovering' && frame.position[0] === x && frame.position[1] === y)).toBe(true)
+      expect(frames.at(-1)?.mode).toBe('recovered')
+    }
+  })
+
   it('applies both base strikes once and reports a simultaneous-destruction draw from both seats', () => {
     const first = seat(333), second = seat(444, 8)
     const aBase = first.playerAssets.find(asset => asset.kind === 'base')!
@@ -150,6 +171,7 @@ describe('authoritative online round adapter', () => {
       expect(flight?.route).toEqual(hostile!.frames.map(frame => frame.position))
       expect(flight).not.toHaveProperty('reconPosture')
       expect(flight).not.toHaveProperty('routeIngress')
+      expect(flight).not.toHaveProperty('recoveryWaypoints')
     }
 
     const groundedB = { ...b, squadrons: b.squadrons.map(squadron => ({ ...squadron, sortieOrdered: false })) }

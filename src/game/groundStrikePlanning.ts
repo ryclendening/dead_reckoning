@@ -11,5 +11,5 @@ export function planGroundStrike(state:MatchState,formationId:string,targetId:st
   const squadron=state.squadrons.find(item=>item.id===formationId)
   if(state.phase!=='plan'||!squadron||squadron.mission!=='base-strike'||squadron.status==='trapped')return undefined
   const route=buildGroundStrikeRoute(state,formationId,targetId)
-  return route?{...squadron,mission:'base-strike',strikeTargetId:targetId,protectedPoint:undefined,protectedTargetId:undefined,route,routeIngress:route,plannedRecoveryFieldId:undefined}:undefined
+  return route?{...squadron,mission:'base-strike',strikeTargetId:targetId,protectedPoint:undefined,protectedTargetId:undefined,route,routeIngress:route,recoveryWaypoints:undefined,plannedRecoveryFieldId:undefined}:undefined
 }

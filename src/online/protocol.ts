@@ -1,7 +1,7 @@
 import type { EconomyActionId, EconomyTarget, MatchState, Point, Squadron } from '../game/types'
 
 export type OnlineOrder = Pick<Squadron, 'id' | 'mission' | 'route' | 'routeIngress' | 'strikeTargetId' |
-  'reconPosture' | 'protectedPoint' | 'protectedTargetId' | 'plannedRecoveryFieldId'>
+  'reconPosture' | 'protectedPoint' | 'protectedTargetId' | 'plannedRecoveryFieldId' | 'recoveryWaypoints'>
 
 export type OnlineAction =
   | { type: 'place'; assetId: string; position: Point }

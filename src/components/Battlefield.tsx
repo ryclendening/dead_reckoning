@@ -20,7 +20,7 @@ import { fighterResponsibilityFor } from '../game/missionResponsibility'
 import { cameraPresentationForPhase, commandMapFitZoomForBounds } from '../game/cameraPresentation'
 import { FOB_PLACEMENT_MAX_TERRITORY_GAP } from '../game/economy'
 import { territoryBounds, territoryRegions } from '../game/territory'
-import { firstRouteFobLatch } from '../game/forwardBasing'
+import { firstRouteFobLatch, MAX_RECOVERY_WAYPOINTS, recoveryPath } from '../game/forwardBasing'
 import type { ActiveDogfightPresentation, Asset, BoundarySegment, CombatEvent, CombatSequence, ConstructibleAssetKind, DefenseCue, EnemyFlight, FriendlyTerritory, Phase, Point, ReinforcementCall, RoundResult, Squadron, UnitFrame, UnitTrack, WeaponEffect, WorldBounds } from '../game/types'
 import { advanceFrameClock, createFrameClock, type FrameClock } from '../game/frameClock'
 import { identifiedAircraftType } from '../game/contactTracks'
@@ -119,7 +119,7 @@ function PlacementHex({position,placed}:{position:Point;placed:boolean}){
   return <group position={to3(position,.02)}><mesh rotation={[-Math.PI/2,0,Math.PI/6]}><circleGeometry args={[HEX_RADIUS*.88,6]}/><meshBasicMaterial color={color} transparent opacity={.13} depthWrite={false}/></mesh><Line points={outline} color={color} opacity={.95} transparent lineWidth={2}/></group>
 }
 
-function RouteWaypoint({position,index,selected,onSelect,onMove,release=false}:{position:Point;index:number|string;selected:boolean;onSelect:()=>void;onMove:(point:Point)=>boolean|void;release?:boolean}){
+function RouteWaypoint({position,index,selected,onSelect,onMove,release=false,returnLeg=false}:{position:Point;index:number|string;selected:boolean;onSelect:()=>void;onMove:(point:Point)=>boolean|void;release?:boolean;returnLeg?:boolean}){
   const [preview,setPreview]=useState(position)
   const pointer=useRef<{id:number;x:number;y:number;dragging:boolean}|undefined>(undefined)
   useEffect(()=>setPreview(position),[position])
@@ -128,10 +128,13 @@ function RouteWaypoint({position,index,selected,onSelect,onMove,release=false}:{
   const pointerMove=(event:ThreeEvent<PointerEvent>)=>{const active=pointer.current;if(!active||active.id!==event.pointerId)return;event.stopPropagation();if(Math.hypot(event.nativeEvent.clientX-active.x,event.nativeEvent.clientY-active.y)>4)active.dragging=true;if(active.dragging){const point=eventPoint(event);if(point)setPreview(point)}}
   const pointerUp=(event:ThreeEvent<PointerEvent>)=>{const active=pointer.current;if(!active||active.id!==event.pointerId)return;event.stopPropagation();pointer.current=undefined;(event.nativeEvent.target as Element|null)?.releasePointerCapture(event.pointerId);if(!active.dragging){onSelect();return}const point=eventPoint(event);if(!point||onMove(point)===false){setPreview(position);return}setPreview(point)}
   const pointerCancel=(event:ThreeEvent<PointerEvent>)=>{if(pointer.current?.id!==event.pointerId)return;event.stopPropagation();pointer.current=undefined;setPreview(position)}
-  const edge=release?'#f1c65b':selected?'#f1c65b':'#72e8df',fill=release?'#392d18':selected?'#46391d':'#142a28'
+  const edge=release?'#f1c65b':returnLeg?'#d4b4ff':'#72e8df'
+  const fill=release?'#392d18':returnLeg?'#2b1e40':'#142a28'
+  const radius=release?.43:.32
   return <group position={[preview[0],.18,preview[1]]}>
     <mesh rotation={[-Math.PI/2,0,0]} onPointerDown={pointerDown} onPointerMove={pointerMove} onPointerUp={pointerUp} onPointerCancel={pointerCancel} onClick={event=>event.stopPropagation()}><circleGeometry args={[.58,32]}/><meshBasicMaterial transparent opacity={0} depthWrite={false} side={THREE.DoubleSide}/></mesh>
-    <mesh rotation={[-Math.PI/2,0,0]}><ringGeometry args={[release?.31:selected?.27:.23,release?.43:selected?.37:.32,24]}/><meshBasicMaterial color={edge} depthWrite={false}/></mesh>
+    {selected?<Ring radius={radius+.07} color="#f5fff7" opacity={.95} dashed={false}/>:null}
+    <mesh rotation={[-Math.PI/2,0,0]}><ringGeometry args={[release?.31:.23,radius,24]}/><meshBasicMaterial color={edge} depthWrite={false}/></mesh>
     <mesh rotation={[-Math.PI/2,0,0]}><circleGeometry args={[release?.29:selected?.26:.22,24]}/><meshBasicMaterial color={fill} depthWrite={false}/></mesh>
     <Text position={[0,.012,0]} rotation={[-Math.PI/2,0,0]} fontSize={release?.22:selected?.19:.16} color="#e9fff8" anchorX="center" anchorY="middle">{index}</Text>
   </group>
@@ -380,7 +383,7 @@ function ResponsibilityCircle({center,radius,selected}:{center:Point;radius:numb
 
 function StrikeReleasePreview({center,range=6}:{center:Point;range?:number}){
   const points=useMemo(()=>Array.from({length:97},(_,index)=>{const angle=index*Math.PI*2/96;return to3([center[0]+Math.cos(angle)*range,center[1]+Math.sin(angle)*range],.035)}),[center,range])
-  return <group renderOrder={7}><mesh position={to3(center,.026)} rotation={[-Math.PI/2,0,0]}><circleGeometry args={[range,64]}/><meshBasicMaterial color="#d99a25" transparent opacity={.055} depthWrite={false}/></mesh><Line points={points} color="#f1c65b" transparent opacity={.78} dashed dashSize={.28} gapSize={.18} lineWidth={1.2} depthTest={false}/><Billboard position={to3([center[0],center[1]-range-.32],.09)} follow lockZ={false}><Text fontSize={.17} color="#f4d074" anchorX="center" outlineWidth={.012} outlineColor="#201708">MISSILE RELEASE · 6 UNITS</Text></Billboard></group>
+  return <group renderOrder={7}><group position={to3(center,.065)}><Ring radius={.75} color="#f1c65b" opacity={.95} dashed={false} lineWidth={2}/></group><mesh position={to3(center,.026)} rotation={[-Math.PI/2,0,0]}><circleGeometry args={[range,64]}/><meshBasicMaterial color="#d99a25" transparent opacity={.055} depthWrite={false}/></mesh><Line points={points} color="#f1c65b" transparent opacity={.78} dashed dashSize={.28} gapSize={.18} lineWidth={1.2} depthTest={false}/><Billboard position={to3([center[0],center[1]-range-.32],.09)} follow lockZ={false}><Text fontSize={.17} color="#f4d074" anchorX="center" outlineWidth={.012} outlineColor="#201708">MISSILE RELEASE · 6 UNITS</Text></Billboard></group>
 }
 
 function ResponsibilityCorridor({path,halfWidth,selected}:{path:Point[];halfWidth:number;selected:boolean}){
@@ -407,13 +410,14 @@ function RecoveryLatchCue({position,selected}:{position:Point;selected:boolean})
   return <group position={to3(position,.06)}><group ref={pulse}><mesh rotation={[-Math.PI/2,0,0]}><ringGeometry args={[.48,.56,32]}/><meshBasicMaterial color="#9ee6a8" transparent opacity={.65} depthWrite={false}/></mesh><mesh rotation={[-Math.PI/2,0,0]}><ringGeometry args={[.12,.17,24]}/><meshBasicMaterial color="#d7ffe0" transparent opacity={.7} depthWrite={false}/></mesh></group><Billboard position={[0,.42,0]} follow lockZ={false}><Text fontSize={.17} color="#9ee6a8" anchorX="center" outlineWidth={.012} outlineColor="#102015">LATCHED · TRANSIT</Text></Billboard></group>
 }
 
-function Route({squadron,selected,packageReview=false,recoveryLabel,escortRoute=false,showPattern=true}:{squadron:Squadron,selected:boolean,packageReview?:boolean;recoveryLabel?:string;escortRoute?:boolean;showPattern?:boolean}){
+function Route({squadron,selected,packageReview=false,recoveryLabel,escortRoute=false,showPattern=true,returnRoute}:{squadron:Squadron,selected:boolean,packageReview?:boolean;recoveryLabel?:string;escortRoute?:boolean;showPattern?:boolean;returnRoute?:Point[]}){
   if(squadron.route.length<2)return null
   const ingressLength=Math.min(squadron.routeIngress.length,squadron.route.length),ingress=escortRoute?squadron.route:squadron.route.slice(0,ingressLength),station=squadron.route.slice(Math.max(0,ingressLength-1)),hasStation=station.length>1
   const ghostOpacity=packageReview?.62:.18
-  const recovery=Boolean(squadron.plannedRecoveryFieldId||recoveryLabel),routeColor=escortRoute?'#9ee6a8':recovery?'#9ee6a8':selected?'#7ceaf0':'#348c93'
+  const hasReturn=Boolean(returnRoute&&returnRoute.length>1)
+  const recovery=!hasReturn&&Boolean(squadron.plannedRecoveryFieldId||recoveryLabel),routeColor=escortRoute?'#9ee6a8':recovery?'#9ee6a8':selected?'#7ceaf0':'#348c93'
   const annotationPoint=station[Math.floor(station.length/2)]??squadron.route.at(-1)??[0,0]
-  return <group>{ingress.length>1?<Line points={ingress.map(p=>to3(p,.065))} color={routeColor} opacity={selected||recovery||escortRoute?1:ghostOpacity} transparent lineWidth={selected||recovery||escortRoute?2.2:1} depthTest={false}/>:null}{showPattern&&hasStation&&!recovery?<Line points={station.map(p=>to3(p,.07))} color={escortRoute?routeColor:selected?'#f1c65b':'#7a7250'} opacity={escortRoute?1:selected?.9:ghostOpacity} transparent lineWidth={selected||escortRoute?1.7:1} depthTest={false}/>:null}{showPattern&&squadron.mission==='search-area'&&!recovery?<SearchAreaOverlay points={station.slice(1)} selected={selected||escortRoute} tintColor={escortRoute?routeColor:undefined}/>:null}{escortRoute?<Billboard position={to3(annotationPoint,.88)} follow lockZ={false}><Text fontSize={.19} color={routeColor} anchorX="center" outlineWidth={.015} outlineColor="#10150f">MAX ESCORT ROUTE</Text></Billboard>:null}{selected&&!escortRoute?ingress.map((p,i)=><group key={i} position={to3(p,.08)}><mesh position={[0,.1,0]}><sphereGeometry args={[i===ingress.length-1?.15:.1,12,8]}/><meshBasicMaterial color={recovery?'#9ee6a8':friendly}/></mesh></group>):null}{recoveryLabel?<Billboard position={to3(squadron.route.at(-1)??[0,0],.82)} follow lockZ={false}><Text fontSize={.18} color="#9ee6a8" anchorX="center" outlineWidth={.012} outlineColor="#102015">RTB · {recoveryLabel}</Text></Billboard>:null}</group>
+  return <group>{ingress.length>1?<Line points={ingress.map(p=>to3(p,.065))} color={routeColor} opacity={selected||recovery||escortRoute?1:ghostOpacity} transparent lineWidth={selected||recovery||escortRoute?2.2:1} depthTest={false}/>:null}{(showPattern||hasReturn)&&hasStation&&!recovery?<Line points={station.map(p=>to3(p,.07))} color={escortRoute?routeColor:selected?'#f1c65b':'#7a7250'} opacity={escortRoute?1:selected?.9:ghostOpacity} transparent lineWidth={selected||escortRoute?1.7:1} depthTest={false}/>:null}{showPattern&&squadron.mission==='search-area'&&!recovery?<SearchAreaOverlay points={station.slice(1)} selected={selected||escortRoute} tintColor={escortRoute?routeColor:undefined}/>:null}{returnRoute&&hasReturn?<Line points={returnRoute.map(p=>to3(p,.075))} color="#d4b4ff" transparent opacity={.93} dashed dashSize={.26} gapSize={.16} lineWidth={2} depthTest={false}/>:null}{escortRoute?<Billboard position={to3(annotationPoint,.88)} follow lockZ={false}><Text fontSize={.19} color={routeColor} anchorX="center" outlineWidth={.015} outlineColor="#10150f">MAX ESCORT ROUTE</Text></Billboard>:null}{selected&&!escortRoute?ingress.map((p,i)=><group key={i} position={to3(p,.08)}><mesh position={[0,.1,0]}><sphereGeometry args={[i===ingress.length-1?.15:.1,12,8]}/><meshBasicMaterial color={recovery?'#9ee6a8':friendly}/></mesh></group>):null}{recoveryLabel?<Billboard position={to3(returnRoute?.at(-1)??squadron.route.at(-1)??[0,0],.82)} follow lockZ={false}><Text fontSize={.18} color="#9ee6a8" anchorX="center" outlineWidth={.012} outlineColor="#102015">RTB · {recoveryLabel}</Text></Billboard>:null}</group>
 }
 
 type FlightStatus={aircraft:number;damaged:number;fraction:number;hasDamage:boolean;strength:number;morale:number;action:string;landed:boolean}
@@ -674,9 +678,9 @@ function enemyStatusAt(flight:EnemyFlight,frame:UnitFrame,initialStrength?:numbe
 }
 
 
-export interface BattlefieldProps {cameraMemory?:{current:CameraPoseSnapshot|undefined};squadrons:Squadron[]; assets:Asset[]; playerAssets:Asset[]; mappedAreas:Point[]; discoveredBoundaries?:BoundarySegment[]; presentationBounds?:WorldBounds; planningBounds?:WorldBounds; friendlyTerritory?:FriendlyTerritory; selectedId:string; followId?:string; focusPoint?:Point; focusRequestKey?:number; placementId:string; positionedPlacementIds?:string[]; onPlacementSelect?:(id:string)=>void; planningBaseId?:string; executionBaseId?:string; planningRecoveryFieldId?:string; plannedFormationIds?:string[]; routeOrigin?:Point; routePlanningEnabled?:boolean; lockedPlan?:boolean; showMissionPreview?:boolean; selectingProtectTarget?:boolean; selectingGroundTarget?:boolean; onGroundTargetSelect?:(id:string)=>void; selectedAssetId?:string; inspectedFlightId?:string; onAssetInspect?:(id:string)=>void; onFlightInspect?:(id:string)=>void; escortPreview?:{targetId:string}; phase:Phase; progress:number; activeEvent?:CombatEvent; executionResult?:RoundResult; packageReview?:boolean; economySelectionId?:string; onPlanningBaseSelect?:(id:string)=>void; onPlanningFormationSelect?:(id:string)=>void; onPlanningProtectTarget?:(id:string)=>void; onPlanningProtectPoint?:(point:Point)=>void; onPlanningProtectFlight?:(id:string)=>void; onPlanningRecoverySelect?:(id:string)=>void; onExecutionBaseSelect?:(id:string)=>void; onEconomySelect?:(id:string)=>void; onEconomyFormationSelect?:(id:string)=>void; construction?:{kind:ConstructibleAssetKind;placement?:Point;isValid:(point:Point)=>boolean;onStage:(point:Point)=>void}; isPlacementValid?:(point:Point)=>boolean; onRoute:(route:Point[])=>boolean|void; onPlace:(id:string,position:Point)=>void}
+export interface BattlefieldProps {cameraMemory?:{current:CameraPoseSnapshot|undefined};squadrons:Squadron[]; assets:Asset[]; playerAssets:Asset[]; mappedAreas:Point[]; discoveredBoundaries?:BoundarySegment[]; presentationBounds?:WorldBounds; planningBounds?:WorldBounds; friendlyTerritory?:FriendlyTerritory; selectedId:string; followId?:string; focusPoint?:Point; focusRequestKey?:number; placementId:string; positionedPlacementIds?:string[]; onPlacementSelect?:(id:string)=>void; planningBaseId?:string; executionBaseId?:string; planningRecoveryFieldId?:string; plannedFormationIds?:string[]; routeOrigin?:Point; editingReturn?:boolean; recoveryRoute?:Point[]; onReturnWaypoints?:(waypoints:Point[])=>boolean|void; routePlanningEnabled?:boolean; lockedPlan?:boolean; showMissionPreview?:boolean; selectingProtectTarget?:boolean; selectingGroundTarget?:boolean; onGroundTargetSelect?:(id:string)=>void; selectedAssetId?:string; inspectedFlightId?:string; onAssetInspect?:(id:string)=>void; onFlightInspect?:(id:string)=>void; escortPreview?:{targetId:string}; phase:Phase; progress:number; activeEvent?:CombatEvent; executionResult?:RoundResult; packageReview?:boolean; economySelectionId?:string; onPlanningBaseSelect?:(id:string)=>void; onPlanningFormationSelect?:(id:string)=>void; onPlanningProtectTarget?:(id:string)=>void; onPlanningProtectPoint?:(point:Point)=>void; onPlanningProtectFlight?:(id:string)=>void; onPlanningRecoverySelect?:(id:string)=>void; onExecutionBaseSelect?:(id:string)=>void; onEconomySelect?:(id:string)=>void; onEconomyFormationSelect?:(id:string)=>void; construction?:{kind:ConstructibleAssetKind;placement?:Point;isValid:(point:Point)=>boolean;onStage:(point:Point)=>void}; isPlacementValid?:(point:Point)=>boolean; onRoute:(route:Point[])=>boolean|void; onPlace:(id:string,position:Point)=>void}
 type BattlefieldSceneProps=BattlefieldProps&{poseMemory:{current:CameraPoseSnapshot|undefined}}
-function BattlefieldScene({squadrons,assets,playerAssets,mappedAreas,presentationBounds,planningBounds,friendlyTerritory,selectedId,followId,focusPoint,focusRequestKey,placementId,positionedPlacementIds=[],onPlacementSelect,planningBaseId,executionBaseId,planningRecoveryFieldId,plannedFormationIds=[],routeOrigin,routePlanningEnabled=false,lockedPlan=false,showMissionPreview=false,selectingProtectTarget=false,selectingGroundTarget=false,onGroundTargetSelect,selectedAssetId,inspectedFlightId,onAssetInspect,onFlightInspect,escortPreview,phase,progress,activeEvent,executionResult,packageReview,economySelectionId,onPlanningBaseSelect,onPlanningFormationSelect,onPlanningProtectTarget,onPlanningProtectPoint,onPlanningProtectFlight,onPlanningRecoverySelect,onExecutionBaseSelect,onEconomySelect,onEconomyFormationSelect,construction,isPlacementValid,onRoute,onPlace,poseMemory}:BattlefieldSceneProps){
+function BattlefieldScene({squadrons,assets,playerAssets,mappedAreas,presentationBounds,planningBounds,friendlyTerritory,selectedId,followId,focusPoint,focusRequestKey,placementId,positionedPlacementIds=[],onPlacementSelect,planningBaseId,executionBaseId,planningRecoveryFieldId,plannedFormationIds=[],routeOrigin,editingReturn=false,recoveryRoute,onReturnWaypoints,routePlanningEnabled=false,lockedPlan=false,showMissionPreview=false,selectingProtectTarget=false,selectingGroundTarget=false,onGroundTargetSelect,selectedAssetId,inspectedFlightId,onAssetInspect,onFlightInspect,escortPreview,phase,progress,activeEvent,executionResult,packageReview,economySelectionId,onPlanningBaseSelect,onPlanningFormationSelect,onPlanningProtectTarget,onPlanningProtectPoint,onPlanningProtectFlight,onPlanningRecoverySelect,onExecutionBaseSelect,onEconomySelect,onEconomyFormationSelect,construction,isPlacementValid,onRoute,onPlace,poseMemory}:BattlefieldSceneProps){
   const selected=squadrons.find(s=>s.id===selectedId)!
   const playerBase=playerAssets.find(a=>a.kind==='base')?.position??[-7.8,11.2];const playerRadar=playerAssets.find(a=>a.kind==='radar')
   const resolvedTerritory=useMemo<FriendlyTerritory>(()=>friendlyTerritory??{center:playerBase,radius:4.5},[friendlyTerritory,playerBase[0],playerBase[1]])
@@ -694,8 +698,9 @@ function BattlefieldScene({squadrons,assets,playerAssets,mappedAreas,presentatio
   const [activeWaypoint,setActiveWaypoint]=useState<number>()
   useEffect(()=>{if(!construction)setConstructionHover(undefined)},[construction])
   const draft=useRef<Point[]>([])
-  useEffect(()=>{draft.current=[];setActiveWaypoint(undefined)},[selectedId,routePlanningEnabled,phase])
-  useEffect(()=>{if(draft.current.length>0)draft.current=selected.routeIngress.map(point=>[...point] as Point)},[selected.routeIngress])
+  const editPath=editingReturn?recoveryRoute:selected.routeIngress
+  useEffect(()=>{draft.current=[];setActiveWaypoint(undefined)},[selectedId,routePlanningEnabled,editingReturn,phase])
+  useEffect(()=>{if(draft.current.length>0)draft.current=editPath?.map(point=>[...point] as Point)??[]},[editPath])
   const seconds=progress*(executionResult?.duration??EXECUTION_SECONDS)
   const sceneClock=useSceneVisualClock(seconds,`${phase}:${executionResult?.round??'none'}`)
   const friendlyProjections=useMemo(()=>new globalThis.Map(phase==='execute'?squadrons.flatMap(squadron=>{const projection=projectFriendlyUnitAt(executionResult,squadron.id,seconds);return projection?[[squadron.id,projection] as const]:[]}):[]),[executionResult,phase,seconds,squadrons])
@@ -709,7 +714,8 @@ function BattlefieldScene({squadrons,assets,playerAssets,mappedAreas,presentatio
   const friendlyRadar=playerAssets.find(asset=>asset.kind==='radar'&&asset.health>0)
   const detectedEnemyIds=new Set(hostileProjections.keys())
   const knownEnemyAssetIds=new Set(assets.filter(asset=>!asset.hidden&&asset.intel==='confirmed').map(asset=>asset.id))
-  const strikeTarget=assets.find(asset=>asset.id===selected.strikeTargetId&&asset.intel==='confirmed'&&!asset.hidden)
+  const strikeTarget=assets.find(asset=>asset.id===selected.strikeTargetId&&asset.intel==='confirmed'&&!asset.hidden&&asset.health>0)
+  const assignedStrike=phase==='plan'&&showMissionPreview&&selected.mission==='base-strike'?strikeTarget:undefined
   const enemyVisibleFor=(ids:string[])=>ids.filter(id=>id.startsWith('red-')).every(id=>detectedEnemyIds.has(id))
   const weaponVisibleFor=(ids:string[])=>ids.filter(id=>id.startsWith('red-')).every(id=>detectedEnemyIds.has(id)||knownEnemyAssetIds.has(id))
   const replayWeaponEffects=executionResult?.weaponEffects??[]
@@ -734,7 +740,7 @@ function BattlefieldScene({squadrons,assets,playerAssets,mappedAreas,presentatio
     const airfield=asset.kind==='base'||asset.kind==='fob'
     if(phase==='deploy'){onPlacementSelect?.(asset.id);return}
     if(phase==='plan'&&selectingProtectTarget){onPlanningProtectTarget?.(asset.id);return}
-    if(phase==='plan'&&routePlanningEnabled&&airfield){if(selected.mission!=='base-strike')onPlanningRecoverySelect?.(asset.id);return}
+    if(phase==='plan'&&routePlanningEnabled&&airfield){if(!editingReturn&&selected.mission!=='base-strike')onPlanningRecoverySelect?.(asset.id);return}
     if(phase==='plan'&&airfield)onPlanningBaseSelect?.(asset.id)
     if(phase==='execute'&&airfield)onExecutionBaseSelect?.(asset.id)
     if(phase==='adapt'){if(!construction)onEconomySelect?.(asset.id);return}
@@ -754,14 +760,25 @@ function BattlefieldScene({squadrons,assets,playerAssets,mappedAreas,presentatio
     return hit?[hit.x,hit.z]:[e.point.x,e.point.z]
   }
   const down=(e:ThreeEvent<PointerEvent>)=>{if(phase==='adapt'&&construction){const hit=e.ray.intersectPlane(groundPlane,new THREE.Vector3());const point=snapToHex(hit?[hit.x,hit.z]:[e.point.x,e.point.z]);e.stopPropagation();construction.onStage(point);setConstructionHover(point);return}if(phase==='deploy'){const hit=e.ray.intersectPlane(groundPlane,new THREE.Vector3());const point=snapToHex(hit?[hit.x,hit.z]:[e.point.x,e.point.z]);e.stopPropagation();onPlace(placementId,point)}}
-  const selectWaypoint=(routeIndex:number)=>{if(draft.current.length===0)draft.current=selected.routeIngress.map(point=>[...point] as Point);setActiveWaypoint(current=>current===routeIndex?undefined:routeIndex)}
+  const startDraft=()=>{
+    if(!draft.current.length)draft.current=(editPath?.length?editPath:[routeOrigin??playerBase]).map(point=>[...point] as Point)
+  }
+  const selectWaypoint=(routeIndex:number)=>{
+    startDraft()
+    setActiveWaypoint(current=>current===routeIndex?undefined:routeIndex)
+  }
+  const applyDraft=(next:Point[])=>{
+    const accepted=editingReturn?onReturnWaypoints?.(next.slice(1,-1)):onRoute(next)
+    if(accepted===false)return false
+    draft.current=next
+    return true
+  }
   const moveWaypoint=(routeIndex:number,point:Point)=>{
-    if(draft.current.length===0)draft.current=selected.routeIngress.map(item=>[...item] as Point)
-    if(routeIndex<=0||routeIndex>=draft.current.length)return false
+    startDraft()
+    if(routeIndex<=0||routeIndex>=draft.current.length-Number(editingReturn))return false
     const next=draft.current.map(item=>[...item] as Point)
     next[routeIndex]=point
-    if(onRoute(next)===false)return false
-    draft.current=next
+    if(!applyDraft(next))return false
     setActiveWaypoint(undefined)
     return true
   }
@@ -770,41 +787,41 @@ function BattlefieldScene({squadrons,assets,playerAssets,mappedAreas,presentatio
     e.stopPropagation()
     const point=mapPoint(e)
     if(selectingProtectTarget){onPlanningProtectPoint?.(point);return}
-    if(draft.current.length===0)draft.current=selected.mission==='base-strike'?selected.routeIngress.map(item=>[...item] as Point):[[...(routeOrigin??playerBase)] as Point]
-    if(activeWaypoint!==undefined&&activeWaypoint>0&&activeWaypoint<draft.current.length){
-      const next=draft.current.map(item=>[...item] as Point)
-      next[activeWaypoint]=point
-      if(onRoute(next)===false)return
-      draft.current=next
-      setActiveWaypoint(undefined)
-      return
-    }
-    if(draft.current.length>=(selected.mission==='base-strike'?7:6))return
-    const next=selected.mission==='base-strike'?[...draft.current.slice(0,-1),point,draft.current.at(-1)!]:[...draft.current,point]
-    if(onRoute(next)===false)return
-    draft.current=next
+    startDraft()
+    if(activeWaypoint!==undefined&&activeWaypoint<draft.current.length-Number(editingReturn)){moveWaypoint(activeWaypoint,point);return}
+    if(activeWaypoint!==undefined)setActiveWaypoint(undefined)
+    const fixedEnd=editingReturn||selected.mission==='base-strike'
+    const limit=editingReturn?MAX_RECOVERY_WAYPOINTS+2:fixedEnd?7:6
+    if(draft.current.length>=limit||(fixedEnd&&draft.current.length<2))return
+    const next=fixedEnd?[...draft.current.slice(0,-1),point,draft.current.at(-1)!]:[...draft.current,point]
+    applyDraft(next)
   }
   const mapMove=(e:ThreeEvent<PointerEvent>)=>{if(phase==='adapt'&&construction){const hit=e.ray.intersectPlane(groundPlane,new THREE.Vector3());setConstructionHover(snapToHex(hit?[hit.x,hit.z]:[e.point.x,e.point.z]))}}
   const constructionPoint=construction?.placement??constructionHover
-  const editableWaypoints=selected.mission==='base-strike'?selected.routeIngress.slice(1).map((position,index,array)=>({position,routeIndex:index+1,label:index===array.length-1?'S':String(index+1),release:index===array.length-1})):selected.routeIngress.slice(1,6).map((position,index)=>({position,routeIndex:index+1,label:String(index+1),release:false}))
+  const editableWaypoints=editingReturn?(recoveryRoute??[]).slice(1,-1).map((position,index)=>({position,routeIndex:index+1,label:`R${index+1}`,release:false})):selected.mission==='base-strike'?selected.routeIngress.slice(1).map((position,index,array)=>({position,routeIndex:index+1,label:index===array.length-1?'S':String(index+1),release:index===array.length-1})):selected.routeIngress.slice(1,6).map((position,index)=>({position,routeIndex:index+1,label:String(index+1),release:false}))
   return <>
     <CameraRig phase={phase} friendlyTerritory={resolvedTerritory} planningBounds={resolvedPlanningBounds} presentationBounds={resolvedPresentationBounds} focusPoint={cameraFocus} focusRequestKey={focusRequestKey} followKey={followId} poseMemory={poseMemory}/>
     <color attach="background" args={['#11140f']}/><fog attach="fog" args={['#11140f',34,60]}/>
     <ambientLight intensity={1.1}/><directionalLight position={[-5,10,5]} intensity={2.1} castShadow shadow-mapSize={[1024,1024]}/>
     <Terrain phase={phase} presentationBounds={resolvedPresentationBounds} planningBounds={resolvedPlanningBounds} isPlacementValid={phase==='deploy'?isPlacementValid:phase==='adapt'?construction?.isValid:undefined}/><FogOfWar mappedAreas={mappedAreas} observations={liveMapObservations} presentationBounds={resolvedPresentationBounds} friendlyTerritory={resolvedTerritory}/><TerritoryOverlay territory={resolvedTerritory} showFobPlacementReach={phase==='adapt'&&construction?.kind==='fob'}/>{phase==='deploy'&&placement?<PlacementHex position={placement.position} placed={positionedPlacementIds.includes(placement.id)}/>:null}{construction&&constructionPoint?<ConstructionPlacementGhost kind={construction.kind} position={constructionPoint} valid={construction.isValid(constructionPoint)}/>:null}
     {phase==='deploy'?<SensorRangeOverlay phase={phase} radar={friendlyRadar} position={playerBase} losRange={0} showLos={false}/>:null}
-    {phase==='plan'&&showMissionPreview&&selected.mission==='base-strike'&&strikeTarget?<StrikeReleasePreview center={strikeTarget.position}/>:null}
+    {assignedStrike?<StrikeReleasePreview center={assignedStrike.position}/>:null}
     {displayedPlayerAssets.map(a=>{const chosen=a.id===selectedAssetId||phase==='deploy'&&a.id===placementId||phase==='plan'&&a.id===planningBaseId||phase==='execute'&&a.id===executionBaseId||phase==='adapt'&&a.id===economySelectionId;return a.kind==='base'||a.kind==='fob'||a.kind==='decoy'?<Runway key={a.id} asset={a} selected={chosen} onSelect={()=>selectFriendlyAsset(a)}/>:<Defense key={a.id} asset={a} enemy={false} selected={chosen} missiles={samStatusForPhase(a.id,phase,executionResult?.weaponEffects,seconds,a).remaining} showRange={phase==='deploy'||a.id===selectedAssetId} onSelect={()=>selectFriendlyAsset(a)}/>})}
     {phase==='plan'||phase==='adapt'&&!construction?formationBaseGroups(squadrons,playerAssets).map(group=><AirfieldFormationPips key={`airfield-pips-${group.base.id}`} base={group.base} formations={group.formationIds.flatMap(id=>squadrons.find(item=>item.id===id)??[])} selectedId={phase==='adapt'?economySelectionId??'':selectedId} plannedFormationIds={phase==='adapt'?[]:plannedFormationIds} selectingProtectTarget={selectingProtectTarget} resupply={phase==='adapt'} readOnly={lockedPlan} onSelect={id=>phase==='adapt'?onEconomyFormationSelect?.(id):selectingProtectTarget?onPlanningProtectFlight?.(id):onPlanningFormationSelect?.(id)}/>):null}
-    {displayedEnemyAssets.map(a=>{const chosen=a.id===selectedAssetId||selectingGroundTarget&&a.intel==='confirmed'||a.id===selected.strikeTargetId&&showMissionPreview;return (a.kind==='base'||a.kind==='fob'||a.kind==='decoy')&&a.intel!=='unknown'?<Runway key={a.id} asset={a} enemy selected={chosen} onSelect={()=>selectEnemyAsset(a)}/>:<Defense key={a.id} asset={a} selected={chosen} missiles={samStatusForPhase(a.id,phase,executionResult?.weaponEffects,seconds,a).remaining} showRange={a.id===selectedAssetId} onSelect={()=>selectEnemyAsset(a)}/>})}
-    {[...displayedPlayerAssets.map(asset=>({asset,enemy:false})),...displayedEnemyAssets.map(asset=>({asset,enemy:true}))].map(({asset,enemy})=>{const data=assetCardData(asset,enemy,phase,executionResult,seconds);return data?<group key={`${asset.id}-card`} position={to3(asset.position,.1)}><UnitCard3D data={data} color={enemy?asset.intel==='confirmed'?hostile:amber:friendly} position={[0,.88,asset.kind==='base'||asset.kind==='fob'?1:.3]} selected={asset.id===selectedAssetId} actionLabel={enemy&&selectingGroundTarget&&asset.intel==='confirmed'&&asset.health>0?asset.id===selected.strikeTargetId?'STRIKE TARGET ASSIGNED':'CLICK TO STRIKE':undefined} onSelect={()=>enemy?selectEnemyAsset(asset):selectFriendlyAsset(asset)}/></group>:null})}
+    {displayedEnemyAssets.map(a=>{const chosen=a.id===selectedAssetId||selectingGroundTarget&&a.intel==='confirmed'||a.id===assignedStrike?.id;return (a.kind==='base'||a.kind==='fob'||a.kind==='decoy')&&a.intel!=='unknown'?<Runway key={a.id} asset={a} enemy selected={chosen} onSelect={()=>selectEnemyAsset(a)}/>:<Defense key={a.id} asset={a} selected={chosen} missiles={samStatusForPhase(a.id,phase,executionResult?.weaponEffects,seconds,a).remaining} showRange={a.id===selectedAssetId} onSelect={()=>selectEnemyAsset(a)}/>})}
+    {[...displayedPlayerAssets.map(asset=>({asset,enemy:false})),...displayedEnemyAssets.map(asset=>({asset,enemy:true}))].map(({asset,enemy})=>{const data=assetCardData(asset,enemy,phase,executionResult,seconds);return data?<group key={`${asset.id}-card`} position={to3(asset.position,.1)}><UnitCard3D data={data} color={enemy?asset.intel==='confirmed'?hostile:amber:friendly} position={[0,.88,asset.kind==='base'||asset.kind==='fob'?1:.3]} selected={asset.id===selectedAssetId||enemy&&asset.id===assignedStrike?.id} actionLabel={enemy&&asset.id===assignedStrike?.id?'STRIKE TARGET ASSIGNED':enemy&&selectingGroundTarget&&asset.intel==='confirmed'&&asset.health>0?'CLICK TO STRIKE':undefined} onSelect={()=>enemy?selectEnemyAsset(asset):selectFriendlyAsset(asset)}/></group>:null})}
 
     {activeCoverageAssets.map(({asset})=><ActiveCoverageOverlay key={`${asset.id}-active-coverage`} asset={asset}/>)}
     {phase==='plan'&&(showMissionPreview||plannedFormationIds.includes(selected.id))&&selected.route.length>=2&&!planningRecoveryFieldId&&!selected.protectedTargetId?<ResponsibilityOverlay squadron={selected} protectedPosition={selected.protectedPoint} selected/>:phase==='execute'&&followId&&!followingDogfight?squadrons.filter(s=>s.id===followId).map(s=>{const protectedId=s.protectedTargetId;const protectedPosition=protectedId?friendlyProjections.get(protectedId)?.frame.position:s.protectedPoint;return <ResponsibilityOverlay key={`${s.id}-responsibility`} squadron={s} protectedPosition={protectedPosition} selected/>}):null}
-    {phase==='plan'&&routePlanningEnabled&&!selectingProtectTarget?editableWaypoints.map(({position,routeIndex,label,release})=><RouteWaypoint key={`${selected.id}-waypoint-${routeIndex}`} position={position} index={label} release={release} selected={activeWaypoint===routeIndex} onSelect={()=>selectWaypoint(routeIndex)} onMove={point=>moveWaypoint(routeIndex,point)}/>):null}
-    {phase==='plan'&&showMissionPreview&&selected.mission==='base-strike'&&selected.routeIngress.length>=2?<><group position={to3(selected.routeIngress[0],.18)}><Ring radius={.3} color="#7ceaf0" opacity={.9}/><Text position={[0,.35,0]} fontSize={.2} rotation={[-Math.PI/2,0,0]} color="#7ceaf0">TAKEOFF · FIXED</Text></group><Billboard position={to3([selected.routeIngress.at(-1)![0],selected.routeIngress.at(-1)![1]+.38],.19)} follow lockZ={false}><Text fontSize={.17} color="#edc16d" anchorX="center" outlineWidth={.012} outlineColor="#21190a">STRIKE POINT · DRAG TO MOVE</Text></Billboard></>:null}
+    {phase==='plan'&&routePlanningEnabled&&!selectingProtectTarget?editableWaypoints.map(({position,routeIndex,label,release})=><RouteWaypoint key={`${selected.id}-waypoint-${routeIndex}`} position={position} index={label} release={release} returnLeg={editingReturn} selected={activeWaypoint===routeIndex} onSelect={()=>selectWaypoint(routeIndex)} onMove={point=>moveWaypoint(routeIndex,point)}/>):null}
+    {phase==='plan'&&showMissionPreview&&selected.mission==='base-strike'&&selected.routeIngress.length>=2?<><group position={to3(selected.routeIngress[0],.18)}><Ring radius={.3} color="#7ceaf0" opacity={.9}/><Text position={[0,.35,0]} fontSize={.2} rotation={[-Math.PI/2,0,0]} color="#7ceaf0">TAKEOFF · FIXED</Text></group><Billboard position={to3([selected.routeIngress.at(-1)![0],selected.routeIngress.at(-1)![1]+.38],.19)} follow lockZ={false}><Text fontSize={.17} color="#edc16d" anchorX="center" outlineWidth={.012} outlineColor="#21190a">{editingReturn||lockedPlan?'STRIKE POINT':'STRIKE POINT · DRAG TO MOVE'}</Text></Billboard></>:null}
     {phase==='plan'&&showMissionPreview&&(planningRecoveryFieldId||routeFobLatch)?(()=>{const field=planningRecoveryFieldId?playerAssets.find(asset=>asset.id===planningRecoveryFieldId):routeFobLatch?.field;return field?<RecoveryLatchCue position={field.position} selected={Boolean(planningRecoveryFieldId)}/>:null})():null}
-    {phase==='plan'&&(routePlanningEnabled||showMissionPreview)?<Route squadron={selected} selected packageReview={packageReview} showPattern={false} escortRoute={showMissionPreview&&escortPreview?.targetId===selected.id} recoveryLabel={showMissionPreview&&planningRecoveryFieldId?playerAssets.find(asset=>asset.id===planningRecoveryFieldId)?.name??'HOME BASE':undefined}/>:phase==='execute'&&followId&&!followingDogfight?squadrons.filter(s=>s.id===followId).map(s=><Route key={s.id} squadron={s} selected recoveryLabel={recoveryById.get(s.id)?.plannedFieldId?playerAssets.find(asset=>asset.id===recoveryById.get(s.id)?.plannedFieldId)?.name??'HOME BASE':undefined}/>):null}
+    {phase==='plan'&&(routePlanningEnabled||showMissionPreview)?<Route squadron={selected} selected packageReview={packageReview} showPattern={false} returnRoute={recoveryRoute} escortRoute={showMissionPreview&&escortPreview?.targetId===selected.id} recoveryLabel={showMissionPreview&&planningRecoveryFieldId?playerAssets.find(asset=>asset.id===planningRecoveryFieldId)?.name??'HOME BASE':undefined}/>:phase==='execute'&&followId&&!followingDogfight?squadrons.filter(s=>s.id===followId).map(s=>{
+      const field=playerAssets.find(asset=>asset.id===(recoveryById.get(s.id)?.plannedFieldId??s.plannedRecoveryFieldId))
+      const end=s.route.at(-1)
+      const returnRoute=field&&end&&s.recoveryWaypoints?.length?recoveryPath(end,field.position,s.recoveryWaypoints):undefined
+      return <Route key={s.id} squadron={s} selected returnRoute={returnRoute} recoveryLabel={field?.name}/>
+    }):null}
     {phase==='plan'&&(showMissionPreview||plannedFormationIds.includes(selected.id))&&selected.protectedTargetId&&escortPreview?.targetId===selected.protectedTargetId?squadrons.filter(s=>s.id===selected.protectedTargetId).map(s=><Route key={`${s.id}-escort-preview`} squadron={s} selected={false} showPattern={false} escortRoute/>):null}
     {squadrons.filter(s=>phase==='execute'&&friendlyProjections.has(s.id)).map(s=>{const plannedFieldId=recoveryById.get(s.id)?.plannedFieldId;const recoveryLabel=plannedFieldId?playerAssets.find(asset=>asset.id===plannedFieldId)?.name??'HOME BASE':undefined;const frame=friendlyProjections.get(s.id)?.frame,track=unitTrackFor(executionResult,s.id);const initialStrength=track?.frames[0]?.strength;return <Flight key={s.id} squadron={s} route={s.route} frame={frame} track={track} sceneClock={sceneClock} authoritativeSeconds={seconds} active selected={inspectedFlightId===s.id} onInspect={()=>onFlightInspect?.(s.id)} status={friendlyStatusAt(s,frame,initialStrength)} activeEvent={visibleActiveEvent} recoveryLabel={recoveryLabel}/>}) }
     {phase==='execute'?executionResult?.enemyFlights.flatMap(f=>{const projection=hostileProjections.get(f.id);if(!projection)return [];const track=unitTrackFor(executionResult,f.id),initialStrength=track?.frames[0]?.strength;return [<EnemyContact key={f.id} flight={f} projection={projection} selected={inspectedFlightId===f.id} onInspect={()=>onFlightInspect?.(f.id)} status={enemyStatusAt(f,projection.frame,initialStrength)} track={track} sceneClock={sceneClock} authoritativeSeconds={seconds} activeEvent={visibleActiveEvent}/>]}):null}

@@ -2,7 +2,7 @@ import { createCampaignDraft, createMatch } from './data'
 import { SETUP_FORMATION_IDS, SETUP_REQUIRED_ASSET_IDS } from './campaignSetup'
 import { campaignOutcome, campaignOutcomePhase } from './campaign'
 import { createEconomyState } from './economy'
-import { normalizeFormationBasing } from './forwardBasing'
+import { MAX_RECOVERY_WAYPOINTS, normalizeFormationBasing } from './forwardBasing'
 import type { Asset, CampaignSetupState, DebugScenario, EconomyState, MatchState, MissionId, Point, RoundResult, Squadron } from './types'
 import { DEBUG_SCENARIOS } from './scenarios'
 import { createCpuState, prepareCpuRound } from './cpu/planner'
@@ -65,6 +65,8 @@ function validSquadron(value: unknown): value is Squadron {
   if (value.morale !== undefined && (!finite(value.morale) || value.morale < 0 || value.morale > 100)) return false
   if (value.status !== undefined && !new Set(['enroute', 'dogfight', 'disengaging', 'rtb', 'trapped', 'destroyed']).has(String(value.status))) return false
   if (value.plannedRecoveryFieldId !== undefined && !text(value.plannedRecoveryFieldId)) return false
+  if (value.recoveryWaypoints !== undefined
+    && (!points(value.recoveryWaypoints) || value.recoveryWaypoints.length > MAX_RECOVERY_WAYPOINTS)) return false
   if (value.strikeTargetId !== undefined && !text(value.strikeTargetId)) return false
   if (value.sortieOrdered !== undefined && typeof value.sortieOrdered !== 'boolean') return false
   if (value.reconPosture !== undefined && value.reconPosture !== 'aggressive' && value.reconPosture !== 'conservative') return false

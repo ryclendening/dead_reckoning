@@ -91,7 +91,7 @@ function validateOrderGeometry(match: MatchState, squadron: Squadron) {
   const { mission, routeIngress, route, protectedTargetId, protectedPoint } = squadron
   if (!field || !isOperationalAirfield(field) || distanceBetween(route[0], field.position) > .001 ||
       distanceBetween(routeIngress[0], field.position) > .001) return 'ROUTE MUST START AT AN OPERATIONAL LAUNCH FIELD'
-  if ([...route, ...routeIngress].some(([x, z]) => x < bounds.minX || x > bounds.maxX || z < bounds.minZ || z > bounds.maxZ)) {
+  if ([...route, ...routeIngress, ...(squadron.recoveryWaypoints ?? [])].some(([x, z]) => x < bounds.minX || x > bounds.maxX || z < bounds.minZ || z > bounds.maxZ)) {
     return 'ROUTE IS OUTSIDE THE PLANNING AREA'
   }
 
@@ -130,11 +130,12 @@ function validateOrderGeometry(match: MatchState, squadron: Squadron) {
 }
 
 function lockOrders(match: MatchState, orders: OnlineOrder[]): MatchState {
+  if (orders.length > match.squadrons.length) throw new OnlineError('Too many formations in this order package.')
   const byId = new Map(orders.map(order => [order.id, order]))
   if (byId.size !== orders.length) throw new OnlineError('Each formation can receive only one order.')
   const squadrons = match.squadrons.map(squadron => {
     const order = byId.get(squadron.id)
-    if (!order) return { ...squadron, sortieOrdered: false, plannedRecoveryFieldId: undefined }
+    if (!order) return { ...squadron, sortieOrdered: false, recoveryWaypoints: undefined, plannedRecoveryFieldId: undefined }
     byId.delete(squadron.id)
     if (!squadron.aircraft || squadron.status === 'trapped' ||
         !templatesForRole(squadron.role).some(template => template.id === order.mission)) {
@@ -142,6 +143,7 @@ function lockOrders(match: MatchState, orders: OnlineOrder[]): MatchState {
     }
     return {
       ...squadron, mission: order.mission, sortieOrdered: true, route: order.route, routeIngress: order.routeIngress,
+      recoveryWaypoints: order.recoveryWaypoints,
       plannedRecoveryFieldId: order.plannedRecoveryFieldId,
       strikeTargetId: order.mission === 'base-strike' ? order.strikeTargetId : undefined,
       reconPosture: squadron.role === 'recon' ? order.reconPosture : undefined,
