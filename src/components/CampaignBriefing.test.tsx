@@ -30,17 +30,17 @@ describe('campaign briefing', () => {
   })
 
   it('explains a deadline draw without claiming the home base was destroyed', () => {
-    const markup = renderToStaticMarkup(<EndState victory={false} round={6} outcome="deadline" onRestart={() => {}}/>)
+    const markup = renderToStaticMarkup(<EndState victory={false} round={10} outcome="deadline" onRestart={() => {}}/>)
 
     expect(markup).toContain('DRAW')
-    expect(markup).toContain('Both bases survived the six-round campaign')
+    expect(markup).toContain('Both bases survived through the deadline')
     expect(markup).not.toContain('home base has been rendered inoperable')
   })
 
   it('keeps decisive campaign debrief messages tied to their actual cause', () => {
     expect(campaignOutcomeMessage('enemy-base-destroyed').message).toContain('Your strike destroyed the enemy base')
     expect(campaignOutcomeMessage('home-base-destroyed').message).toContain('Enemy strikes destroyed your home base')
-    expect(campaignOutcomeMessage('deadline').message).toContain('Both bases survived the six-round campaign')
-    expect(campaignOutcomeMessage('forces-lost').message).toContain('formations and reserve aircraft have been lost')
+    expect(campaignOutcomeMessage('deadline').message).toContain('Both bases survived through the deadline')
+    expect(campaignOutcomeMessage('forces-lost').message).toContain('cash balance could not cover a reinforcement')
   })
 })

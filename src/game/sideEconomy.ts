@@ -1,11 +1,12 @@
-import type { Asset, ConstructibleAssetKind, EconomyActionId, EconomyActionQuote, EconomyCommand, EconomyEffect, EconomyState, EconomyTarget, LogisticsIncome, LogisticsStatementEntry, Squadron } from './types'
+import type { Asset, ConstructibleAssetKind, EconomyActionId, EconomyActionQuote, EconomyCommand, EconomyEffect, EconomyState, EconomyTarget, LogisticsStatementEntry, Role, Squadron } from './types'
 import { UPGRADE_CATALOG, modifiedStat, upgradeDefinition } from './upgrades'
 import { MAPPED_RADIUS } from './fog'
-import { FOB_MIN_CAPACITY, formationField, normalizeFormationBasing } from './forwardBasing'
+import { FOB_MIN_CAPACITY, isOperationalAirfield } from './forwardBasing'
 import { friendlyTerritoryForAssets, territoryContains, territoryRegions } from './territory'
-import { LOGISTICS_COSTS, LOGISTICS_EFFECTS } from './economyRules'
+import { FORMATION_PRICES, LOGISTICS_COSTS, LOGISTICS_EFFECTS } from './economyRules'
 export { LOGISTICS_COSTS, LOGISTICS_EFFECTS } from './economyRules'
 
+import { OPENING_CONDITION } from './openingForces'
 import type { SidePlanningContext } from './sideContext'
 export const FOB_INITIAL_CAPACITY = FOB_MIN_CAPACITY
 export const FOB_PLACEMENT_SPACING = 1.5
@@ -63,9 +64,9 @@ export const validateFobPlacement = (state: SidePlanningContext, placement: [num
 
 const projection = (state: SidePlanningContext, cost: number, reserveCost = 0) => ({ logistics: state.logistics - cost, reserveAircraft: state.reserves - reserveCost })
 const eligibility = (state: SidePlanningContext, cost: number, reserveCost = 0) => state.phase !== 'adapt'
-  ? { eligible: false, reason: 'AVAILABLE IN ADAPT ONLY' }
+  ? { eligible: false, reason: 'AVAILABLE DURING RESUPPLY' }
   : state.logistics < cost
-    ? { eligible: false, reason: 'INSUFFICIENT LOGISTICS' }
+    ? { eligible: false, reason: 'NOT ENOUGH CASH' }
     : state.reserves < reserveCost
       ? { eligible: false, reason: 'NO RESERVE AIRCRAFT' }
       : { eligible: true }
@@ -82,6 +83,43 @@ const createQuote = (state: SidePlanningContext, id: EconomyActionId, target: Ec
   ...eligibility(state, cost, reserveCost),
 })
 
+function formationPurchase(role: Role): EconomyActionDefinition {
+  const id = `buy-${role}` as const
+  return {
+    id,
+    quote: (state, target) => {
+      if (target.kind !== 'campaign') return undefined
+      const label = role === 'fighter' ? 'Buy fighter formation' : 'Buy recon formation'
+      const quote = createQuote(state, id, target, label, '4 aircraft · Available at home base next round', FORMATION_PRICES[role], { kind: 'formation-purchase', role })
+      const home = baseAsset(state)
+      return home && isOperationalAirfield(home) ? quote : { ...quote, eligible: false, reason: 'HOME BASE UNAVAILABLE' }
+    },
+    apply: (state) => {
+      const home = baseAsset(state)
+      if (!home || !isOperationalAirfield(home)) return undefined
+      const prefix = state.side === 'cpu' ? 'red-' : ''
+      const idPrefix = `${prefix}reinforcement-${role}-`
+      const existingIds = new Set(state.formations.map(formation => formation.id))
+      let serial = 1
+      while (existingIds.has(`${idPrefix}${serial}`)) serial++
+      const formation: Squadron = {
+        id: `${idPrefix}${serial}`,
+        callsign: `${role === 'fighter' ? 'HAWK' : 'SCOUT'} ${serial}`,
+        role, mission: role === 'fighter' ? 'defensive-cap' : 'search-area',
+        ...OPENING_CONDITION[role], status: 'rtb', sortieOrdered: false,
+        route: [[...home.position]], routeIngress: [[...home.position]],
+      }
+      return {
+        ...state,
+        formations: [...state.formations, formation],
+        assets: state.assets.map(asset => asset.id === home.id
+          ? { ...asset, basedFormationIds: [...(asset.basedFormationIds ?? []), formation.id] }
+          : asset),
+      }
+    },
+  }
+}
+
 const ACTIONS: readonly EconomyActionDefinition[] = [
   {
     id: 'repair-formation',
@@ -96,28 +134,7 @@ const ACTIONS: readonly EconomyActionDefinition[] = [
     },
     apply: (state, target) => target.kind === 'squadron' ? { ...state, formations: state.formations.map(squadron => squadron.id !== target.id ? squadron : { ...squadron, strength: Math.min(formationCapacity(squadron), strengthOf(squadron) + LOGISTICS_EFFECTS.formationRepair) }) } : undefined,
   },
-  {
-    id: 'replace-aircraft',
-    quote: (state, target) => {
-      if (target.kind !== 'squadron') return undefined
-      const squadron = state.formations.find(item => item.id === target.id)
-      if (!squadron || squadron.aircraft >= squadron.maxAircraft) return undefined
-      const cost = modifiedStat(baseAsset(state),'economy.aircraftReplacementCost',LOGISTICS_COSTS.aircraftReplacement)
-      const strengthBefore = strengthOf(squadron); const strengthAfter = Math.min(100, strengthBefore + 100 / squadron.maxAircraft)
-      const effect: EconomyEffect = { kind: 'aircraft-replacement', aircraftBefore: squadron.aircraft, aircraftAfter: squadron.aircraft + 1, strengthBefore, strengthAfter }
-      return createQuote(state, 'replace-aircraft', target, 'REPLACE AIRCRAFT', `Aircraft ${squadron.aircraft} → ${squadron.aircraft + 1} · Strength ${Math.round(strengthBefore)} → ${Math.round(strengthAfter)}.`, cost, effect, 1)
-    },
-    apply: (state, target) => {
-      if (target.kind !== 'squadron') return undefined
-      const before = state.formations.find(squadron => squadron.id === target.id)
-      if (!before) return undefined
-      const wasLost = before.aircraft <= 0
-      const squadrons = state.formations.map(squadron => squadron.id !== target.id ? squadron : { ...squadron, aircraft: squadron.aircraft + 1, strength: Math.min(100, strengthOf(squadron) + 100 / squadron.maxAircraft), status: 'rtb' as const })
-      let playerAssets = normalizeFormationBasing(squadrons, state.assets)
-      if (wasLost) playerAssets = playerAssets.map(asset => asset.kind === 'base' ? { ...asset, basedFormationIds: [...new Set([...(asset.basedFormationIds ?? []), target.id])] } : asset.kind === 'fob' ? { ...asset, basedFormationIds: (asset.basedFormationIds ?? []).filter(id => id !== target.id) } : asset)
-      return { ...state, formations: squadrons, assets: playerAssets }
-    },
-  },
+  ...(['fighter', 'recon'] as const).map(formationPurchase),
   {
     id: 'repair-defense',
     quote: (state, target) => {
@@ -126,7 +143,7 @@ const ACTIONS: readonly EconomyActionDefinition[] = [
       if (!asset || !['radar', 'aaa'].includes(asset.kind)) return undefined
       const before = asset.health; const after = Math.min(asset.maxHealth, before + LOGISTICS_EFFECTS.defenseRepair)
       if (after <= before + .01) return undefined
-      return createQuote(state, 'repair-defense', target, `REPAIR ${asset.kind.toUpperCase()}`, `Health ${Math.round(before)} → ${Math.round(after)} (+${Math.round(after - before)}).`, LOGISTICS_COSTS.defenseRepair, { kind: 'asset-health', before, after })
+      return createQuote(state, 'repair-defense', target, `REPAIR ${asset.kind.toUpperCase()}`, `${Math.round(before)} → ${Math.round(after)} HP (+${Math.round(after - before)}).`, LOGISTICS_COSTS.defenseRepair, { kind: 'asset-health', before, after })
     },
     apply: (state, target) => target.kind === 'asset' ? { ...state, assets: state.assets.map(asset => asset.id !== target.id ? asset : { ...asset, health: Math.min(asset.maxHealth, asset.health + LOGISTICS_EFFECTS.defenseRepair) }) } : undefined,
   },
@@ -136,7 +153,7 @@ const ACTIONS: readonly EconomyActionDefinition[] = [
       if (target.kind !== 'asset') return undefined
       const asset = state.assets.find(item => item.id === target.id)
       if (!asset || asset.kind !== 'fob' || asset.operational !== false) return undefined
-      return createQuote(state, 'repair-fob', target, `REPAIR ${asset.name ?? 'FOB'}`, 'Restore the forward field to operational status. Based formations may launch next round.', LOGISTICS_COSTS.fobRepair, { kind: 'asset-operational', before: false, after: true })
+      return createQuote(state, 'repair-fob', target, 'REPAIR AIRFIELD', `${Math.round(asset.health)} → ${asset.maxHealth} HP. Reopens the field for based flights.`, LOGISTICS_COSTS.fobRepair, { kind: 'asset-operational', before: false, after: true })
     },
     apply: (state, target) => {
       if (target.kind !== 'asset') return undefined
@@ -198,7 +215,7 @@ export function economyAttentionTargets(state: SidePlanningContext): EconomyTarg
     ...state.formations.map(squadron => ({ kind: 'squadron' as const, id: squadron.id })),
     ...state.assets.filter(asset => ['radar', 'aaa'].includes(asset.kind) || asset.kind === 'fob' && asset.operational === false).map(asset => ({ kind: 'asset' as const, id: asset.id })),
   ]
-  return targets.filter(target => economyQuotesFor(state, target).some(quote => quote.id === 'repair-formation' || quote.id === 'replace-aircraft' || quote.id === 'repair-defense' || quote.id === 'repair-fob'))
+  return targets.filter(target => economyQuotesFor(state, target).some(quote => quote.id === 'repair-formation' || quote.id === 'repair-defense' || quote.id === 'repair-fob'))
 }
 
 export function findMatchingEconomyQuote(quotes: EconomyActionQuote[], pending: Pick<EconomyCommand, 'actionId' | 'target' | 'upgradeId'> | undefined) {

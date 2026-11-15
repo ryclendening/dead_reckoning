@@ -63,7 +63,7 @@ export interface Asset {
 export type UpgradeId = string
 /** @deprecated Use UpgradeId; retained for save and import compatibility. */
 export type AssetUpgradeId = UpgradeId
-export type EconomyActionId = 'repair-formation' | 'replace-aircraft' | 'repair-defense' | 'repair-fob' | `install-${string}` | 'build-fob' | 'build-decoy' | 'build-sam' | 'build-aaa'
+export type EconomyActionId = 'repair-formation' | 'replace-aircraft' | 'repair-defense' | 'repair-fob' | `install-${string}` | 'buy-fighter' | 'buy-recon' | 'build-fob' | 'build-decoy' | 'build-sam' | 'build-aaa'
 export type EconomyTarget = { kind: 'campaign'; id: 'campaign' } | { kind: 'squadron' | 'asset'; id: string }
 export type CampaignSetupStage = 'allocate' | 'place' | 'review'
 export interface CampaignSetupState {
@@ -74,7 +74,7 @@ export interface CampaignSetupState {
 }
 export type EconomyEffect =
   | { kind: 'formation-strength'; before: number; after: number }
-  | { kind: 'aircraft-replacement'; aircraftBefore: number; aircraftAfter: number; strengthBefore: number; strengthAfter: number }
+  | { kind: 'formation-purchase'; role: Role }
   | { kind: 'asset-health'; before: number; after: number }
   | { kind: 'asset-operational'; before: boolean; after: boolean }
   | { kind: 'upgrade-installation'; upgradeId: UpgradeId }

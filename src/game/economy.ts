@@ -1,6 +1,6 @@
 import type { ConstructibleAssetKind, EconomyActionId, EconomyActionQuote, EconomyCommand, EconomyTarget, MatchState, Point, RoundResult, LogisticsIncome, LogisticsStatementEntry } from './types'
 import { normalizeFormationBasing, formationField } from './forwardBasing'
-import { campaignOutcome, campaignOutcomePhase } from './campaign'
+import { campaignOutcome, campaignOutcomePhase, isCampaign } from './campaign'
 import { maintainCpu, planNextCpuRound } from './cpu/settlement'
 import { modifiedStat } from './upgrades'
 import { LOGISTICS_EFFECTS } from './economyRules'
@@ -30,7 +30,7 @@ export function settleLogisticsIncome(state: MatchState, result: RoundResult): M
   if (state.economy.lastSettledRound === result.round) return state
   const income = result.logisticsIncome
   const entries: LogisticsStatementEntry[] = [
-    { id: `income-${result.round}-base`, round: result.round, direction: 'income', amount: income.base, label: income.base > LOGISTICS_EFFECTS.baseIncome ? 'ROUND LOGISTICS · SUPPLY DEPOT' : 'ROUND LOGISTICS', source: 'round-income' },
+    { id: `income-${result.round}-base`, round: result.round, direction: 'income', amount: income.base, label: income.base > LOGISTICS_EFFECTS.baseIncome ? 'ROUND PAY · SUPPLY DEPOT' : 'ROUND PAY', source: 'round-income' },
     ...(income.intel ? [{ id: `income-${result.round}-intel`, round: result.round, direction: 'income' as const, amount: income.intel, label: 'INTELLIGENCE RECOVERY', source: 'intel-recovery' }] : []),
     ...(income.enemyAircraft ? [{ id: `income-${result.round}-enemy-aircraft`, round: result.round, direction: 'income' as const, amount: income.enemyAircraft, label: 'CONFIRMED ENEMY AIRCRAFT', source: 'enemy-aircraft' }] : []),
   ]
@@ -45,6 +45,7 @@ export const openAdaptPhase = (state: MatchState): MatchState => {
 }
 export const beginNextRound = (state: MatchState): MatchState => {
   if (state.phase !== 'adapt' || campaignOutcome(state)) return state
+  if (isCampaign(state) && !state.squadrons.some(formation => formation.aircraft > 0)) return state
   const playerAssets = normalizeFormationBasing(state.squadrons, state.playerAssets)
   const squadrons = state.squadrons.map(squadron => {
     const field = formationField(playerAssets, squadron.id)

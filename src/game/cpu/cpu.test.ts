@@ -218,15 +218,18 @@ describe('CPU execution and persistence', () => {
     expect(result.baseDamage).toBe(0)
   })
 
-  it('pays for maintenance once and uses proportional strength when replacing four-aircraft recon', () => {
+  it('buys a comeback formation once when only recon is affordable', () => {
     const state = createMatch(), cpu = structuredClone(state.cpu!)
-    cpu.formations[1] = { ...cpu.formations[1], strength: 0, aircraft: 0 }
-    cpu.logistics = 4; cpu.reserves = 1
+    cpu.formations = cpu.formations.map(formation => ({...formation, strength:0, aircraft:0, status:'destroyed'}))
+    cpu.logistics = 12
+    cpu.reserves = 0
     const adapted = maintainCpu({ ...state, phase: 'adapt', cpu })
-    expect(adapted.cpu!.formations[1]).toMatchObject({ aircraft: 1, strength: 25 })
+    expect(adapted.cpu!.formations.at(-1)).toMatchObject({ id:'red-reinforcement-recon-1', aircraft:4, strength:100, sortieOrdered:false })
     expect(adapted.cpu!.logistics).toBe(0)
-    expect(adapted.cpu!.reserves).toBe(0)
     expect(maintainCpu(adapted)).toBe(adapted)
+    const loaded = normalizeMatch(JSON.parse(JSON.stringify(adapted)))
+    expect(loaded.cpu?.formations).toEqual(adapted.cpu!.formations)
+    expect(beginNextRound(loaded).cpu!.plan!.orders.find(order => order.id === 'red-reinforcement-recon-1')).toMatchObject({ aircraft: 4, role: 'recon' })
     expect(aircraftAtStrength(50, 2)).toBe(1)
     expect(aircraftAtStrength(50, 4)).toBe(2)
   })

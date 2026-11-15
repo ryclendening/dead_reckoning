@@ -51,7 +51,7 @@ describe('SAM and ground strike controls',()=>{
     const target={...state.enemyAssets.find(asset=>asset.id==='e-sam')!,name:'SAM ALPHA',intel:'confirmed' as const,hidden:false}
     const props={squadrons:state.squadrons,bases:state.playerAssets,activeBaseId:'p-base',rosterMode:'closed' as const,squadron,routeDistance:12,maxDistance:40,onSelect:noop,onBaseSelect:noop,onRosterMode:noop,onMission:noop,onClear:noop,onCommit:noop,onClose:noop,reviewedIds:new Set<string>(),reviewedCount:0,totalCount:3,groundTargets:[target],onChangeGroundTarget:noop}
     const choose=renderToStaticMarkup(<CommandShelf {...props} step="target"/>)
-    expect(choose).toContain('CHOOSE TARGET')
+    expect(choose).toContain('Choose target')
     expect(choose).not.toContain('SAM ALPHA')
     expect(choose).toContain('Tap a confirmed enemy site on the map.')
     expect(choose).not.toContain('OR CHOOSE FROM LIST')
@@ -59,7 +59,8 @@ describe('SAM and ground strike controls',()=>{
     const route=renderToStaticMarkup(<CommandShelf {...props} step="route"/>)
     expect(route).toContain('Drag S or waypoints; tap map to add.')
     expect(route).toContain('CLEAR WAYPOINTS')
-    expect(route).toContain('CHANGE TARGET')
+    expect(route).toContain('>Change</button>')
+    expect(route).toContain('>Inspect</button>')
     expect(route).toContain('SAM ALPHA')
   })
 })

@@ -10,7 +10,7 @@ describe('mission debrief surface',()=>{
     match.squadrons=match.squadrons.map(squadron=>squadron.id===fighter.id?{...squadron,mission:'base-strike',sortieOrdered:true}:{...squadron,sortieOrdered:false})
     const result=resolveRound(match)
     const view={...match,phase:'debrief' as const,lastResult:result,squadrons:result.squadrons}
-    const markup=renderToStaticMarkup(<Debrief match={view} onFocus={()=>{}} onAdapt={()=>{}}/>)
+    const markup=renderToStaticMarkup(<Debrief match={view} onFocus={()=>{}} onResupply={()=>{}}/>)
 
     expect(markup).toContain('Round map key')
     expect(markup).toContain('Round highlights')

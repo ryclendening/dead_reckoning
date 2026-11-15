@@ -3,6 +3,10 @@ import type { OnlineCommand, OnlineEntry, OnlineResponse, OnlineSession, OnlineV
 
 const API = '/api/online'
 
+export class OnlineRequestError extends Error {
+  constructor(message: string, readonly status: number) { super(message) }
+}
+
 async function request<T>(url: string, init?: RequestInit): Promise<T> {
   const controller = new AbortController()
   const timeout = setTimeout(() => controller.abort(), 10_000)
@@ -10,7 +14,7 @@ async function request<T>(url: string, init?: RequestInit): Promise<T> {
     const response = await fetch(url, { ...init, signal: controller.signal })
     if (!response.ok) {
       const body = await response.json().catch(() => ({})) as { error?: string }
-      throw new Error(body.error || `Online service returned ${response.status}`)
+      throw new OnlineRequestError(body.error || `Online service returned ${response.status}`, response.status)
     }
     return await response.json() as T
   } catch (error) {

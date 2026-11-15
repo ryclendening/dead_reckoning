@@ -21,9 +21,11 @@ describe.each(['player', 'cpu'] as const)('%s territory construction', side => {
     const assets = [base, fob]
     // Mapping includes both the forward site and a gap outside either territory circle.
     const mappedAreas: Point[] = [forward, gap, [8, 0], [12, 0]]
-    return { ...initial, phase: 'adapt', logistics: 100, playerAssets: assets, mappedAreas,
-      world: { ...initial.world, friendlyTerritory: { center: [0, 0], radius: 4.5 } },
-      enemyAssets: assets.map(a => ({ ...a, id: a.kind === 'base' ? 'e-base' : a.id })),
+    const playerCenter: Point = side === 'player' ? [0, 0] : [-20, 0]
+    const enemyBase = { ...base, id: 'e-base', position: (side === 'cpu' ? [0, 0] : [-20, 0]) as Point }
+    return { ...initial, phase: 'adapt', logistics: 100, playerAssets: side === 'player' ? assets : [{ ...base, position: playerCenter }], mappedAreas,
+      world: { ...initial.world, friendlyTerritory: { center: playerCenter, radius: 4.5 } },
+      enemyAssets: side === 'cpu' ? [enemyBase, fob] : [enemyBase],
       cpu: { ...initial.cpu!, logistics: 100, mappedAreas } }
   }
   const validate = (state: MatchState, kind: ConstructibleAssetKind, point: Point) => side === 'player'

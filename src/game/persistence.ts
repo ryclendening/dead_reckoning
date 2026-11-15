@@ -221,7 +221,6 @@ export function normalizeMatch(input: unknown): MatchState {
       normalizedSetup = { ...(normalizedSetup ?? setup), selectedAssetIds: [...SETUP_REQUIRED_ASSET_IDS], placedAssetIds, stage: allPlaced ? 'review' : 'place' }
     }
   } else if (input.phase === 'deploy') return fallback(input)
-  else if (debugScenario === 'campaign' && squadrons.length !== 3 && squadrons.length !== fresh.squadrons.length) return fallback(input)
   else if (debugScenario === 'campaign' && (!squadrons.some(s => s.role === 'fighter') || !squadrons.some(s => s.role === 'recon'))) return fallback(input)
 
   if (input.cpu !== undefined && !validCpuState(input.cpu, validSquadron, input.round as number)) return fallback(input)
@@ -261,7 +260,8 @@ export function normalizeMatch(input: unknown): MatchState {
     ? { ...asset, operational: savedBase.operational ?? asset.health > 0 }
     : asset)
   const savedOutcome=campaignOutcome(input as unknown as MatchState)
-  const phase = ['victory','defeat','draw'].includes(String(input.phase))&&savedOutcome?campaignOutcomePhase(savedOutcome):input.phase === 'execute' ? 'plan' : input.phase
+  const savedConclusion = ['victory','defeat','draw'].includes(String(input.phase)) || input.phase === 'adapt' && input.lastResult
+  const phase = savedConclusion && savedOutcome ? campaignOutcomePhase(savedOutcome) : input.phase === 'execute' ? 'plan' : input.phase
   const cpu = input.cpu as MatchState['cpu'] ?? createCpuState(enemyBase.position, 'medium', input.seed as number)
   const normalized: MatchState = {
     ...fresh,

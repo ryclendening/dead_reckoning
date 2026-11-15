@@ -5,6 +5,8 @@ import type { OnlineAction, OnlineEntry, OnlineOrder, OnlineResponse } from './p
 import { generateRouteTemplate } from '../game/routeTemplates'
 import { deriveRecoveryPlanningView } from '../game/forwardBasing'
 import { flightRangeFor } from '../game/flightRules'
+import { CAMPAIGN_ROUND_LIMIT } from '../game/campaign'
+import { FORMATION_PRICES } from '../game/economyRules'
 import { axialToPoint } from '../game/hex'
 import type { Point } from '../game/types'
 
@@ -71,7 +73,7 @@ describe('invite-only online campaign API', () => {
     expect((await request('matches/' + host.session.matchId, undefined, 'd'.repeat(64))).status).toBe(404)
   })
 
-  it('plays a full six-round campaign with private orders, concurrent locks and retry-safe settlement', async () => {
+  it('plays a full ten-round campaign with private orders, concurrent locks and retry-safe settlement', async () => {
     const { request, store } = fixture()
     let a: OnlineResponse = await fetchEntry(request('matches', { token: hostToken }))
     const id = a.view.matchId
@@ -108,7 +110,7 @@ describe('invite-only online campaign API', () => {
     expect(a.view.match.phase).toBe('plan')
     expect(b.view.match.phase).toBe('plan')
 
-    for (let round = 1; round <= 6; round++) {
+    for (let round = 1; round <= CAMPAIGN_ROUND_LIMIT; round++) {
       const hold = { type: 'lock-plan' as const, orders: [] }
       const center = a.view.match.world.friendlyTerritory.center
       const plan = round === 1 ? { type: 'lock-plan' as const, orders: [plannedOrder(a, [center[0] + 1, center[1] + 1])] } : hold
@@ -120,15 +122,21 @@ describe('invite-only online campaign API', () => {
       }
       const aStart = a
       const hostCommand = 'committed-action-' + round
-      await Promise.all([
-        perform(next(a, plan, hostToken, hostCommand)),
-        perform(next(b, hold, guestToken)),
-      ])
+      if (round === 1) {
+        const locked = await perform(next(a, plan, hostToken, hostCommand))
+        expect(locked.view.locked).toBe(true)
+        expect((await get(hostToken)).view.match.squadrons.find(formation => formation.id === plan.orders[0].id)?.route).toEqual(plan.orders[0].route)
+        expect((await get(guestToken)).view.opponentLocked).toBe(true)
+        expect((await next(locked, hold, hostToken)).status).toBe(409)
+        await perform(next(b, hold, guestToken))
+      } else {
+        await Promise.all([perform(next(a, plan, hostToken, hostCommand)), perform(next(b, hold, guestToken))])
+      }
       ;[a, b] = await Promise.all([get(hostToken), get(guestToken)])
       for (const player of [a, b]) {
         expect(player.view.match.phase).toBe('debrief')
         expect(player.view.match.lastResult?.round).toBe(round)
-        expect(player.view.match.logistics).toBe(10 + round * 6)
+        expect(player.view.match.logistics).toBe(10 + round * 6 - (player === a && round > 1 ? FORMATION_PRICES.recon : 0))
         expect(player.view.match.cpu).toBeUndefined()
         expect(player.view.match.lastResult?.cpuReport).toBeUndefined()
         expect(player.view.match.lastResult?.enemyFlights).toEqual([])
@@ -140,7 +148,18 @@ describe('invite-only online campaign API', () => {
         perform(next(a, { type: 'debrief' }, hostToken)),
         perform(next(b, { type: 'debrief' }, guestToken)),
       ])
-      if (round < 6) {
+      if(round===1) {
+        const action = { type:'purchase', actionId:'buy-recon', target:{ kind:'campaign', id:'campaign' } } as const
+        const before = a
+        a = await perform(next(before, action, hostToken, 'buy-recon-round-one'))
+        const retry = await perform(next(before, action, hostToken, 'buy-recon-round-one'))
+        expect(retry.view.match.squadrons).toEqual(a.view.match.squadrons)
+        const home = a.view.match.playerAssets.find(asset => asset.kind === 'base')!
+        expect(home.basedFormationIds).toContain(a.view.match.squadrons.at(-1)?.id)
+        expect(a.view.match.squadrons.at(-1)).toMatchObject({ role:'recon', aircraft:4, route:[home.position] })
+        expect((await get(guestToken)).view.match.squadrons).toHaveLength(3)
+      }
+      if (round < CAMPAIGN_ROUND_LIMIT) {
         ;[a, b] = await Promise.all([
           perform(next(a, { type: 'next-round' }, hostToken)),
           perform(next(b, { type: 'next-round' }, guestToken)),

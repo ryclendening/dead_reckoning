@@ -1,7 +1,9 @@
 import { describe, expect, it } from 'vitest'
+import { CAMPAIGN_ROUND_LIMIT } from './campaign'
+import { FORMATION_PRICES } from './economyRules'
 import { createMatch } from './data'
 import { resolveOnlineRound } from './onlineSimulation'
-import type { MatchState } from './types'
+import type { MatchState, Point } from './types'
 
 function seat(seed: number, offset = 0): MatchState {
   const match = createMatch(seed, 'easy', false)
@@ -80,6 +82,44 @@ describe('authoritative online round adapter', () => {
       expect(state.lastResult?.enemyBaseDamage).toBe(40)
       expect(state.lastResult?.combatSequences.filter(sequence => sequence.kind === 'strike')).toHaveLength(2)
     }
+  })
+
+  it.each([0,1])('joins a passing PvP Transit fighter from seat %i to an existing dogfight', lateSeat => {
+    const prepare = (state: MatchState, x: number, sendWingman: boolean): MatchState => {
+      const home: Point = [x, 0]
+      const primaryRoute: Point[] = [home, [-x, 0]]
+      const wingRoute: Point[] = [home, [x * .65, 3], [0, 0], [-x, 0]]
+      return {
+        ...state,
+        playerAssets: state.playerAssets.filter(asset => asset.kind === 'base').map(base => ({...base, position:home})),
+        enemyAssets: [],
+        squadrons: state.squadrons.map(formation => {
+          if (formation.id !== 'viper' && !(sendWingman && formation.id === 'falcon')) return formation
+          const route = formation.id === 'viper' ? primaryRoute : wingRoute
+          return { ...formation, mission:'transit', sortieOrdered:true, plannedRecoveryFieldId:'p-base', route, routeIngress:route }
+        }),
+      }
+    }
+    const a = prepare(seat(333), -8, lateSeat===0)
+    const b = prepare(seat(444), 8, lateSeat===1)
+    const result = resolveOnlineRound([a,b], 71)[lateSeat].lastResult!
+    const fight = result.combatSequences.find(sequence => sequence.kind==='dogfight')
+    const arrival = fight?.engagement?.participants.find(participant => participant.id==='falcon')
+    expect(arrival?.joinedAt).toBeGreaterThan(fight!.start)
+    expect(result.unitTracks.find(track => track.unitId==='falcon')?.frames.filter(frame => frame.time<arrival!.joinedAt).at(-1)?.mode).toBe('following-route')
+    expect(fight?.engagement?.sides.friendly).toEqual(expect.arrayContaining(['viper','falcon']))
+  })
+
+  it('credits the round payout before testing both seats for force elimination', () => {
+    const a = seat(137), b = seat(841, 8)
+    const lost = { ...a, logistics: FORMATION_PRICES.recon - 6, squadrons:a.squadrons.map(formation => ({ ...formation, aircraft:0, strength:0 })) }
+    const eligible = resolveOnlineRound([lost,b], 991)
+    expect(eligible[0].logistics).toBe(FORMATION_PRICES.recon)
+    expect(eligible.every(state => state.onlineOutcome === undefined)).toBe(true)
+    const eliminated = resolveOnlineRound([{...lost, logistics:lost.logistics-1},b], 991)
+    expect(eliminated.map(state => state.onlineOutcome)).toEqual(['forces-lost','enemy-forces-lost'])
+    const final = resolveOnlineRound([{...lost,round:CAMPAIGN_ROUND_LIMIT},{...b,round:CAMPAIGN_ROUND_LIMIT}], 991)
+    expect(final.map(state => state.onlineOutcome)).toEqual(['deadline','deadline'])
   })
 
   it('publishes only contact-window slices of an opponent route', () => {

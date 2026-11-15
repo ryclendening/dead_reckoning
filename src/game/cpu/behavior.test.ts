@@ -11,7 +11,7 @@ import { defenseCoverage } from './placement'
 import { executeCpuEconomyCommand } from './economy'
 import { generateActions } from './actions'
 import { covers, collectionScorer } from './search'
-import { campaignOutcome } from '../campaign'
+import { CAMPAIGN_ROUND_LIMIT, campaignOutcome } from '../campaign'
 import { validateAssetPlacement } from '../sideEconomy'
 import { CPU_PROFILES, strikeOrders, orderRisk, routeThreats, type RouteWork } from './routes'
 import { threatRouteCost } from './routeSearch'
@@ -59,13 +59,13 @@ describe('CPU v2 behavioral acceptance',()=>{
     expect(campaignOutcome(applyRound(loaded,resolveRound(loaded)))).toBe('home-base-destroyed')
   })
   it('spends scarce cash restoring a two-sortie base kill instead of delaying it for a SAM',()=>{
-    let s=setup();s.round=4;s.cpu!.logistics=8;s.cpu!.reserves=1
-    s.cpu!.formations[0]={...s.cpu!.formations[0],strength:75,aircraft:3}
+    let s=setup();s.round=4;s.cpu!.logistics=8
+    s.cpu!.formations[0]={...s.cpu!.formations[0],strength:75,aircraft:4}
     s.cpu!.mappedAreas=[[8,0],[10,0]]
     s.cpu!.traffic=[{identity:'VIPER 1',role:'fighter',position:[8,0],observedRound:4,source:'visual',strength:100,bearing:0}]
     s=maintainCpu(s)
     expect(s.cpu!.formations[0].strength).toBe(100)
-    expect(s.cpu!.spending.some(c=>c.action==='replace-aircraft')).toBe(true)
+    expect(s.cpu!.spending.some(c=>c.action==='repair-formation')).toBe(true)
     expect(s.enemyAssets.some(a=>a.kind==='sam')).toBe(false)
     s=beginNextRound(s)
     expect(s.cpu!.plan!.orders[0].strikeTargetId).toBe('p-base')
@@ -90,7 +90,7 @@ describe('CPU v2 behavioral acceptance',()=>{
   })
 
   it('delivers a strike at the exact legal release and fuel boundary',()=>{
-    const s=setup([0,0],[26,0]);s.phase='plan';s.round=6
+    const s=setup([0,0],[26,0]);s.phase='plan';s.round=CAMPAIGN_ROUND_LIMIT
     const ready=prepareCpuRound(s)
     legal(ready)
     expect(ready.cpu!.plan!.orders[0].strikeTargetId).toBe('p-base')
@@ -122,7 +122,7 @@ describe('CPU v2 behavioral acceptance',()=>{
     const adapted=maintainCpu(s)
     expect(adapted.cpu!.spending).toEqual([])
     expect(adapted.cpu!.logistics).toBe(16)
-    const late=setup([0,0],[30,0]);late.round=5;late.cpu!.mappedAreas=[[10,0]]
+    const late=setup([0,0],[30,0]);late.round=CAMPAIGN_ROUND_LIMIT-1;late.cpu!.mappedAreas=[[10,0]]
     expect(maintainCpu(late).enemyAssets.some(a=>a.kind==='fob')).toBe(false)
   })
   it('places forward SAM fire early enough to affect a real inbound strike',()=>{
@@ -203,24 +203,24 @@ describe('CPU v2 behavioral acceptance',()=>{
     expect(s.cpu!.plan!.orders[0].strikeTargetId).toBe('p-base')
     expect(resolveRound(s).baseDamage).toBe(60)
   })
-  it('restores a striker for an already recovered target without waiting for pressure',()=>{
-    const initial=setup();initial.round=1;initial.baseExposure=46;initial.cpu!.reserves=3
+  it('buys a home-based striker for a recovered target without waiting for pressure',()=>{
+    const initial=setup();initial.round=1;initial.baseExposure=46;initial.cpu!.reserves=0
     initial.cpu!.formations=initial.cpu!.formations.map(f=>f.role==='fighter'?{...f,aircraft:0,strength:0,status:'destroyed'}:f)
     const blind=structuredClone(initial);blind.cpu!.sites=[]
     const blindAdapted=maintainCpu(blind)
-    expect(blindAdapted.cpu!.formations[0]).toMatchObject({aircraft:3,strength:75})
     expect(blindAdapted.cpu!.sites).toEqual([])
     expect(beginNextRound(blindAdapted).cpu!.plan!.orders.some(o=>o.mission==='base-strike'&&o.sortieOrdered!==false)).toBe(false)
     const adapted=maintainCpu(initial)
-    expect(adapted.cpu!.formations[0]).toMatchObject({aircraft:3,strength:75})
-    expect(adapted.cpu!.logistics).toBe(4)
+    const bought=adapted.cpu!.formations.find(f=>f.id==='red-reinforcement-fighter-1')!
+    expect(bought).toMatchObject({aircraft:4,strength:100,sortieOrdered:false,route:[[0,0]]})
+    expect(adapted.cpu!.logistics).toBe(0)
     expect(adapted.cpu!.reserves).toBe(0)
+    expect(adapted.enemyAssets[0].basedFormationIds).toContain(bought.id)
     let s=beginNextRound(adapted)
-    for(let round=2;round<=6;round++) {
+    for(let round=2;round<=CAMPAIGN_ROUND_LIMIT;round++) {
       legal(s)
       const result=resolveRound(s)
-      if(round===2)expect(result.baseDamage).toBe(45)
-      if(round===3)expect(result.baseDamage).toBe(45)
+      if(round===2)expect(result.baseDamage).toBe(60)
       s=applyRound(s,result)
       if(campaignOutcome(s))break
       s=beginNextRound(openAdaptPhase(s))
@@ -228,14 +228,14 @@ describe('CPU v2 behavioral acceptance',()=>{
     expect(campaignOutcome(s)).toBe('home-base-destroyed')
     expect(s.round).toBeLessThanOrEqual(5)
   })
-  it('evaluates complete striker restoration even when useful SAM prefixes compete for the beam',()=>{
-    const s=setup();s.round=1;s.baseExposure=46;s.cpu!.reserves=3;s.cpu!.logistics=24
+  it('compares a full paid fighter against competing SAM purchases',()=>{
+    const s=setup();s.round=1;s.baseExposure=46;s.cpu!.reserves=0;s.cpu!.logistics=24
     s.cpu!.formations[0]={...s.cpu!.formations[0],aircraft:0,strength:0,status:'destroyed'}
     s.cpu!.mappedAreas=[[8,0],[10,0],[8,3]]
     s.cpu!.traffic=[{identity:'VIPER 1',role:'fighter',position:[8,0],observedRound:1,source:'visual',strength:100,bearing:0}]
     const adapted=maintainCpu(s)
-    expect(adapted.cpu!.formations[0]).toMatchObject({aircraft:3,strength:75})
-    expect(adapted.cpu!.spending.filter(c=>c.action==='replace-aircraft')).toHaveLength(3)
+    expect(adapted.cpu!.formations.at(-1)).toMatchObject({role:'fighter',aircraft:4,strength:100})
+    expect(adapted.cpu!.spending.filter(c=>c.action==='buy-fighter')).toHaveLength(1)
     expect(adapted.cpu!.adaptTrace!.alternatives.some(a=>a.baseAttack?.damageNow&&a.baseAttack.damageNow>0)).toBe(true)
     expect(s.cpu!.formations[0].aircraft).toBe(0)
   })

@@ -92,10 +92,8 @@ function service(state: MatchState): MatchState {
   let next = state
   const serviceOrder = [...next.squadrons].sort((a, b) => Number(b.role === 'fighter') - Number(a.role === 'fighter') || a.id.localeCompare(b.id))
   for (const squadron of serviceOrder) {
-    while ((next.squadrons.find(item => item.id === squadron.id)?.aircraft ?? 0) < squadron.maxAircraft && next.replacements > 0 && next.logistics >= 4) {
-      const before = next
-      next = executeEconomyCommand(next, { actionId: 'replace-aircraft', target: { kind: 'squadron', id: squadron.id } })
-      if (next === before) break
+    if (!squadron.aircraft && !next.squadrons.some(item => item.role === squadron.role && item.aircraft > 0)) {
+      next = executeEconomyCommand(next, { actionId: `buy-${squadron.role}`, target: { kind: 'campaign', id: 'campaign' } })
     }
     while ((next.squadrons.find(item => item.id === squadron.id)?.strength ?? 100) < 100 && next.logistics >= 2) {
       const before = next

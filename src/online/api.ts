@@ -15,7 +15,7 @@ const invitePattern = /^[a-f0-9]{32}$/
 const matchPattern = /^\/api\/online\/matches\/([a-f0-9]{32})(\/commands)?$/
 const commandIdPattern = /^[a-zA-Z0-9-]{16,64}$/
 const missionPattern = /^(defensive-cap|forward-patrol|transit|search-area|base-strike)$/
-const actionIdPattern = /^(repair-formation|replace-aircraft|repair-defense|repair-fob|install-[a-z0-9-]+|build-(fob|decoy|sam|aaa))$/
+const actionIdPattern = /^(repair-formation|buy-(fighter|recon)|repair-defense|repair-fob|install-[a-z0-9-]+|build-(fob|decoy|sam|aaa))$/
 const resolutionLeaseMs = 30_000
 const bodyLimit = 48 * 1024
 

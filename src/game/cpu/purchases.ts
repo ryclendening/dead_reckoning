@@ -1,4 +1,5 @@
-import { economyQuotesFor, executeEconomyCommand, validateAssetPlacement } from '../sideEconomy'
+import { CAMPAIGN_ROUND_LIMIT } from '../campaign'
+import { economyCommandForQuote, economyQuotesFor, executeEconomyCommand, validateAssetPlacement } from '../sideEconomy'
 import type { SidePlanningContext } from '../sideContext'
 import type { EconomyCommand, EconomyTarget } from '../types'
 import type { CpuPlanningView } from './planningView'
@@ -15,10 +16,16 @@ function withContext(view:CpuPlanningView,ctx:SidePlanningContext):CpuPlanningVi
 function commands(view:CpuPlanningView):EconomyCommand[] {
   const ctx=view.context, targets:EconomyTarget[]=[...ctx.formations.map(f=>({kind:'squadron' as const,id:f.id})),...ctx.assets.map(a=>({kind:'asset' as const,id:a.id}))]
   const result:EconomyCommand[]=targets.flatMap(target=>economyQuotesFor(ctx,target).filter(q=>q.eligible&&q.id!=='install-supply-depot').map(q=>({actionId:q.id,target,expectedCost:q.cost,expectedLogistics:ctx.logistics,expectedReserveAircraft:ctx.reserves})))
-  // Supply Depot is evaluated as dominated: at most five +2 payouts cannot repay 12.
-  // Maintenance Wing is considered only against concrete remaining eligible work.
-  const work=ctx.formations.reduce((n,f)=>n+Math.min(ctx.reserves,f.maxAircraft-f.aircraft)+Math.ceil(Math.max(0,f.aircraft/f.maxAircraft*100-(f.strength??100))/25),0)
+  // Consider fixed infrastructure only when its current return can cover the price.
+  const work=ctx.formations.reduce((n,f)=>n+Math.ceil(Math.max(0,f.aircraft/f.maxAircraft*100-(f.strength??100))/25),0)
   const filtered=result.filter(c=>c.actionId!=='install-maintenance-wing'||work>12)
+  const campaignQuotes=economyQuotesFor(ctx,{kind:'campaign',id:'campaign'})
+  for(const quote of campaignQuotes){
+    if(quote.effect.kind!=='formation-purchase'||!quote.eligible)continue
+    const role=quote.effect.role
+    const available=ctx.formations.filter(f=>f.role===role&&f.aircraft>0&&f.status!=='trapped').length
+    if(available===0)filtered.push(economyCommandForQuote(ctx,quote))
+  }
   for(const kind of ['sam','aaa','fob'] as const) {
     const ranked=legalPlacements(view,kind).map(p=>{const effects=kind==='fob'?undefined:defenseBenefits(view,p,kind);return {p,value:effects?effects.coverage*observedThreat(view)+effects.reconDenial+effects.opponentAttrition:forwardValue(view,p)?.gain??0}}).filter(c=>c.value>0)
       .sort((a,b)=>b.value-a.value||a.p[0]-b.p[0]||a.p[1]-b.p[1]).slice(0,2)
@@ -31,16 +38,14 @@ export function planPurchases(view:CpuPlanningView):ReturnType<typeof choosePack
   const original=view, nextRound={...view,round:view.round+1}
   type Node={ctx:SidePlanningContext;commands:EconomyCommand[];coverage:number;forward:number;reconDenial:number;opponentAttrition:number}
   let beam:Node[]=[{ctx:view.context,commands:[],coverage:0,forward:0,reconDenial:0,opponentAttrition:0}]
-  // A dead formation may need several paid replacements before it has any
-  // useful mission. Preserve these few complete restoration candidates even
-  // when a cheap defensive prefix would evict them from the ordinary beam.
-  // They use the same quotes/commands and still compete on actual packages.
+  // Keep complete repair sequences even when minor purchases outrank their
+  // prefixes. A destroyed formation is replaced through the purchase catalog.
   const serviceSeeds=new Map<number,Node[]>()
   for(const formation of view.context.formations) {
     let node=beam[0]
     for(let count=1;count<=profile.purchases;count++) {
       const quote=economyQuotesFor(node.ctx,{kind:'squadron',id:formation.id})
-        .filter(q=>q.eligible&&(q.id==='repair-formation'||q.id==='replace-aircraft')).sort((a,b)=>a.cost-b.cost||a.id.localeCompare(b.id))[0]
+        .filter(q=>q.eligible&&q.id==='repair-formation').sort((a,b)=>a.cost-b.cost||a.id.localeCompare(b.id))[0]
       if(!quote)break
       const command:EconomyCommand={actionId:quote.id,target:quote.target,expectedCost:quote.cost,expectedLogistics:node.ctx.logistics,expectedReserveAircraft:node.ctx.reserves}
       const ctx=executeEconomyCommand(node.ctx,command)
@@ -52,7 +57,7 @@ export function planPurchases(view:CpuPlanningView):ReturnType<typeof choosePack
   // Territory has no defensive effect by itself. Preserve a few complete paid
   // FOB + weapon capabilities before beam pruning, just like full restoration.
   // No future income, free weapon, aircraft Transit or hidden target is assumed.
-  if(observedThreat(view)>0&&view.round<6) {
+  if(observedThreat(view)>0&&view.round<CAMPAIGN_ROUND_LIMIT) {
     const expansions:Node[]=[]
     for(const placement of legalPlacements(view,'fob')) {
       const fob:EconomyCommand={actionId:'build-fob',target:{kind:'campaign',id:'campaign'},placement,expectedLogistics:view.context.logistics}
@@ -113,5 +118,8 @@ export function planPurchases(view:CpuPlanningView):ReturnType<typeof choosePack
   // Preserve an explicit save alternative even when all useful aircraft are grounded.
   const save=all.find(p=>p.purchases.length===0&&p.orders.every(o=>o.sortieOrdered===false))!
   save.id='save'
-  return choosePackage(nextRound,all,work.rejected,work.expansions,work.routeCache?.values())
+  const comeback = view.cpu.formations.every(formation => formation.aircraft <= 0)
+    ? all.filter(candidate => candidate.purchases.some(command => command.actionId === 'buy-fighter' || command.actionId === 'buy-recon'))
+    : []
+  return choosePackage(nextRound,comeback.length?comeback:all,work.rejected,work.expansions,work.routeCache?.values())
 }

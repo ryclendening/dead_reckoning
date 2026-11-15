@@ -1,6 +1,7 @@
-import type { Asset, MatchState } from './types'
+import type { Asset, MatchState, Squadron } from './types'
+import { canAffordFormation } from './economyRules'
 
-export const CAMPAIGN_ROUND_LIMIT = 6
+export const CAMPAIGN_ROUND_LIMIT = 10
 export const BASE_STRIKE_RANGE = 6
 export const BASE_STRIKE_DAMAGE = 60
 export const ENEMY_TARGETING_THRESHOLD = 60
@@ -14,7 +15,20 @@ export function confirmedStrikeTarget(state: Pick<MatchState, 'enemyAssets'>): A
 
 export type CampaignOutcome = 'enemy-base-destroyed' | 'home-base-destroyed' | 'deadline' | 'forces-lost' | 'enemy-forces-lost' | 'mutual-destruction' | 'mutual-forces-lost'
 
+export const forcesEliminated = (formations: Squadron[], cash: number): boolean =>
+  formations.every(formation => formation.aircraft <= 0) && !canAffordFormation(cash)
+
 export function campaignOutcome(state: MatchState): CampaignOutcome | undefined {
+  const current = outcomeUnderRules(state)
+  const completed = state.phase === 'victory' || state.phase === 'defeat' || state.phase === 'draw'
+  if (!completed || state.onlineOutcome || current && campaignOutcomePhase(current) === state.phase) return current
+  // Completed six-round saves predate the cash-only force and deadline rules.
+  return legacyCampaignOutcome(state) ?? current
+}
+
+export const legacyCampaignOutcome = (state: MatchState): CampaignOutcome | undefined => outcomeUnderRules(state, true)
+
+function outcomeUnderRules(state: MatchState, legacy = false): CampaignOutcome | undefined {
   if (!isCampaign(state)) return undefined
   if (state.onlineOutcome) return state.onlineOutcome
   const homeHealth = Math.min(state.playerBaseHealth, state.playerAssets.find(asset => asset.kind === 'base')?.health ?? state.playerBaseHealth)
@@ -22,12 +36,14 @@ export function campaignOutcome(state: MatchState): CampaignOutcome | undefined 
   if (homeHealth <= 0 && enemyHealth <= 0) return 'mutual-destruction'
   if (enemyHealth <= 0) return 'enemy-base-destroyed'
   if (homeHealth <= 0) return 'home-base-destroyed'
-  const playerLost=state.squadrons.every(squadron=>squadron.aircraft<=0)&&state.replacements<=0
-  const cpuLost=!!state.cpu&&state.cpu.formations.length>0&&state.cpu.formations.every(f=>f.aircraft<=0)&&state.cpu.reserves<=0
+  const playerLost = legacy ? state.squadrons.every(s => s.aircraft <= 0) && state.replacements <= 0 : forcesEliminated(state.squadrons, state.logistics)
+  const cpuLost = state.cpu && (legacy
+    ? state.cpu.formations.every(s => s.aircraft <= 0) && state.cpu.reserves <= 0
+    : forcesEliminated(state.cpu.formations, state.cpu.logistics))
   if(playerLost&&cpuLost)return 'mutual-forces-lost'
   if(playerLost)return 'forces-lost'
   if(cpuLost)return 'enemy-forces-lost'
-  if (state.round >= CAMPAIGN_ROUND_LIMIT && state.lastResult?.round === state.round) return 'deadline'
+  if (state.round >= (legacy ? 6 : CAMPAIGN_ROUND_LIMIT) && state.lastResult?.round === state.round) return 'deadline'
   return undefined
 }
 

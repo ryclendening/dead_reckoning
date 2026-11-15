@@ -247,7 +247,7 @@ function createActiveEngagement(id:string,kind:EngagementKind,attacker:SimUnit,t
 }
 
 function joinDogfightEngagement(engagement:ActiveEngagement,joiner:SimUnit,target:SimUnit,time:number,transition:TransitionUnit,add:AddCombatEvent){
-  if(engagement.kind!=='dogfight'||engagement.participants.some(participant=>participant.id===joiner.id)||!engagement.participants.some(participant=>participant.id===target.id)||fighterSide(joiner)===fighterSide(target)||joiner.role!=='fighter'||target.role!=='fighter'||joiner.mode!=='intercepting'||terminal(joiner)||terminal(target)||distance(joiner.position,target.position)>FIGHTER_MERGE_RANGE)return false
+  if(engagement.kind!=='dogfight'||engagement.participants.some(participant=>participant.id===joiner.id)||!engagement.participants.some(participant=>participant.id===target.id)||fighterSide(joiner)===fighterSide(target)||joiner.role!=='fighter'||target.role!=='fighter'||joiner.mode==='recovering'||joiner.mode==='stranded'||terminal(joiner)||terminal(target)||distance(joiner.position,target.position)>FIGHTER_MERGE_RANGE)return false
   engagement.participants.push(joiner);engagement.initialParticipants[joiner.id]={strength:joiner.strength,aircraft:joiner.aircraft};engagement.joinedAt[joiner.id]=time
   engagement.positionalAssessments.push(fighterAssessment(joiner,target,time),fighterAssessment(target,joiner,time))
   transition(joiner,'dogfighting',time,'dogfight-join',target.id,'visual')
@@ -513,16 +513,31 @@ function* simulateRoundTicks(state:MatchState, recordOpponentView:boolean):Gener
     }
     for(const u of units.filter(u=>!terminal(u)))evaluateReaction(u)
 
-    // A fighter already vectoring to a participant may join that dogfight.
-    for(const engagement of activeEngagements.filter(item=>item.kind==='dogfight'))for(const joiner of units.filter(u=>u.role==='fighter'&&u.mode==='intercepting'&&!engagedUnitIds().has(u.id))){const target=joiner.targetId?byId.get(joiner.targetId):undefined;if(target)joinDogfightEngagement(engagement,joiner,target,time,transition,add)}
-
     // Direct fighter contact outranks pursuit. Close opposing fighters create a
     // dogfight even when one was chasing recon; that pursuit is ended and is
     // never silently resumed from historical state.
     const fighterPairs: Array<[SimUnit,SimUnit]>=[];const livingFighters=units.filter(unit=>unit.role==='fighter'&&!terminal(unit))
-    for(let left=0;left<livingFighters.length;left++)for(let right=left+1;right<livingFighters.length;right++){const a=livingFighters[left],b=livingFighters[right];if(a.mode!=='recovering'&&b.mode!=='recovering'&&a.friendly!==b.friendly&&distance(a.position,b.position)<=FIGHTER_MERGE_RANGE)fighterPairs.push([a,b])}
-    for(const [a,b] of fighterPairs){if(activeEngagements.some(engagement=>engagement.kind==='dogfight'&&engagement.participants.some(participant=>participant.id===a.id||participant.id===b.id)))continue
-      for(const fighter of [a,b]){const pursuit=activeEngagements.find(engagement=>engagement.kind==='pursuit'&&engagement.attacker.id===fighter.id);if(!pursuit)continue;activeEngagements=activeEngagements.filter(item=>item!==pursuit);if(!terminal(pursuit.attacker))transition(pursuit.attacker,'following-route',time,'pursuit-interrupted-by-combat');sequences.push({id:pursuit.id,kind:'pursuit',participantIds:[pursuit.attacker.id,pursuit.target.id],location:pursuit.location,start:pursuit.start,end:time,exchanges:pursuit.exchanges,finalDisposition:{[pursuit.attacker.id]:terminal(pursuit.attacker)?'destroyed':'enroute',[pursuit.target.id]:terminal(pursuit.target)?'destroyed':pursuit.target.mode==='recovering'?'rtb':'enroute'}});effects.push(...pursuit.effects);add('warning','PURSUIT INTERRUPTED',`${fighter.callsign} breaks from ${pursuit.target.callsign} to answer direct fighter contact.`,fighter.position,time)}
+    for(let left=0;left<livingFighters.length;left++)for(let right=left+1;right<livingFighters.length;right++){const a=livingFighters[left],b=livingFighters[right];if(a.mode!=='recovering'&&b.mode!=='recovering'&&a.mode!=='stranded'&&b.mode!=='stranded'&&a.friendly!==b.friendly&&distance(a.position,b.position)<=FIGHTER_MERGE_RANGE)fighterPairs.push([a,b])}
+    const activeDogfightFor=(fighter:SimUnit)=>activeEngagements.find(engagement=>engagement.kind==='dogfight'&&engagement.participants.includes(fighter))
+    const interruptPursuit=(fighter:SimUnit)=>{const pursuit=activeEngagements.find(engagement=>engagement.kind==='pursuit'&&engagement.attacker.id===fighter.id);if(!pursuit)return;activeEngagements=activeEngagements.filter(item=>item!==pursuit);if(!terminal(pursuit.attacker))transition(pursuit.attacker,'following-route',time,'pursuit-interrupted-by-combat');sequences.push({id:pursuit.id,kind:'pursuit',participantIds:[pursuit.attacker.id,pursuit.target.id],location:pursuit.location,start:pursuit.start,end:time,exchanges:pursuit.exchanges,finalDisposition:{[pursuit.attacker.id]:terminal(pursuit.attacker)?'destroyed':'enroute',[pursuit.target.id]:terminal(pursuit.target)?'destroyed':pursuit.target.mode==='recovering'?'rtb':'enroute'}});effects.push(...pursuit.effects);add('warning','PURSUIT INTERRUPTED',`${fighter.callsign} breaks from ${pursuit.target.callsign} to answer direct fighter contact.`,fighter.position,time)}
+
+    // A direct pass joins an existing fight even without an intercept order.
+    // Resolve nearby fights in distance order with stable formation IDs.
+    const latePairs=fighterPairs.filter(([a,b])=>Boolean(activeDogfightFor(a))!==Boolean(activeDogfightFor(b)))
+    latePairs.sort(([a,b],[c,d])=>distance(a.position,b.position)-distance(c.position,d.position)||a.id.localeCompare(c.id)||b.id.localeCompare(d.id))
+    for(const [a,b] of latePairs){
+      const left=activeDogfightFor(a),right=activeDogfightFor(b)
+      if(Boolean(left)===Boolean(right))continue
+      const engagement=left??right
+      if(!engagement)continue
+      const [joiner,target]=left?[b,a]:[a,b]
+      interruptPursuit(joiner)
+      if(!engagedUnitIds().has(joiner.id))joinDogfightEngagement(engagement,joiner,target,time,transition,add)
+    }
+    for(const [a,b] of fighterPairs){
+      if(activeDogfightFor(a)||activeDogfightFor(b))continue
+      interruptPursuit(a)
+      interruptPursuit(b)
       if(engagedUnitIds().has(a.id)||engagedUnitIds().has(b.id))continue;const started=createActiveEngagement(`dogfight-${state.round}-${engagementSerial++}`,'dogfight',a,b,time,transition,add);if(started)activeEngagements.push(started)
     }
 

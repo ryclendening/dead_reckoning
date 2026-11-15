@@ -24,12 +24,12 @@ export interface UpgradeDefinition {
 export const UPGRADE_CATALOG: readonly UpgradeDefinition[] = [
   {
     id: 'maintenance-wing', label: 'MAINTENANCE WING',
-    detail: 'Formation repair and replacement cost 1 less.', cost: LOGISTICS_COSTS.upgrade, targets: ['base'], group: 'main-airfield',
-    modifiers: { 'economy.formationRepairCost': { add: -1 }, 'economy.aircraftReplacementCost': { add: -1 } },
+    detail: 'Formation repairs cost $1 less.', cost: LOGISTICS_COSTS.upgrade, targets: ['base'], group: 'main-airfield',
+    modifiers: { 'economy.formationRepairCost': { add: -1 } },
   },
   {
     id: 'supply-depot', label: 'SUPPLY DEPOT',
-    detail: `Future completed rounds gain +${LOGISTICS_EFFECTS.supplyDepotIncome} Logistics.`, cost: LOGISTICS_COSTS.upgrade, targets: ['base'], group: 'main-airfield',
+    detail: `Future completed rounds pay an extra $${LOGISTICS_EFFECTS.supplyDepotIncome}.`, cost: LOGISTICS_COSTS.upgrade, targets: ['base'], group: 'main-airfield',
     modifiers: { 'economy.baseIncome': { add: 2 } },
   },
 ]

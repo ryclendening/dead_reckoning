@@ -10,7 +10,7 @@ import { planCpu, cpuPlanningView } from '../../src/game/cpu/planner'
 import { defenseCoverage } from '../../src/game/cpu/placement'
 import { maintainCpu } from '../../src/game/cpu/settlement'
 import { confirmCampaignSetup } from '../../src/game/campaignSetup'
-import { campaignOutcome, campaignOutcomePhase } from '../../src/game/campaign'
+import { CAMPAIGN_ROUND_LIMIT, campaignOutcome, campaignOutcomePhase, legacyCampaignOutcome } from '../../src/game/campaign'
 import { deriveRecoveryPlanningView, formationField, normalizeFormationBasing, validateRecoveryPackage } from '../../src/game/forwardBasing'
 import { MAX_FLIGHT_DISTANCE } from '../../src/game/flightRules'
 import { executeEconomyCommand, economyQuotesFor, validateAssetPlacement } from '../../src/game/economy'
@@ -71,8 +71,13 @@ function compatiblePlayerOrders(s:MatchState):MatchState {
 
 function playerAdapt(s:MatchState,policy:Policy):MatchState {
   for(const f of s.squadrons)for(let i=0;i<4;i++) {
-    const q=economyQuotesFor(s,{kind:'squadron',id:f.id}).find(q=>q.eligible&&(q.id==='repair-formation'||q.id==='replace-aircraft'))
+    const q=economyQuotesFor(s,{kind:'squadron',id:f.id}).find(q=>q.eligible&&q.id==='repair-formation')
     if(q)s=executeEconomyCommand(s,{actionId:q.id,target:q.target});else break
+  }
+  for (const role of ['fighter', 'recon'] as const) {
+    if (!s.squadrons.some(formation => formation.role === role && formation.aircraft > 0)) {
+      s = executeEconomyCommand(s, {actionId:`buy-${role}`, target:{kind:'campaign',id:'campaign'}})
+    }
   }
   if(policy==='heavy-sam'||policy==='forward-fob') {
     const home=s.playerAssets.find(a=>a.kind==='base')!.position,kind=policy==='heavy-sam'?'sam':'fob'
@@ -86,10 +91,11 @@ function playerAdapt(s:MatchState,policy:Policy):MatchState {
 interface Row {version:'v1'|'v2';ruleset:'symmetric-current'|'historical-v1';difficulty:CpuDifficulty;seed:number;split:string;policy:Policy;outcome?:ReturnType<typeof campaignOutcome>;cpuWin:boolean;rounds:number;playerBaseDamage:number;cpuBaseDamage:number;intel:number;sams:number;fobs:number;fobUsed:number;recovered:number;sorties:number;logistics:number;spent:number;illegal:number;expansions:number;packages:number;samCoverageGain:number;fobStrikeOrders:number;baseSeen:boolean;exposure:number;playerSams:number;playerFobs:number;decisions:string[];playerStrikeOrders:number;playerMissileLaunches:number;playerPackageAdjustments:number;playerReconSorties:number;playerReconRecovered:number;playerLostBaseReports:number;playerBaseSeen:boolean;cpuStrikeOrders:number;cpuMissileLaunches:number;cpuBaseStrikeOrders:number;cpuBaseMissileLaunches:number;firstCpuBaseStrikeRound?:number}
 export function campaign(version:Row['version'],difficulty:CpuDifficulty,seed:number,policy:Policy):Row {
   const historical=version==='v1'&&process.env.CPU_BASELINE_ENGINE==='historical'
+  const outcomeForRules=historical?legacyCampaignOutcome:campaignOutcome
   const draft=createCampaignDraft(seed,difficulty)
   let s=confirmCampaignSetup({...draft,setup:{...draft.setup!,stage:'review',placedAssetIds:[...draft.setup!.selectedAssetIds]}})
   const row:Row={version,ruleset:historical?'historical-v1':'symmetric-current',difficulty,seed,split:process.env.CPU_SPLIT??([263,307,349,401,443,487,541,599,647,701,751,809].includes(seed)?'fresh-validation':seed<100?'development':'previously-observed'),policy,cpuWin:false,rounds:0,playerBaseDamage:0,cpuBaseDamage:0,intel:0,sams:0,fobs:0,fobUsed:0,recovered:0,sorties:0,logistics:0,spent:0,illegal:0,expansions:0,packages:0,samCoverageGain:0,fobStrikeOrders:0,baseSeen:false,exposure:6,playerSams:0,playerFobs:0,decisions:[],playerStrikeOrders:0,playerMissileLaunches:0,playerPackageAdjustments:0,playerReconSorties:0,playerReconRecovered:0,playerLostBaseReports:0,playerBaseSeen:false,cpuStrikeOrders:0,cpuMissileLaunches:0,cpuBaseStrikeOrders:0,cpuBaseMissileLaunches:0}
-  for(let round=1;round<=6;round++) {
+  for(let round=1;round<=(historical?6:CAMPAIGN_ROUND_LIMIT);round++) {
     s={...s,round,phase:'plan',lastResult:undefined,playerAssets:normalizeFormationBasing(s.squadrons,s.playerAssets)}
     const plan=version==='v2'?planCpu(cpuPlanningView(s)!):planV1(viewV1(s)!)
     s.cpu={...s.cpu!,plan,intent:plan.intent}
@@ -130,7 +136,7 @@ export function campaign(version:Row['version'],difficulty:CpuDifficulty,seed:nu
     if(process.env.CPU_TRACE==='1')console.log(JSON.stringify({version,difficulty,seed,policy,round,home:s.enemyAssets.find(a=>a.kind==='base')?.position,opponent:s.playerAssets.find(a=>a.kind==='base')?.position,health:[s.playerBaseHealth,s.enemyBaseHealth],exposure:s.baseExposure,sites:s.cpu!.sites,traffic:s.cpu!.traffic,assets:s.enemyAssets.map(a=>({id:a.id,kind:a.kind,position:a.position,health:a.health})),weapons:result.weaponEffects.map(e=>({time:e.start,impact:e.end,kind:e.kind,source:e.sourceId,target:e.targetId,damage:e.damage,hit:e.hit})),formations:s.cpu!.formations.map(f=>({id:f.id,strength:f.strength,aircraft:f.aircraft})),orders:plan.orders.map(o=>({id:o.id,mission:o.mission,route:o.route,target:o.strikeTargetId,ordered:o.sortieOrdered})),trace:plan.trace,events:result.events.filter(e=>/STRIKE|DESTROYED|RECOVER|LOST/.test(e.title))}))
     row.fobUsed+=result.cpuReport?.recoveryOutcomes?.filter(o=>o.actualFieldId?.startsWith('e-fob')&&plan.orders.find(f=>f.id===o.formationId)?.sortieOrdered!==false&&['recovered','diverted'].includes(o.outcome)).length??0
     row.rounds=round
-    if(campaignOutcome(s))break
+    if(outcomeForRules(s))break
     s={...s,phase:'adapt'}
     const placementView=cpuPlanningView(s)!,priorAssetIds=new Set(s.enemyAssets.map(a=>a.id))
     s=(version==='v2'?maintainCpu:maintainV1)(s)
@@ -141,7 +147,7 @@ export function campaign(version:Row['version'],difficulty:CpuDifficulty,seed:nu
     for(const a of s.enemyAssets.filter(a=>a.kind==='sam'&&!priorAssetIds.has(a.id))){row.samCoverageGain+=defenseCoverage(placementView,a.position,'sam');placementView.assets.push(a)}
     s=playerAdapt(s,policy)
   }
-  row.outcome=campaignOutcome(s)
+  row.outcome=outcomeForRules(s)
   expect(row.outcome).toBeDefined()
   row.cpuWin=!!row.outcome&&campaignOutcomePhase(row.outcome)==='defeat'
   row.playerBaseDamage=100-s.playerBaseHealth;row.cpuBaseDamage=100-s.enemyBaseHealth;row.intel=s.cpu!.sites.length

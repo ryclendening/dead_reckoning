@@ -1,3 +1,4 @@
+import { CAMPAIGN_ROUND_LIMIT } from '../game/campaign'
 import { useState } from 'react'
 import type { MatchState } from '../game/types'
 import type { CpuDifficulty } from '../game/cpu/types'
@@ -13,7 +14,7 @@ const OPTIONS: Array<{ id: CpuDifficulty; label: string; detail: string }> = [
 export function CampaignMenu({ saved, savedOnline = false, onContinueOnline, onContinue, onStart, onCreateOnline, onJoinOnline }: { saved?: MatchState; savedOnline?: boolean; onContinueOnline?: () => void; onContinue: () => void; onStart: (difficulty: CpuDifficulty) => void; onCreateOnline?: (entry: OnlineEntry) => void; onJoinOnline?: (entry: { session: OnlineSession; view: OnlineView }) => void }) {
   const [difficulty, setDifficulty] = useState<CpuDifficulty>(saved?.cpu?.difficulty ?? 'medium')
   return <main className="campaign-menu"><section aria-labelledby="campaign-menu-title">
-    <p className="menu-kicker">AIR COMMAND · SIX-ROUND CAMPAIGN</p>
+    <p className="menu-kicker">AIR COMMAND · {CAMPAIGN_ROUND_LIMIT}-ROUND CAMPAIGN</p>
     <h1 id="campaign-menu-title">DEAD RECKONING</h1>
     <p className="menu-intro">Find the enemy airfield. Recover your intelligence. Plan the strike and bring your aircraft home.</p>
     {saved ? <div className="menu-resume"><button type="button" onClick={onContinue}>CONTINUE CAMPAIGN <span>ROUND {saved.round} · {(saved.cpu?.difficulty ?? 'medium').toUpperCase()}</span></button></div> : null}

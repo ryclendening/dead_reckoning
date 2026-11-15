@@ -3,3 +3,214 @@
 .target-priority{display:grid;grid-template-columns:auto 1fr;gap:8px;align-items:center;margin:-1px 0 8px;color:#d3b963;font:700 8px 'Barlow Condensed';letter-spacing:.65px}.target-priority select{width:100%;background:#23251d;color:#e2dec6;border:1px solid rgba(217,154,37,.35);padding:7px 8px;font:600 8px 'Barlow Condensed';outline:none}
 .reserve-desk{position:absolute;right:10px;top:92px;width:292px;z-index:8;pointer-events:auto;font-family:'Barlow Condensed',sans-serif}.reserve-toggle{margin-left:auto;display:flex;align-items:center;gap:6px;padding:7px 9px;background:rgba(17,21,16,.94);border:1px solid rgba(217,154,37,.42);color:#d8d5c1;font:700 9px 'Barlow Condensed';letter-spacing:.7px;box-shadow:0 5px 14px rgba(0,0,0,.3)}.reserve-toggle svg{width:13px;color:var(--amber)}.reserve-toggle b{margin-left:4px;color:var(--amber)}.reserve-drawer{margin-top:5px;padding:8px;background:rgba(9,12,9,.97);border:1px solid rgba(217,154,37,.45);box-shadow:0 12px 25px rgba(0,0,0,.55)}.reserve-drawer header{display:flex;align-items:center;gap:7px;margin-bottom:6px;color:#999b87;font:700 7px 'Barlow Condensed';letter-spacing:.55px}.reserve-drawer header span:nth-child(2){color:var(--red)}.reserve-drawer header b{margin-left:auto;color:#e0c36a}.reserve-drawer>button{width:100%;display:grid;grid-template-columns:26px 1fr auto;gap:7px;align-items:center;text-align:left;padding:8px 7px;margin-top:5px;background:#1a1e18;border:1px solid var(--line);color:#d9d6c2}.reserve-drawer>button:not(:disabled){border-color:rgba(85,214,223,.42);background:linear-gradient(90deg,rgba(43,91,83,.32),#171a16)}.reserve-drawer>button:disabled{opacity:.38}.reserve-drawer button i{color:var(--cyan);font-style:normal}.reserve-drawer button svg{width:18px}.reserve-drawer button span b,.reserve-drawer button span small{display:block;font:700 9px 'Barlow Condensed';letter-spacing:.45px}.reserve-drawer button span small{margin-top:2px;font-size:7px;color:#929481;letter-spacing:0}.reserve-drawer button em{font:700 6.5px 'Barlow Condensed';font-style:normal;color:#d9b855;white-space:nowrap}.reserve-drawer>p{margin:7px 2px 1px;color:#737665;font:600 6.5px 'Barlow Condensed';letter-spacing:.45px}
 .opsec-report{display:grid;grid-template-columns:1fr auto;gap:3px 9px;align-items:center;margin:9px 0;padding:9px 10px;background:#171b16;border-left:3px solid var(--cyan)}.opsec-report.exposed{border-color:var(--amber);background:#1c1a12}.opsec-report small,.opsec-report b{display:block;font:700 7px 'Barlow Condensed';letter-spacing:.6px}.opsec-report b{font-size:10px;color:#d7d6c2}.opsec-report>strong{font:700 20px 'Barlow Condensed';color:var(--cyan)}.opsec-report.exposed>strong{color:var(--amber)}.opsec-report p{grid-column:1/3;margin:2px 0 0;color:#929481;font-size:7.5px;line-height:1.35}
+
+/* Match controls share one row. Expanded map details open over the map. */
+.match-header.topbar {
+  display: flex;
+  flex: 0 0 auto;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  height: auto;
+  min-height: calc(52px + env(safe-area-inset-top));
+  padding: env(safe-area-inset-top) 8px 0;
+  font: 600 14px/1.25 Inter, sans-serif;
+}
+.match-header .menu-button, .match-header .dev-menu > summary {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 44px;
+  padding: 0 8px;
+  font: inherit;
+  white-space: nowrap;
+}
+.match-header .dev-menu { position: relative; inset: auto; z-index: 2; }
+.match-header .dev-menu > div { right: 0; }
+.match-round { display: flex; align-items: baseline; flex-wrap: wrap; justify-content: center; gap: 2px 10px; }
+.match-round span { color: #cad5be; white-space: nowrap; }
+.match-round strong { color: #ecf4e8; }
+.match-connection { color: #9de2d5; text-align: right; font-size: 12px; }
+.online-invite {
+  display: flex;
+  justify-content: center;
+  gap: 10px;
+  padding: 4px 8px;
+  border: 0;
+  margin: 0;
+  color: #e0e9db;
+  font: 600 14px Inter, sans-serif;
+}
+.online-invite input { width: 95px; font: 700 14px Inter, sans-serif; text-align: center; }
+.online-invite button, .online-command-error button { min-height: 44px; font-size: 13px; }
+.online-command-error { top: 56px; font-size: 13px; z-index: 29; }
+.online-wait-panel strong { font: 700 16px Inter, sans-serif; }
+.online-wait-panel p { font-size: 14px; line-height: 1.35; }
+.map-tools {
+  position: absolute;
+  z-index: 11;
+  top: 8px;
+  right: 8px;
+  display: flex;
+  gap: 4px;
+}
+.game-frame .map-tools > *, .game-frame .map-tools > .world-map-toggle {
+  position: static;
+  inset: auto;
+  width: auto;
+  padding: 0;
+  border: 1px solid #526256;
+  background: #0d1713f0;
+  color: #e1ece0;
+  box-shadow: none;
+}
+.map-tools > details > summary, .game-frame .map-tools > button {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  min-height: 44px;
+  padding: 0 9px;
+  font: 600 13px/1.25 Inter, sans-serif;
+  letter-spacing: normal;
+  list-style: none;
+  cursor: pointer;
+}
+.map-tools > details > summary::-webkit-details-marker { display: none; }
+.map-tools > details[open] > summary { background: #263f34; }
+.map-tools > details svg, .map-tools > button svg { width: 14px; height: 14px; flex: none; }
+.game-frame .map-tools > details > div, .phase-execute .map-tools .observe-feed {
+  position: absolute;
+  top: calc(100% + 4px);
+  right: 0;
+  left: auto;
+  width: min(320px, calc(100vw - 20px));
+  z-index: 2;
+  padding: 8px;
+  background: #0d1713fa;
+  border: 1px solid #526256;
+}
+.map-tools > details[open]:focus-within > div, .phase-execute .map-tools .map-events[open]:focus-within .observe-feed { z-index: 3; }
+.map-tools .campaign-objective small, .map-tools .campaign-threat small,
+.map-tools .contact-tracks span { font-size: 13px; line-height: 1.4; }
+.map-tools .contact-tracks b, .map-tools .campaign-objective b, .map-tools .campaign-threat b { font-size: 14px; }
+.map-tools .contact-tracks button { min-height: 44px; }
+.phase-execute .execute-view-controls {
+  position: absolute;
+  inset: auto 8px calc(78px + env(safe-area-inset-bottom)) auto;
+  flex-direction: row;
+}
+.phase-execute .execute-view-controls button {
+  width: auto;
+  min-width: 44px;
+  min-height: 44px;
+  padding: 0 8px;
+  font: 600 13px Inter, sans-serif;
+  letter-spacing: normal;
+}
+.phase-execute .execute-hud:has(.execution-shelf.expanded) .execute-view-controls { visibility: hidden; }
+.phase-plan .map-tip { display: none; }
+
+/* Keep one planning surface visible and give its controls full touch targets. */
+.phase-plan .command-shelf { bottom: max(8px, env(safe-area-inset-bottom)); }
+.phase-plan .command-shelf.expanded { border: 0; background: none; box-shadow: none; }
+.game-frame .command-shelf .command-sheet {
+  inset: auto 0 0;
+  height: auto;
+  max-height: min(42dvh, 320px);
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 8px;
+  overflow-y: auto;
+  touch-action: pan-y;
+}
+.command-sheet > * { flex: 0 0 auto; }
+.command-sheet .planning-aircraft-nav { grid-template-columns: 44px minmax(0, 1fr) 44px 56px; }
+.command-sheet .planning-aircraft-nav button,
+.command-sheet .planning-protect-target > button,
+.command-sheet .planning-protect-target > select,
+.command-sheet .planning-route-actions button,
+.command-sheet .strike-target-summary button,
+.command-sheet .recon-posture button {
+  min-height: 44px;
+  height: auto;
+  font-size: 14px;
+  white-space: normal;
+  letter-spacing: normal;
+}
+.command-sheet .planning-aircraft-identity b { font-size: 17px; }
+.command-sheet .planning-aircraft-identity small { font-size: 12px; }
+.command-sheet .planning-title { font-size: 18px; line-height: 1.15; }
+.command-sheet .planning-help, .command-sheet .mission-effect, .command-sheet .shelf-range {
+  max-height: none;
+  white-space: normal;
+  font: 600 13px/1.3 Inter, sans-serif;
+}
+.command-sheet .shelf-route button b { font-size: 14px; line-height: 1.05; }
+.command-sheet .shelf-route button { min-height: 48px; }
+.command-sheet .strike-target-summary { height: auto; font-size: 15px; }
+.command-sheet .recon-posture { grid-template-columns: 1fr; }
+.command-sheet .recon-posture > span, .command-sheet .recon-posture > small { font-size: 12px; line-height: 1.3; }
+.command-sheet .planning-route-actions { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.planning-capsule .planning-base-toggle b, .planning-capsule .planning-all-toggle { font-size: 15px; }
+.planning-capsule .planning-base-toggle small { font-size: 12px; }
+.planning-capsule .shelf-primary { font-size: 15px !important; }
+
+/* Resupply lists scroll inside a bounded drawer, above the sticky actions. */
+.resupply-panel .adapt-content { max-height: min(38dvh, 320px); }
+.resupply-controls {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.resupply-controls .adapt-balance { margin-right: auto; }
+.resupply-controls .adapt-balance b { font: 800 19px Inter, sans-serif; }
+.resupply-controls button {
+  min-height: 44px;
+  padding: 0 8px;
+  border: 1px solid #455246;
+  background: #151e17;
+  color: #e3ece0;
+  font: 700 14px 'Barlow Condensed', sans-serif;
+  cursor: pointer;
+}
+.resupply-controls .adapt-next { background: #25443a; }
+.resupply-controls button:disabled { opacity: .55; cursor: default; }
+.resupply-controls button[aria-expanded="true"] { border-color: var(--cyan); }
+.resupply-panel .adapt-actions { grid-template-columns: 1fr; }
+.resupply-panel .adapt-drawer-title > b, .resupply-panel .adapt-build-heading > b,
+.resupply-panel .adapt-actions b, .resupply-panel .adapt-actions strong { font-size: 16px; }
+.resupply-panel .adapt-actions small, .resupply-panel .adapt-actions em,
+.resupply-panel .adapt-drawer-title > small, .resupply-panel .adapt-site-status,
+.resupply-panel .procure-instruction, .resupply-panel .adapt-confirm small { font-size: 13px; }
+.resupply-panel .adapt-drawer-title > button, .resupply-panel .adapt-build-heading > button { width: 44px; height: 44px; }
+.resupply-panel .adapt-based-flights > button, .resupply-panel .adapt-confirm button,
+.resupply-panel .campaign-placement-confirm button { min-height: 44px; font-size: 14px; }
+.debrief-cash { padding: 8px 0; font: 600 14px/1.4 Inter, sans-serif; }
+.debrief-cash summary { cursor: pointer; }
+.debrief-cash > div { display: grid; gap: 4px; padding: 6px 10px; color: #c1d4ba; }
+.debrief-cash span { display: flex; justify-content: space-between; }
+
+.game-frame:is(.phase-plan, .phase-execute) {
+  display: flex;
+  flex-direction: column;
+  height: 100dvh;
+  min-height: 0;
+}
+.game-frame:is(.phase-plan, .phase-execute) .map-wrap {
+  flex: 1 1 0;
+  height: auto;
+  min-height: 0;
+}
+@media (min-width: 700px) {
+  .game-frame:is(.phase-plan, .phase-execute) { height: calc(100dvh - 44px); }
+}
+.airfield-pip-list {
+  flex-wrap: wrap;
+  justify-content: center;
+  width: max-content;
+  max-width: min(320px, calc(100vw - 24px));
+  max-height: 92px;
+  overflow-y: auto;
+}
+.airfield-pip { min-height: 36px; font-size: 12px; }

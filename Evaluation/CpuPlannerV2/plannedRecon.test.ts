@@ -2,8 +2,8 @@ import { describe,it,expect } from 'vitest'
 import { createCampaignDraft } from '../../src/game/data'
 import { confirmCampaignSetup } from '../../src/game/campaignSetup'
 import { resolveRound,applyRound } from '../../src/game/engine'
-import { campaignOutcome } from '../../src/game/campaign'
-import { openAdaptPhase,beginNextRound } from '../../src/game/economy'
+import { CAMPAIGN_ROUND_LIMIT, campaignOutcome } from '../../src/game/campaign'
+import { openAdaptPhase,beginNextRound,executeEconomyCommand } from '../../src/game/economy'
 import { normalizeMatch } from '../../src/game/persistence'
 import { validateRecoveryPackage } from '../../src/game/forwardBasing'
 import { flightRangeFor } from '../../src/game/flightRules'
@@ -34,8 +34,18 @@ function campaign(seed:number,difficulty:CpuDifficulty,posture:ReconPosture) {
     s=applyRound(reloaded,result)
     expect(applyRound(s,result)).toBe(s)
     s=openAdaptPhase({...s,phase:'debrief'})
-    if(!campaignOutcome(s)){expect(openAdaptPhase(s)).toBe(s);s=beginNextRound(s)}
-    expect(s.round).toBeLessThanOrEqual(6)
+    if(!campaignOutcome(s)){
+      expect(openAdaptPhase(s)).toBe(s)
+      if(s.squadrons.every(formation=>formation.aircraft<=0)){
+        const target={kind:'campaign',id:'campaign'} as const
+        const bought=executeEconomyCommand(s,{actionId:'buy-fighter',target})
+        s=bought===s?executeEconomyCommand(s,{actionId:'buy-recon',target}):bought
+      }
+      const next=beginNextRound(s)
+      expect(next.round).toBe(s.round+1)
+      s=next
+    }
+    expect(s.round).toBeLessThanOrEqual(CAMPAIGN_ROUND_LIMIT)
   }
   return {rounds,outcome:campaignOutcome(s),cpu:s.cpu,player:s.squadrons}
 }

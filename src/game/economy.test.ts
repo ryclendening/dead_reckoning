@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { createMatch } from './data'
 import { beginNextRound, deriveLogisticsIncome, economyAttentionTargets, economyCommandForQuote, economyQuotesFor, executeEconomyCommand, findMatchingEconomyQuote, LOGISTICS_COSTS, openAdaptPhase, purchaseEconomyAction, settleLogisticsIncome, validateAssetPlacement, validateFobPlacement } from './economy'
+import { FORMATION_PRICES } from './economyRules'
 import { resolveRound } from './engine'
 import { normalizeMatch } from '../App'
 import type { ConstructibleAssetKind, EconomyActionId, IntelReport, Point } from './types'
@@ -39,18 +40,29 @@ describe('logistics economy', () => {
     expect(capped.squadrons.find(squadron => squadron.id === 'viper')?.strength).toBe(50)
   })
 
-  it('replaces a destroyed aircraft only when both Logistics and reserve inventory are available', () => {
-    const state = { ...createMatch(), phase: 'adapt' as const, logistics: 4, replacements: 1, squadrons: createMatch().squadrons.map(squadron => squadron.id === 'viper' ? { ...squadron, aircraft: 0, strength: 0, status: 'destroyed' as const } : squadron) }
-    const replaced = purchaseEconomyAction(state, 'replace-aircraft', { kind: 'squadron', id: 'viper' })
-    expect(replaced.logistics).toBe(0)
-    expect(replaced.replacements).toBe(0)
-    expect(replaced.squadrons.find(squadron => squadron.id === 'viper')).toMatchObject({ aircraft: 1, strength: 25, status: 'rtb' })
-    expect(purchaseEconomyAction({ ...state, replacements: 0 }, 'replace-aircraft', { kind: 'squadron', id: 'viper' })).toEqual({ ...state, replacements: 0 })
+  it.each(['fighter','recon'] as const)('buys a complete %s formation at home with cash only and persists it', role => {
+    const target = { kind: 'campaign', id: 'campaign' } as const
+    const state = { ...createMatch(), phase: 'adapt' as const, logistics: FORMATION_PRICES[role], replacements: 0 }
+    const quote = economyQuotesFor(state, target).find(item => item.id === `buy-${role}`)!
+    const command = economyCommandForQuote(state, quote)
+    const purchased = executeEconomyCommand(state, command)
+    const formation = purchased.squadrons.at(-1)!
+    const home = purchased.playerAssets.find(asset => asset.kind === 'base')!
+    expect(formation).toMatchObject({ role, aircraft: 4, strength: 100, sortieOrdered: false, route: [home.position] })
+    expect(home.basedFormationIds).toContain(formation.id)
+    expect(purchased.logistics).toBe(0)
+    expect(purchased.replacements).toBe(0)
+    expect(executeEconomyCommand(purchased, command)).toBe(purchased)
+    const unfunded = { ...state, logistics: state.logistics - 1 }
+    expect(purchaseEconomyAction(unfunded, quote.id, target)).toBe(unfunded)
+    const reloaded = normalizeMatch(JSON.parse(JSON.stringify(purchased)))
+    expect(reloaded.squadrons.at(-1)).toMatchObject(formation)
+    expect(beginNextRound(reloaded).squadrons.at(-1)?.route).toEqual([home.position])
   })
 
-  it('keeps destroyed formations in the contextual Needs Attention queue', () => {
+  it('lists repairable damage instead of destroyed formations', () => {
     const state = { ...createMatch(), phase: 'adapt' as const, squadrons: createMatch().squadrons.map(squadron => squadron.id === 'viper' ? { ...squadron, aircraft: 0, strength: 0, status: 'destroyed' as const } : squadron) }
-    expect(economyAttentionTargets(state)).toContainEqual({ kind: 'squadron', id: 'viper' })
+    expect(economyAttentionTargets(state)).not.toContainEqual({ kind: 'squadron', id: 'viper' })
   })
 
   it('repairs valid defense assets and rejects invalid asset targets', () => {
@@ -84,11 +96,11 @@ describe('logistics economy', () => {
     expect(purchaseEconomyAction(upgraded, 'install-maintenance-wing', { kind: 'asset', id: 'p-base' })).toBe(upgraded)
   })
 
-  it('applies the Maintenance Wing discount to repair and replacement quotes', () => {
+  it('applies the Maintenance Wing discount to repair quotes', () => {
     const state = { ...createMatch(), phase: 'adapt' as const, logistics: 20 }
     const upgraded = purchaseEconomyAction(state, 'install-maintenance-wing', { kind: 'asset', id: 'p-base' })
     const damaged = { ...upgraded, squadrons: upgraded.squadrons.map(squadron => squadron.id === 'viper' ? { ...squadron, strength: 50, aircraft: 3 } : squadron) }
-    expect(economyQuotesFor(damaged, { kind: 'squadron', id: 'viper' }).map(quote => quote.cost)).toEqual([1, 3])
+    expect(economyQuotesFor(damaged, { kind: 'squadron', id: 'viper' }).map(quote => quote.cost)).toEqual([1])
   })
 
   it('returns exact effects and resource projections and omits irrelevant healthy actions', () => {
@@ -98,7 +110,7 @@ describe('logistics economy', () => {
 
     const damaged = { ...healthy, logistics: 7, playerAssets: healthy.playerAssets.map(asset => asset.id === 'p-radar' ? { ...asset, health: 88 } : asset) }
     expect(economyQuotesFor(damaged, { kind: 'asset', id: 'p-radar' })[0]).toMatchObject({
-      detail: 'Health 88 → 100 (+12).',
+      detail: '88 → 100 HP (+12).',
       effect: { kind: 'asset-health', before: 88, after: 100 },
       projected: { logistics: 5, reserveAircraft: 3 },
     })
@@ -171,12 +183,14 @@ describe('logistics economy', () => {
     expect(executeEconomyCommand({ ...state, phase: 'plan' }, { actionId: actionId as EconomyActionId, target: { kind: 'campaign', id: 'campaign' }, placement })).toEqual({ ...state, phase: 'plan' })
   })
 
-  it('validates FOB placement from persistent knowledge without consulting hidden enemy truth', () => {
+  it('blocks overlapping enemy territory without consulting unrelated enemy infrastructure', () => {
     const state = { ...createMatch(), phase: 'adapt' as const }
     const center = state.world.friendlyTerritory.center
     const placement = Array.from({ length: 17 }, (_, x) => Array.from({ length: 17 }, (_, z) => [center[0] - 4 + x * .5, center[1] - 4 + z * .5] as Point)).flat().find(point => validateFobPlacement(state, point).valid)!
     const hiddenOverlap = { ...state, enemyAssets: state.enemyAssets.map((asset, index) => index ? asset : { ...asset, position: placement }) }
-    expect(validateFobPlacement(hiddenOverlap, placement)).toEqual({ valid: true })
+    expect(validateFobPlacement(hiddenOverlap, placement)).toEqual({ valid: false, reason: 'SITE MUST BE OUTSIDE ENEMY TERRITORY' })
+    const remoteBase = { ...state, enemyAssets: state.enemyAssets.map(asset => asset.kind === 'sam' ? { ...asset, position: placement } : asset) }
+    expect(validateFobPlacement(remoteBase, placement)).toEqual({ valid: true })
   })
 
   it('expands construction territory from operational FOBs and removes it when disabled', () => {

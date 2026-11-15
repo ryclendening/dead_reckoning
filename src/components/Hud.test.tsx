@@ -63,8 +63,8 @@ describe('mission planning shelf', () => {
       step="mission" onClose={noop} reviewedIds={new Set()} reviewedCount={0} totalCount={4}
     />)
 
-    expect(markup).toContain('CHOOSE TASK')
-    expect(markup).not.toContain('BUILD ROUTE')
+    expect(markup).toContain('Choose task')
+    expect(markup).not.toContain('Build route')
     expect(markup).toContain('FORWARD PATROL')
     expect(markup).not.toContain('CLEAR ROUTE')
     expect(markup).not.toContain('class="route-budget"')
@@ -116,10 +116,10 @@ describe('mission planning shelf', () => {
       step="route" onClose={noop} reviewedIds={new Set()} reviewedCount={0} totalCount={4}
     />)
 
-    expect(markup).toContain('SEARCH AREA')
-    expect(markup).toContain('BUILD ROUTE')
+    expect(markup).toContain('Search Area route')
+    expect(markup).not.toContain('planning-capsule')
     expect(markup).toContain('aria-label="Next aircraft"')
-    expect(markup).not.toContain('CHOOSE TASK')
+    expect(markup).not.toContain('Choose task')
     expect(markup).not.toContain('DEEP PROBE')
     expect(markup).not.toContain('CUSTOM RECON')
   })

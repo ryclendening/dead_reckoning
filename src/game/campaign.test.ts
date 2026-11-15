@@ -3,6 +3,7 @@ import { CAMPAIGN_ROUND_LIMIT, campaignOutcome, confirmedStrikeTarget, isCampaig
 import { applyRound, createRoundSimulation, resolveRound } from './engine'
 import { beginNextRound, openAdaptPhase } from './economy'
 import { buildGroundStrikeRoute, validateGroundStrikeOrder } from './routeTemplates'
+import { FORMATION_PRICES } from './economyRules'
 import { createMatch } from './data'
 import { createScenario } from './scenarios'
 import type { MatchState } from './types'
@@ -14,9 +15,14 @@ describe('campaign outcomes',()=>{
     expect(isCampaign({...state,debugScenario:'fighter-duel'})).toBe(false)
     expect(campaignOutcome({...state,enemyBaseHealth:0,playerBaseHealth:0})).toBe('mutual-destruction')
     expect(campaignOutcome({...state,squadrons:state.squadrons.map(squadron=>({...squadron,aircraft:0})),replacements:0})).toBe('forces-lost')
+    const availableCash = { ...state, phase:'adapt' as const, logistics:FORMATION_PRICES.recon, squadrons:state.squadrons.map(squadron=>({...squadron,aircraft:0})) }
+    expect(campaignOutcome(availableCash)).toBeUndefined()
+    expect(beginNextRound(availableCash)).toBe(availableCash)
     expect(campaignOutcome({...state,round:CAMPAIGN_ROUND_LIMIT})).toBeUndefined()
+    expect(beginNextRound({...state,phase:'adapt',round:CAMPAIGN_ROUND_LIMIT-1}).round).toBe(CAMPAIGN_ROUND_LIMIT)
     const settled={...state,round:CAMPAIGN_ROUND_LIMIT,lastResult:{round:CAMPAIGN_ROUND_LIMIT} as MatchState['lastResult']}
     expect(campaignOutcome(settled)).toBe('deadline')
+    expect(campaignOutcome({...settled,enemyBaseHealth:0})).toBe('enemy-base-destroyed')
     expect(campaignOutcome({...settled,debugScenario:'fighter-duel',enemyBaseHealth:0})).toBeUndefined()
     expect(openAdaptPhase({...settled,phase:'debrief'}).phase).toBe('draw')
     expect(beginNextRound({...settled,phase:'adapt'}).round).toBe(CAMPAIGN_ROUND_LIMIT)

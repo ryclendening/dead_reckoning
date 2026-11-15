@@ -2,7 +2,7 @@ import { resolveRound } from './engine'
 import { deriveLogisticsIncome } from './economy'
 import { applyRecoveryOutcomesToBasing } from './forwardBasing'
 import type { Asset, EnemyFlight, MatchState, RoundResult, Squadron } from './types'
-import type { CampaignOutcome } from './campaign'
+import { CAMPAIGN_ROUND_LIMIT, forcesEliminated, type CampaignOutcome } from './campaign'
 import type { CpuSiteReport, CpuState } from './cpu/types'
 
 const opponentId = (id: string) => `opponent:${id.replace(/^opponent:/, '')}`
@@ -74,18 +74,18 @@ function observedEnemyAssets(input: Asset[], actual: Asset[], idPrefix: boolean)
   return [...output.values()]
 }
 
-function outcomeFor(home: MatchState, enemyBaseHealth: number, enemyFormations: Squadron[], round: number, enemyReserves: number): CampaignOutcome | undefined {
+function outcomeFor(home: MatchState, enemyBaseHealth: number, enemyFormations: Squadron[], round: number, enemyCash: number): CampaignOutcome | undefined {
   const ownBase = home.playerAssets.find(asset => asset.kind === 'base')
   const ownHealth = Math.min(home.playerBaseHealth, ownBase?.health ?? home.playerBaseHealth)
   if (ownHealth <= 0 && enemyBaseHealth <= 0) return 'mutual-destruction'
   if (enemyBaseHealth <= 0) return 'enemy-base-destroyed'
   if (ownHealth <= 0) return 'home-base-destroyed'
-  const ownLost = home.squadrons.every(item => item.aircraft <= 0) && home.replacements <= 0
-  const enemyLost = enemyFormations.length > 0 && enemyFormations.every(item => item.aircraft <= 0) && enemyReserves <= 0
+  const ownLost = forcesEliminated(home.squadrons, home.logistics)
+  const enemyLost = forcesEliminated(enemyFormations, enemyCash)
   if (ownLost && enemyLost) return 'mutual-forces-lost'
   if (ownLost) return 'forces-lost'
   if (enemyLost) return 'enemy-forces-lost'
-  return round >= 6 ? 'deadline' : undefined
+  return round >= CAMPAIGN_ROUND_LIMIT ? 'deadline' : undefined
 }
 
 function visibleTimes(result: RoundResult, hostileId: string): Array<[number, number]> {
@@ -243,7 +243,7 @@ function projectSeat(input: MatchState, enemyAssetsForSeat: Asset[], ownAssetsFo
   const statement = settled ? input.economy.statement : [
     ...input.economy.statement,
     { id: `income-${input.round}-base`, round: input.round, direction: 'income' as const, amount: income.base,
-      label: income.base > 6 ? 'ROUND LOGISTICS · SUPPLY DEPOT' : 'ROUND LOGISTICS', source: 'round-income' },
+      label: income.base > 6 ? 'ROUND PAY · SUPPLY DEPOT' : 'ROUND PAY', source: 'round-income' },
     ...(income.intel ? [{ id: `income-${input.round}-intel`, round: input.round, direction: 'income' as const, amount: income.intel, label: 'INTELLIGENCE RECOVERY', source: 'intel-recovery' }] : []),
     ...(income.enemyAircraft ? [{ id: `income-${input.round}-enemy-aircraft`, round: input.round, direction: 'income' as const, amount: income.enemyAircraft, label: 'CONFIRMED ENEMY AIRCRAFT', source: 'enemy-aircraft' }] : []),
   ]
@@ -355,12 +355,12 @@ export function resolveOnlineRound(seats: [MatchState, MatchState], seed: number
   const aResultWithRound = { ...aResult, round: a.round }
   const bResultWithRound = { ...bResult, round: b.round }
   const aOwnAssets = raw.playerAssets.map(asset => clone(asset))
-  const aOutcome = outcomeFor({ ...a, squadrons: aFormations, playerAssets: aOwnAssets,
+  const aOutcome = outcomeFor({ ...a, logistics: a.logistics + aResult.logisticsIncome.total, squadrons: aFormations, playerAssets: aOwnAssets,
     playerBaseHealth: aOwnAssets.find(asset => asset.kind === 'base')?.health ?? 0 },
-    bOwnAssets.find(asset => asset.kind === 'base')?.health ?? 0, bFormations, a.round, b.replacements)
-  const bOutcome = outcomeFor({ ...b, squadrons: bFormations, playerAssets: bSettledAssets,
+    bOwnAssets.find(asset => asset.kind === 'base')?.health ?? 0, bFormations, a.round, b.logistics + bResult.logisticsIncome.total)
+  const bOutcome = outcomeFor({ ...b, logistics: b.logistics + bResult.logisticsIncome.total, squadrons: bFormations, playerAssets: bSettledAssets,
     playerBaseHealth: bSettledAssets.find(asset => asset.kind === 'base')?.health ?? 0 },
-    aOwnAssets.find(asset => asset.kind === 'base')?.health ?? 0, aFormations, b.round, a.replacements)
+    aOwnAssets.find(asset => asset.kind === 'base')?.health ?? 0, aFormations, b.round, a.logistics + aResult.logisticsIncome.total)
   const aState = projectSeat(a, aResult.assets, aOwnAssets, aFormations, aResultWithRound, aOutcome)
   const bState = projectSeat(b,
     bResult.assets, bSettledAssets, bFormations, bResultWithRound, bOutcome)

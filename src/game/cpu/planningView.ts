@@ -9,6 +9,8 @@ export function cpuPlanningView(state: MatchState): CpuPlanningView | undefined 
   const base = state.enemyAssets.find(asset => asset.kind === 'base')
   if (!state.cpu || !base) return undefined
   const context = structuredClone(sidePlanningContext(state, 'cpu'))
+  // Territory exclusion is needed by construction validation only.
+  if (state.phase !== 'adapt') delete context.opposingTerritory
   // Player visibility of our sites is not CPU knowledge. Normalize those presentation fields.
   context.assets=context.assets.map(a=>({...a,intel:'confirmed',confidence:100,hidden:false}))
   const cpu=structuredClone(state.cpu)

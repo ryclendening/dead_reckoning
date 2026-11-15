@@ -1,4 +1,5 @@
 import { describe, it, expect } from 'vitest'
+import { CAMPAIGN_ROUND_LIMIT } from '../campaign'
 import { createMatch } from '../data'
 import { resolveRound, applyRound } from '../engine'
 import { normalizeMatch } from '../persistence'
@@ -17,7 +18,7 @@ function fixture(angle=0, role:'fighter'|'recon'='fighter', seed=7301):MatchStat
     enemyAssets:s.enemyAssets.filter(a=>a.kind==='base').map(a=>({...a,position:[0,0],health:40})),
     playerAssets:s.playerAssets.filter(a=>a.kind==='base').map(a=>({...a,position:p(20)})),
     squadrons:s.squadrons.map(f=>({...f,sortieOrdered:false,route:[p(20)],routeIngress:[p(20)]})),
-    world:{...s.world,bounds:{minX:-45,maxX:45,minZ:-45,maxZ:45}},
+    world:{...s.world,friendlyTerritory:{center:p(20),radius:4.5},bounds:{minX:-45,maxX:45,minZ:-45,maxZ:45}},
     cpu:{...s.cpu!,plan:undefined,intent:undefined,logistics:16,reserves:0,sites:[],mappedAreas:[p(8),p(11)],
       formations:s.cpu!.formations.map(f=>({...f,route:[[0,0]],routeIngress:[[0,0]]})),
       traffic:[{identity:'observed',role,position:p(8),source:'visual',strength:100,aircraft:4,observedRound:2,bearing:angle}]}}
@@ -39,7 +40,7 @@ describe('territory-aware defensive capabilities',()=>{
     const pack={id:'test',summary:'test',checks:[],orders:[],purchases:[],predicted:{...emptyEffects(),opponentAttrition:effects.opponentAttrition}}
     expect(contribution(view,pack).survival).toBe(0)
     expect(contribution(view,pack).enemyAttrition).toBeGreaterThan(0)
-    expect(contribution({...view,round:6},pack).enemyAttrition).toBe(0)
+    expect(contribution({...view,round:CAMPAIGN_ROUND_LIMIT},pack).enemyAttrition).toBe(0)
     // These are real engine outcomes, including the launched payload surviving
     // damage to its shooter. Both full base health and sufficient range matter.
     const combat={...s,enemyBaseHealth:100,enemyAssets:s.enemyAssets.map(a=>({...a,health:100}))}
@@ -95,14 +96,14 @@ describe('territory-aware defensive capabilities',()=>{
     expect(baselineReports).toBe(4);expect(lost).toBeLessThan(baselineReports)
   })
 
-  it('does not fund empty territory, assume hidden reconnaissance, or reward future effects after round six',()=>{
+  it('does not fund empty territory, assume hidden reconnaissance, or reward future effects after the last round',()=>{
     const s=fixture(),quiet={...s,enemyBaseHealth:100,enemyAssets:s.enemyAssets.map(a=>({...a,health:100})),cpu:{...s.cpu!,traffic:[]}}
     expect(maintainCpu(quiet).enemyAssets).toEqual(quiet.enemyAssets)
     expect(maintainCpu({...s,cpu:{...s.cpu!,logistics:13}}).enemyAssets.some(a=>a.kind==='fob')).toBe(false)
     const recon=fixture(0,'recon'),view=cpuPlanningView(recon)!
     const e=defenseBenefits(view,[4.05,0],'sam')
     const pack={id:'test',summary:'test',checks:[],orders:[],purchases:[],predicted:{...emptyEffects(),reconDenial:e.reconDenial}}
-    expect(contribution({...view,round:6},pack).denial).toBe(0)
+    expect(contribution({...view,round:CAMPAIGN_ROUND_LIMIT},pack).denial).toBe(0)
     const finisher={...pack,baseAttack:{damageNow:100,followupDamage:0,preparationRounds:0,releaseSeconds:5},predicted:{...pack.predicted,baseDamage:1,opponentAttrition:.5}}
     const known={...view,cpu:{...view.cpu,sites:[{id:'known-base',kind:'base' as const,position:[20,0] as Point,health:100,maxHealth:100,observedRound:1}]}}
     expect(contribution(known,finisher).denial).toBe(0)

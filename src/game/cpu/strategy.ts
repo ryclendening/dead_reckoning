@@ -1,4 +1,4 @@
-import { BASE_STRIKE_DAMAGE } from '../campaign'
+import { BASE_STRIKE_DAMAGE, CAMPAIGN_ROUND_LIMIT } from '../campaign'
 import { formationField, isOperationalAirfield } from '../forwardBasing'
 import type { CpuPlanningView } from './planningView'
 import type { CpuDecisionTrace, CpuIntent, TacticalPackage } from './types'
@@ -10,7 +10,7 @@ const intentions:CpuIntent[]=['discover','protect-base','expand-defense','forwar
 export function baseAttackValue(view:CpuPlanningView,p:TacticalPackage):number {
   const base=view.cpu.sites.find(s=>s.kind==='base'&&s.health>0),attack=p.baseAttack
   if(!base||!attack)return p.predicted.baseDamage
-  const remaining=7-view.round,discount=.72
+  const remaining=(CAMPAIGN_ROUND_LIMIT + 1 - view.round),discount=.72
   let health=base.health,value=0
   for(let offset=0;offset<remaining;offset++) {
     const available=offset===0?attack.damageNow:offset>=Math.max(1,attack.preparationRounds)?attack.followupDamage:0
@@ -30,7 +30,7 @@ export function discoveryAttackValue(view:CpuPlanningView):number {
   const payload=view.cpu.formations.filter(f=>f.role==='fighter'&&f.aircraft>0&&f.status!=='trapped'&&view.assets.some(a=>a.id===formationField(view.assets,f.id)?.id&&isOperationalAirfield(a)))
     .reduce((n,f)=>n+Math.round(BASE_STRIKE_DAMAGE*(f.strength??100)/100),0)
   let health=100,value=0
-  for(let offset=1;offset<7-view.round;offset++) {
+  for(let offset=1;offset<(CAMPAIGN_ROUND_LIMIT + 1 - view.round);offset++) {
     const damage=Math.min(health,payload)
     value+=damage/100*.72**offset;health-=damage
     if(health<=0){value+=.75*.72**offset;break}
@@ -51,7 +51,7 @@ function advances(intent:CpuIntent,p:TacticalPackage,c:Record<string,number>):bo
 }
 /** All goals use the same measured effects and common campaign contribution scale. */
 export function contribution(view:CpuPlanningView,p:TacticalPackage):Record<string,number> {
-  const e=p.predicted,remaining=7-view.round, horizon=Math.max(0,(remaining-e.roundsUntilPayoff)/remaining)
+  const e=p.predicted,remaining=(CAMPAIGN_ROUND_LIMIT + 1 - view.round), horizon=Math.max(0,(remaining-e.roundsUntilPayoff)/remaining)
   const health=view.homeHealth
   // The second useful defensive layer can matter; saturation prevents spending
   // every remaining Logistics point on capacity beyond the immediate need.
@@ -60,7 +60,7 @@ export function contribution(view:CpuPlanningView,p:TacticalPackage):Record<stri
   const base=view.cpu.sites.find(s=>s.kind==='base'&&s.health>0)
   const finishesNow=!!base&&e.baseDamage>0&&!!p.baseAttack&&p.baseAttack.damageNow>=base.health
   const resourceLoss=finishesNow?(e.ingressAircraftLoss??e.expectedAircraftLoss):e.expectedAircraftLoss
-  const future=finishesNow?0:Math.max(0,(6-view.round)/5)
+  const future=finishesNow?0:Math.max(0,((CAMPAIGN_ROUND_LIMIT - view.round))/5)
   const collecting=p.baseAttack&&e.baseDamage===0&&!p.orders.some(o=>o.mission==='base-strike'&&o.sortieOrdered!==false)
   const components = {
     strike:e.baseDamage>0?operation:0,
@@ -76,7 +76,7 @@ export function contribution(view:CpuPlanningView,p:TacticalPackage):Record<stri
     // Concrete operations already lose value through ingress damage, reduced
     // follow-up capability or failed report recovery. Keep a residual resource
     // cost without charging the old full penalty a second time.
-    attrition:-resourceLoss*(p.baseAttack||view.round===6?.12:.26),
+    attrition:-resourceLoss*(p.baseAttack||view.round===CAMPAIGN_ROUND_LIMIT?.12:.26),
     spending:-e.logisticsSpent/Math.max(10,view.cpu.logistics)*.18,
     delay:-e.roundsUntilPayoff/Math.max(1,remaining)*.04,
   }

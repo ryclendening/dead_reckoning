@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest'
 import { createCampaignDraft } from '../data'
 import { confirmCampaignSetup } from '../campaignSetup'
-import { campaignOutcome, campaignOutcomePhase } from '../campaign'
+import { CAMPAIGN_ROUND_LIMIT, campaignOutcome, campaignOutcomePhase } from '../campaign'
 import { applyRound, resolveRound } from '../engine'
 import { normalizeMatch } from '../persistence'
 import { openAdaptPhase } from '../economy'
@@ -81,7 +81,7 @@ describe('symmetric campaign rules',()=>{
     view.cpu.formations=view.cpu.formations.filter(f=>f.id!=='red-fighter-2')
     expect(discoveryAttackValue(view)).toBeLessThan(coordinated)
     expect(discoveryAttackValue(view)).toBeGreaterThan(0)
-    view.round=6
+    view.round=CAMPAIGN_ROUND_LIMIT
     expect(discoveryAttackValue(view)).toBe(0)
     view.round=2;view.assets=view.assets.map(a=>({...a,health:0}))
     expect(discoveryAttackValue(view)).toBe(0)
@@ -163,14 +163,14 @@ describe('symmetric campaign rules',()=>{
   it('draws deadline and simultaneous base or force destruction, and recognizes elimination for either side',()=>{
     const s=campaign()
     expect(campaignOutcome({...s,playerBaseHealth:0,enemyBaseHealth:0})).toBe('mutual-destruction')
-    const cpuLost={...s,cpu:{...s.cpu!,reserves:0,formations:s.cpu!.formations.map(f=>({...f,aircraft:0,strength:0}))}}
+    const cpuLost={...s,cpu:{...s.cpu!,logistics:0,reserves:0,formations:s.cpu!.formations.map(f=>({...f,aircraft:0,strength:0}))}}
     expect(campaignOutcome(cpuLost)).toBe('enemy-forces-lost')
     expect(campaignOutcomePhase(campaignOutcome(cpuLost)!)).toBe('victory')
     expect(campaignOutcome({...cpuLost,replacements:0,squadrons:s.squadrons.map(f=>({...f,aircraft:0,strength:0}))})).toBe('mutual-forces-lost')
     const result=resolveRound({...s,squadrons:s.squadrons.map(f=>({...f,sortieOrdered:false}))})
-    const deadline={...applyRound(s,result),round:6,lastResult:{...result,round:6}}
+    const deadline={...applyRound(s,result),round:CAMPAIGN_ROUND_LIMIT,lastResult:{...result,round:CAMPAIGN_ROUND_LIMIT}}
     expect(openAdaptPhase(deadline).phase).toBe('draw')
-    const oldEnding={...deadline,phase:'defeat' as const}
+    const oldEnding={...deadline,round:6,lastResult:{...result,round:6},phase:'defeat' as const}
     const loaded=normalizeMatch(JSON.parse(JSON.stringify(oldEnding)))
     expect(loaded.phase).toBe('draw')
     expect(loaded.cpu).toEqual(oldEnding.cpu)

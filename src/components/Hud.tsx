@@ -1,5 +1,5 @@
 import { useRef, useState, type PointerEvent } from 'react'
-import { AlertTriangle, CheckCircle2, ChevronDown, ChevronLeft, ChevronRight, ChevronUp, Crosshair, Eye, List, LocateFixed, Map, Radar, RotateCcw, Shield, Sword, Trophy, Wrench, Zap } from 'lucide-react'
+import { AlertTriangle, CheckCircle2, ChevronDown, ChevronLeft, ChevronRight, ChevronUp, Crosshair, Eye, List, LocateFixed, Map, RotateCcw, Shield, Sword } from 'lucide-react'
 import { formationStatus, recoveryReasonLabel } from '../game/formationStatus'
 import { contactTracksAt } from '../game/contactTracks'
 import { airfieldLabel, formationBaseGroups } from '../game/formationBasing'
@@ -7,6 +7,7 @@ import { viablePlanningFormationIds } from '../game/planningQueue'
 import { projectFriendlyUnitAt } from '../game/executionProjection'
 import { templateFor, templatesForRole } from '../game/routeTemplates'
 import {DEBUG_SCENARIOS,DEBUG_SCENARIO_LABELS} from '../game/scenarios'
+import { CAMPAIGN_ROUND_LIMIT } from '../game/campaign'
 import type { Asset, CombatEvent, DebugScenario, MissionId, Point, ReconPosture, RoundResult, Squadron } from '../game/types'
 
 const ROLE_ICONS={fighter:Crosshair,recon:Eye}
@@ -15,8 +16,8 @@ export function ContactTracks({result,seconds,home,onFocus}:{result?:RoundResult
   const tracks=contactTracksAt(result,seconds,home)
   if(!tracks.length)return null
   const visual=tracks.filter(track=>track.visibility==='visual').length,radar=tracks.filter(track=>track.visibility==='radar').length
-  return <details className="contact-tracks" aria-label="Enemy contact tracks">
-    <summary>{visual+radar} CURRENT TRACKS · {visual} VISUAL / {radar} RADAR</summary>
+  return <details name="map-tools" className="contact-tracks" aria-label="Enemy contact tracks">
+    <summary>Tracks {visual+radar}</summary>
     <div>{tracks.map(track=><button key={track.unitId} className={track.visibility} onClick={()=>onFocus(track.position)} aria-label={`Locate ${track.trackId}, ${track.identification}, ${track.visibility==='lost'?'last known position':track.visibility}`}>
       <b>{track.trackId} · {track.identification}</b>
       <span>{track.callsign?`${track.callsign} · `:''}{track.visibility==='lost'?`CONTACT LOST · LAST SEEN ${Math.max(0,seconds-track.lastSeen).toFixed(1)}s AGO`:`${track.visibility.toUpperCase()} · ${track.course}${track.aircraft===undefined?'':` · ${track.aircraft} AIRCRAFT`}`}</span>
@@ -24,8 +25,26 @@ export function ContactTracks({result,seconds,home,onFocus}:{result?:RoundResult
   </details>
 }
 
-export function TopBar({round,intel,logistics,replacements,score,phase,debugScenario,onDebugScenario,onReboot,onMenu,difficulty,online=false}:{round:number;intel:number;logistics:number;replacements:number;score:number;phase:string;debugScenario:DebugScenario;onDebugScenario:(scenario:DebugScenario)=>void;onReboot:()=>void;onMenu?:()=>void;difficulty?:string;online?:boolean}){
-  return <header className="topbar"><div className="brand"><b>DEAD RECKONING</b><small>{onMenu?<button type="button" className="menu-button" onClick={onMenu}>{online?'EXIT MATCH':'MENU'}</button>:'AIR COMMAND'}{online?' · ONLINE':difficulty?` · ${difficulty.toUpperCase()}`:''}</small></div><div className="round"><small>ROUND {String(round).padStart(2,'0')}</small><strong>{phase==='execute'?'OBSERVE':phase==='debrief'?'AFTER ACTION':phase.toUpperCase()}</strong></div><div className="resources"><span title="Known enemy assets"><Radar/> {intel}</span><span title="Logistics"><Wrench/> {logistics}</span><span title="Reserve aircraft"><Zap/> {replacements}</span>{phase==='debrief'||phase==='adapt'||phase==='victory'||phase==='defeat'||phase==='draw'?<span title="Campaign score"><Trophy/> {score}</span>:null}</div>{online?null:<details className="dev-menu"><summary>DEV <ChevronDown/></summary><div><select value={debugScenario} onChange={e=>onDebugScenario(e.target.value as DebugScenario)} title="Deterministic debug scenario">{DEBUG_SCENARIOS.map(s=><option key={s} value={s}>{DEBUG_SCENARIO_LABELS[s]}</option>)}</select><button className="reboot" onClick={onReboot} title="Clear saved campaign and return to deployment"><RotateCcw/> REBOOT</button></div></details>}</header>
+export function TopBar({ round, phase, debugScenario, onDebugScenario, onReboot, onMenu, onlineStatus }: {
+  round: number
+  phase: string
+  debugScenario: DebugScenario
+  onDebugScenario: (scenario: DebugScenario) => void
+  onReboot: () => void
+  onMenu: () => void
+  onlineStatus?: string
+}) {
+  const phaseName = phase === 'adapt' ? 'Resupply' : phase[0].toUpperCase() + phase.slice(1)
+  return <header className="topbar match-header">
+    <button type="button" className="menu-button" onClick={onMenu}>{onlineStatus ? 'Exit match' : 'Menu'}</button>
+    <div className="match-round"><span>Round {round}/{CAMPAIGN_ROUND_LIMIT}</span><strong>{phaseName}</strong></div>
+    {onlineStatus ? <span className="match-connection" role="status">{onlineStatus}</span> : <details className="dev-menu">
+      <summary>Dev <ChevronDown/></summary>
+      <div><select value={debugScenario} onChange={event => onDebugScenario(event.target.value as DebugScenario)} aria-label="Debug scenario">
+        {DEBUG_SCENARIOS.map(scenario => <option key={scenario} value={scenario}>{DEBUG_SCENARIO_LABELS[scenario]}</option>)}
+      </select><button className="reboot" onClick={onReboot}><RotateCcw/> Reboot</button></div>
+    </details>}
+  </header>
 }
 
 export type PlanningRosterMode = 'closed' | 'base' | 'all'
@@ -55,20 +74,20 @@ export function PlanningChitRail({squadrons,bases,activeBaseId,selectedId,review
   </aside>
 }
 
-export function CommandShelf({squadrons,bases,activeBaseId,rosterMode,squadron,routeDistance,maxDistance,routeNotice,protectSummary,recoverySummary,onSelect,onBaseSelect,onRosterMode,onMission,onPickProtectTarget,onProtectFlight,onRecoverHome,onReconPosture,onClear,onBack,onCommit,step,onClose,reviewedIds,reviewedCount,totalCount,groundTargets=[],onChangeGroundTarget,strikeUnlocked=false,strikeDisabledReason='RECOVER BASE INTELLIGENCE TO UNLOCK',selectingProtectTarget=false,allowEmptyCommit=false,onlineLock=false}:{squadrons:Squadron[];bases:Asset[];activeBaseId:string;rosterMode:PlanningRosterMode;squadron:Squadron;routeDistance:number;maxDistance:number;routeNotice?:string;protectSummary?:string;recoverySummary?:string;onSelect:(id:string)=>void;onBaseSelect:(id:string)=>void;onRosterMode:(mode:PlanningRosterMode)=>void;onMission:(mission:MissionId)=>void;onPickProtectTarget?:()=>void;onProtectFlight?:(id:string)=>void;onRecoverHome?:()=>void;onReconPosture?:(posture:ReconPosture)=>void;onClear:()=>void;onBack?:()=>void;onCommit:()=>void;step:PlanningStep;onClose:()=>void;reviewedIds:Set<string>;reviewedCount:number;totalCount:number;campaign?:boolean;groundTargets?:Asset[];onChangeGroundTarget?:()=>void;strikeUnlocked?:boolean;strikeDisabledReason?:string;selectingProtectTarget?:boolean;allowEmptyCommit?:boolean;onlineLock?:boolean}){
+export function CommandShelf({squadrons,bases,activeBaseId,rosterMode,squadron,routeDistance,maxDistance,routeNotice,protectSummary,recoverySummary,onSelect,onBaseSelect,onRosterMode,onMission,onPickProtectTarget,onProtectFlight,onRecoverHome,onReconPosture,onClear,onBack,onCommit,step,onClose,reviewedIds,reviewedCount,totalCount,groundTargets=[],onChangeGroundTarget,onInspectGroundTarget,strikeUnlocked=false,strikeDisabledReason='RECOVER BASE INTELLIGENCE TO UNLOCK',selectingProtectTarget=false,allowEmptyCommit=false,onlineLock=false}:{squadrons:Squadron[];bases:Asset[];activeBaseId:string;rosterMode:PlanningRosterMode;squadron:Squadron;routeDistance:number;maxDistance:number;routeNotice?:string;protectSummary?:string;recoverySummary?:string;onSelect:(id:string)=>void;onBaseSelect:(id:string)=>void;onRosterMode:(mode:PlanningRosterMode)=>void;onMission:(mission:MissionId)=>void;onPickProtectTarget?:()=>void;onProtectFlight?:(id:string)=>void;onRecoverHome?:()=>void;onReconPosture?:(posture:ReconPosture)=>void;onClear:()=>void;onBack?:()=>void;onCommit:()=>void;step:PlanningStep;onClose:()=>void;reviewedIds:Set<string>;reviewedCount:number;totalCount:number;campaign?:boolean;groundTargets?:Asset[];onChangeGroundTarget?:()=>void;onInspectGroundTarget?:(id:string)=>void;strikeUnlocked?:boolean;strikeDisabledReason?:string;selectingProtectTarget?:boolean;allowEmptyCommit?:boolean;onlineLock?:boolean}){
   const force=formationStatus(squadron)
   const swipeStart=useRef<{id:number;x:number;y:number;dragging:boolean}|undefined>(undefined)
   const suppressSwipeClick=useRef(false)
   const ready=reviewedCount>0
   const expanded=step!=='idle'
-  const missionLabel=templateFor(squadron.mission).label.toUpperCase()
+  const selectedGroundTarget=groundTargets.find(asset=>asset.id===squadron.strikeTargetId)
   const groups=formationBaseGroups(squadrons,bases)
   const activeGroup=groups.find(group=>group.base.id===activeBaseId)??groups[0]
   const activeBase=activeGroup?.base
   const forwardBased=groups.some(group=>group.base.kind==='fob'&&group.formationIds.includes(squadron.id))
   const squadronById=new globalThis.Map(squadrons.map(item=>[item.id,item]))
   const openOrders=(id:string)=>onSelect(id)
-  const primaryLabel=onlineLock?'LOCK PLAN':'COMMIT ROUND'
+  const primaryLabel=onlineLock?'Lock orders':'Commit round'
   const primaryDisabled=!ready&&!allowEmptyCommit
   const primaryAction=ready||allowEmptyCommit?onCommit:undefined
   const aircraftIds=viablePlanningFormationIds(squadrons)
@@ -95,18 +114,18 @@ export function CommandShelf({squadrons,bases,activeBaseId,rosterMode,squadron,r
     if(start.dragging&&Math.abs(dx)>=48&&Math.abs(dx)>Math.abs(dy)*1.2)cycleAircraft(dx<0?1:-1)
   }
   const routeHelp=selectingProtectTarget?'Tap a site or map point.':squadron.mission==='base-strike'?'Drag S or waypoints; tap map to add.':squadron.mission==='defensive-cap'?protectSummary??'Choose a site, point, or flight.':'Tap to add; drag a waypoint to move.'
-  const rangeSummary=squadron.route.length<2?'TAP THE MAP TO START':`${Math.min(5,Math.max(0,squadron.routeIngress.length-(squadron.mission==='base-strike'?2:1)))} / 5 WAYPOINTS · ${Math.max(0,maxDistance-routeDistance).toFixed(1)} RANGE LEFT`
+  const rangeSummary=squadron.route.length<2?'Tap the map to start':`${Math.min(5,Math.max(0,squadron.routeIngress.length-(squadron.mission==='base-strike'?2:1)))}/5 waypoints · ${Math.max(0,maxDistance-routeDistance).toFixed(1)} range left`
   return <section className={`command-shelf ${expanded?'expanded':''}`} aria-label="Planning command shelf">
     {expanded?<div className={`command-sheet ${step}-step`} role="region" aria-roledescription="carousel" aria-label="Aircraft orders" onPointerDown={handlePointerDown} onPointerMove={handlePointerMove} onPointerUp={handlePointerUp} onPointerCancel={()=>{swipeStart.current=undefined}} onClickCapture={event=>{if(suppressSwipeClick.current){event.preventDefault();event.stopPropagation();suppressSwipeClick.current=false}}}>
       <nav className="planning-aircraft-nav" aria-label="Aircraft navigation">
         <button type="button" className="planning-aircraft-arrow" aria-label="Previous aircraft" disabled={aircraftIds.length<2} onClick={()=>cycleAircraft(-1)}><ChevronLeft/></button>
         <div className="planning-aircraft-identity" aria-live="polite"><b>{squadron.callsign}</b><small>{squadron.role.toUpperCase()} · {aircraftIndex+1} / {aircraftIds.length}</small></div>
         <button type="button" className="planning-aircraft-arrow" aria-label="Next aircraft" disabled={aircraftIds.length<2} onClick={()=>cycleAircraft(1)}><ChevronRight/></button>
-        <button type="button" className="planning-pane-close" onClick={onClose}>CLOSE</button>
+        <button type="button" className="planning-pane-close" onClick={onClose}>Done</button>
       </nav>
       <div className="planning-pane-content">
         <div className="planning-pane-caption">
-          <h2 className="planning-title">{step==='route'?'BUILD ROUTE':step==='target'?'CHOOSE TARGET':'CHOOSE TASK'}</h2>
+          <h2 className="planning-title">{step==='route' ? (squadron.role==='recon' ? 'Search Area route' : 'Build route') : step==='target' ? 'Choose target' : 'Choose task'}</h2>
           {step!=='mission'&&!(step==='route'&&squadron.role==='recon')?<p className="planning-help">{step==='target'?'Tap a confirmed enemy site on the map.':routeHelp}</p>:null}
         </div>
         {step==='route'&&squadron.mission==='defensive-cap'?<div className="planning-protect-target">
@@ -117,7 +136,11 @@ export function CommandShelf({squadrons,bases,activeBaseId,rosterMode,squadron,r
             {!squadrons.some(item=>item.id!==squadron.id&&reviewedIds.has(item.id)&&item.aircraft>0)?<option disabled>Confirm another flight first</option>:null}
           </select>
         </div>:null}
-        {step==='route'&&squadron.mission==='base-strike'?<div className="strike-target-summary"><span>TARGET: {groundTargets.find(asset=>asset.id===squadron.strikeTargetId)?.name??groundTargets.find(asset=>asset.id===squadron.strikeTargetId)?.kind.toUpperCase()??'SELECT TARGET'}</span><button onClick={onChangeGroundTarget}>CHANGE TARGET</button></div>:null}
+        {step==='route'&&selectedGroundTarget ? <div className="strike-target-summary">
+          <span>{selectedGroundTarget.name ?? selectedGroundTarget.kind.toUpperCase()}</span>
+          <button type="button" onClick={onChangeGroundTarget}>Change</button>
+          <button type="button" onClick={()=>onInspectGroundTarget?.(selectedGroundTarget.id)}>Inspect</button>
+        </div> : null}
         {step==='route'&&squadron.role==='recon'?<div className="recon-posture" role="group" aria-label="Recon RTB condition"><span>RTB CONDITION</span><div>{(['aggressive','conservative'] as const).map(posture=><button key={posture} type="button" className={(squadron.reconPosture??'aggressive')===posture?'active':''} aria-pressed={(squadron.reconPosture??'aggressive')===posture} onClick={()=>onReconPosture?.(posture)}>{posture.toUpperCase()}</button>)}</div><small>{(squadron.reconPosture??'aggressive')==='conservative'?'RETURN ON FIGHTER CONTACT OR SAM/AAA LAUNCH':'CONTINUE SEARCHING THROUGH THREATS'}</small></div>:null}
         {step==='mission'?<div className="shelf-route">{templatesForRole(squadron.role).filter(template=>template.id!=='base-strike').map(template=>{const MissionIcon=template.id==='defensive-cap'?Shield:template.id==='forward-patrol'?Sword:Map;return <button key={template.id} className={squadron.mission===template.id?'active':''} aria-label={template.label} aria-pressed={squadron.mission===template.id} onClick={()=>onMission(template.id)}><MissionIcon/><b>{template.shortLabel}</b></button>})}{squadron.role==='fighter'?<button className={squadron.mission==='base-strike'?'active':''} aria-label="Ground Strike" aria-pressed={squadron.mission==='base-strike'} disabled={!strikeUnlocked} title={!strikeUnlocked?strikeDisabledReason:'Choose a confirmed enemy ground target.'} onClick={()=>onMission('base-strike')}><Crosshair/><b>GROUND STRIKE</b></button>:null}</div>:null}
       </div>
@@ -132,11 +155,11 @@ export function CommandShelf({squadrons,bases,activeBaseId,rosterMode,squadron,r
       <header><button className="planning-base-title" onClick={()=>activeBase&&onBaseSelect(activeBase.id)}><LocateFixed/><span><b>{activeBase?airfieldLabel(activeBase):'AIRFIELD'}</b><small>{activeGroup?.formationIds.length??0} FORMATIONS</small></span></button><button className={rosterMode==='all'?'active':''} onClick={()=>onRosterMode(rosterMode==='all'?'base':'all')}><List/> ALL {squadrons.length}</button><button aria-label="Close formation roster" onClick={()=>onRosterMode('closed')}><ChevronDown/></button></header>
       <div className="planning-roster-scroll">{(rosterMode==='all'?groups:activeGroup?[activeGroup]:[]).map(group=><section key={group.base.id} className="formation-base-group"><div className="formation-base-heading"><b>{airfieldLabel(group.base)}</b><button className={group.base.id===activeBaseId?'active':''} onClick={()=>onBaseSelect(group.base.id)}>{group.formationIds.length} BASED</button></div>{group.formationIds.length?group.formationIds.map(id=>{const item=squadronById.get(id);return item?<FormationRosterRow key={id} squadron={item} active={id===squadron.id} reviewed={reviewedIds.has(id)} onSelect={()=>openOrders(id)} onEdit={()=>openOrders(id)}/>:null}):<p className="formation-base-empty">NO FORMATIONS BASED HERE</p>}</section>)}</div>
     </div>:null}
-    <div className={`planning-capsule ${step!=='idle'?'route-editing':''} ${step==='idle'&&ready?'has-commit':''}`}>
-      <button className="planning-base-toggle" aria-expanded={expanded} onClick={()=>activeBase&&onBaseSelect(activeBase.id)}><LocateFixed/><span><b>{activeBase?airfieldLabel(activeBase):'AIRFIELD'}</b><small>{expanded?`${squadron.callsign} · ${missionLabel}`:protectSummary&&reviewedIds.has(squadron.id)?protectSummary:reviewedCount?`ORDERS READY · SELECT FLIGHTS OR COMMIT`:'SELECT AIRCRAFT ABOVE AIRFIELD'}</small></span><ChevronUp/></button>
+    {!expanded ? <div className={`planning-capsule ${ready||allowEmptyCommit?'has-commit':''}`}>
+      <button className="planning-base-toggle" aria-expanded={expanded} onClick={()=>activeBase&&onBaseSelect(activeBase.id)}><LocateFixed/><span><b>{activeBase?airfieldLabel(activeBase):'AIRFIELD'}</b><small>{protectSummary&&reviewedIds.has(squadron.id) ? protectSummary : reviewedCount ? `${reviewedCount}/${totalCount} orders ready` : 'Select an aircraft'}</small></span><ChevronUp/></button>
       <button className={`planning-all-toggle ${rosterMode!=='closed'?'active':''}`} onClick={()=>{if(expanded)onClose();onRosterMode(rosterMode==='closed'?'all':'closed')}}><List/><span>ALL</span></button>
       {step==='idle'&&(ready||allowEmptyCommit)?<button className="shelf-primary" disabled={primaryDisabled} onClick={primaryAction}>{primaryLabel} <ChevronRight/></button>:null}
-    </div>
+    </div> : null}
   </section>
 }
 
