@@ -4,10 +4,21 @@ import type { OnlineCommand, OnlineEntry, OnlineResponse, OnlineSession, OnlineV
 const API = '/api/online'
 
 async function request<T>(url: string, init?: RequestInit): Promise<T> {
-  const response = await fetch(url, init)
-  const body = await response.json().catch(() => ({})) as T & { error?: string }
-  if (!response.ok) throw new Error(body.error || `Online service returned ${response.status}`)
-  return body
+  const controller = new AbortController()
+  const timeout = setTimeout(() => controller.abort(), 10_000)
+  try {
+    const response = await fetch(url, { ...init, signal: controller.signal })
+    if (!response.ok) {
+      const body = await response.json().catch(() => ({})) as { error?: string }
+      throw new Error(body.error || `Online service returned ${response.status}`)
+    }
+    return await response.json() as T
+  } catch (error) {
+    if (controller.signal.aborted) throw new Error('The game server took too long to respond. Try again.')
+    throw error
+  } finally {
+    clearTimeout(timeout)
+  }
 }
 
 export function createOnlineMatch(token: string): Promise<OnlineEntry> {

@@ -16,7 +16,7 @@ This is the source of truth for behavior implemented in the current build. It re
 
 - The online build adds **Player vs Player** to the title menu. One player creates a match and shares a one-use invite code. The other enters that code on a separate device connected to the same game server. **Continue Online** resumes the saved seat in the same browser.
 - Both players start with the standard opening force and manually place their four starting assets in separate territories. The server starts planning after both deployments lock. Each player plans or holds their own formations. Locking makes that order package final for the round. The server resolves one round when both packages are locked.
-- Each device receives its own forces, resources, recovered site reports, and a replay filtered by its own sensor contacts. Opponent placement drafts, orders, resources, and undetected movements stay on the server. Playback runs locally from the saved result. Each player can review Debrief, spend their own Logistics in Adapt, and plan the next round while the other finishes reviewing.
+- Each device receives its own forces, resources, recovered site reports, and a replay filtered by its own sensor contacts. Opponent placement drafts, orders, resources, and undetected movements stay on the server. Execute automatically plays the saved result locally at 1×. Each player can switch between 1× and 2×. Debrief opens when playback finishes. An interrupted playback starts again when that seat reconnects, while the browser remembers a completed playback for the current round. Each player can review Debrief, spend their own Logistics in Adapt, and plan the next round independently.
 - Online campaigns use the six-round objective, planning-time recon RTB conditions, shared combat and economy rules, and symmetric victory and draw outcomes. Match state and committed actions persist on the server across disconnects. During a submission retry, a previously accepted command does not apply again.
 - See the README for the online build, local server and Worker/D1 prototype. The current managed Site uses the static build.
 
@@ -286,6 +286,8 @@ Available fixtures:
 This log keeps only current net changes. Superseded intermediate states belong in git history.
 
 ### 2026-11-14
+
+- Made PvP Execute play automatically after both players lock, with 1× and 2× speeds and no skip control. Debrief opens after playback finishes. **Open Adapt** shows a pending state, and an unanswered request times out so the player can retry without applying the phase transition twice.
 
 - Added invite-only online campaigns with private deployment, simultaneous order commitment, one authoritative resolution per round, per-player replay and Debrief, private Adapt, and session resume. The server validates turn commands and persists both players’ settled views together. The online build includes a Node/SQLite server and a local Worker/D1 prototype.
 - Added explicit Execute camera controls for home-base focus, free look, and tracking the selected formation. Home-base focus resets the view scale; clicking the followed formation again releases the camera, and repeated home-base requests recenter after the player pans away.
