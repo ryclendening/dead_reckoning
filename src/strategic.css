@@ -158,6 +158,35 @@
 
 /* Resupply lists scroll inside a bounded drawer, above the sticky actions. */
 .resupply-panel .adapt-content { max-height: min(34dvh, 320px); }
+.resupply-catalog {
+  display: flex;
+  flex-direction: column;
+  max-height: inherit;
+}
+.resupply-purchase-tabs {
+  display: grid;
+  flex: 1;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 4px;
+}
+.resupply-purchase-tabs button {
+  min-height: 44px;
+  padding: 0 8px;
+  border: 1px solid #455246;
+  background: #151e17;
+  color: #e3ece0;
+  font: 700 15px 'Barlow Condensed', sans-serif;
+  cursor: pointer;
+}
+.resupply-purchase-tabs button[aria-pressed="true"] {
+  border-color: var(--cyan);
+  background: #25443a;
+}
+.resupply-catalog .adapt-actions {
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
 .resupply-controls {
   display: flex;
   align-items: center;

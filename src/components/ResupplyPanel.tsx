@@ -8,6 +8,7 @@ import { assetCardData } from '../game/unitCards'
 import type { EconomyActionId, EconomyActionQuote, EconomyCommand, EconomyTarget, MatchState } from '../game/types'
 
 export type ProcurementMode = 'closed' | 'catalog' | 'placing'
+type PurchaseCategory = 'aircraft' | 'ground'
 
 const campaignTarget = { kind: 'campaign', id: 'campaign' } as const
 
@@ -35,11 +36,38 @@ function PurchaseButton({ quote, onBuy, disabled }: { quote: EconomyActionQuote;
   </button>
 }
 
+export function PurchaseCatalog({ category, quotes, busy, onCategoryChange, onChoose, onClose }: {
+  category: PurchaseCategory
+  quotes: EconomyActionQuote[]
+  busy: boolean
+  onCategoryChange: (category: PurchaseCategory) => void
+  onChoose: (quote: EconomyActionQuote) => void
+  onClose: () => void
+}) {
+  const purchaseKind = category === 'aircraft' ? 'formation-purchase' : 'asset-construction'
+
+  return <section className="adapt-drawer resupply-catalog" aria-label="Purchase catalog">
+    <header className="adapt-build-heading">
+      <div className="resupply-purchase-tabs" role="group" aria-label="Purchase type">
+        <button type="button" aria-pressed={category === 'aircraft'} onClick={() => onCategoryChange('aircraft')}>Aircraft</button>
+        <button type="button" aria-pressed={category === 'ground'} onClick={() => onCategoryChange('ground')}>Ground</button>
+      </div>
+      <button type="button" aria-label="Close purchases" onClick={onClose}><X/></button>
+    </header>
+    <div key={category} className="adapt-actions">
+      {quotes.filter(quote => quote.effect.kind === purchaseKind).map(quote =>
+        <PurchaseButton key={quote.id} quote={quote} disabled={busy} onBuy={() => onChoose(quote)}/>
+      )}
+    </div>
+  </section>
+}
+
 export function ResupplyPanel({
   match, selectedTarget, onSelectTarget, onCloseTarget, onPurchase, onNextRound, procurementMode,
   procurementActionId, onProcurementMode, onProcurementAction, hasPlacementPreview, onConfirmPlacement,
   onCancelPlacement, busy = false,
 }: ResupplyPanelProps) {
+  const [purchaseCategory, setPurchaseCategory] = useState<PurchaseCategory>('aircraft')
   const [showRepairs, setShowRepairs] = useState(false)
   const [upgradePending, setUpgradePending] = useState<EconomyCommand>()
   const quotes = economyQuotesFor(match, selectedTarget)
@@ -68,6 +96,11 @@ export function ResupplyPanel({
     onPurchase(economyCommandForQuote(match, quote))
   }
 
+  function choosePurchase(quote: EconomyActionQuote) {
+    if (quote.effect.kind === 'asset-construction') onProcurementAction(quote.id)
+    else buy(quote)
+  }
+
   function chooseAction(quote: EconomyActionQuote) {
     if (quote.upgradeId) setUpgradePending(economyCommandForQuote(match, quote))
     else buy(quote)
@@ -80,18 +113,13 @@ export function ResupplyPanel({
 
   return <section className="adapt-panel resupply-panel" aria-label="Resupply">
     <div className="adapt-content">
-      {procurementMode === 'catalog' ? <div className="adapt-drawer" aria-label="Purchase catalog">
-        <header className="adapt-build-heading"><b>Buy units or sites</b><button type="button" aria-label="Close purchases" onClick={() => onProcurementMode('closed')}><X/></button></header>
-        <div className="adapt-actions">
-          {catalog.filter(quote => quote.effect.kind === 'formation-purchase').map(quote =>
-            <PurchaseButton key={quote.id} quote={quote} disabled={busy} onBuy={() => buy(quote)}/>)}
-          {catalog.filter(quote => quote.effect.kind === 'asset-construction').map(quote =>
-            <PurchaseButton key={quote.id} quote={quote} disabled={busy} onBuy={() => onProcurementAction(quote.id)}/>)}
-        </div>
-      </div> : null}
+      {procurementMode === 'catalog' ? <PurchaseCatalog
+        category={purchaseCategory} quotes={catalog} busy={busy} onCategoryChange={setPurchaseCategory}
+        onChoose={choosePurchase} onClose={() => onProcurementMode('closed')}
+      /> : null}
 
       {procurementMode === 'placing' && placement ? <div className="adapt-drawer adapt-placement-drawer" aria-label="Place site">
-        <header className="adapt-build-heading"><b>{placement.label} · {formatCash(placement.cost)}</b><button type="button" aria-label="Cancel placement" onClick={() => onProcurementMode('closed')}><X/></button></header>
+        <header className="adapt-build-heading"><b>{placement.label} · {formatCash(placement.cost)}</b><button type="button" aria-label="Cancel placement" onClick={() => onProcurementMode('catalog')}><X/></button></header>
         <p className="procure-instruction">{hasPlacementPreview ? 'Tap another hex to move the site.' : 'Tap a highlighted hex to place the site.'}</p>
         {hasPlacementPreview ? <div className="campaign-placement-confirm"><button type="button" onClick={onCancelPlacement}>Clear site</button><button type="button" className="confirm" disabled={busy} onClick={onConfirmPlacement}>Confirm build <Check/></button></div> : null}
       </div> : null}

@@ -1,8 +1,9 @@
 import { renderToStaticMarkup } from 'react-dom/server'
 import { describe, expect, it } from 'vitest'
 import { createMatch } from '../game/data'
+import { economyQuotesFor } from '../game/economy'
 import type { EconomyTarget } from '../game/types'
-import { ResupplyPanel } from './ResupplyPanel'
+import { PurchaseCatalog, ResupplyPanel } from './ResupplyPanel'
 
 const noop=()=>{}
 const state=()=>({...createMatch(),phase:'adapt' as const,logistics:20})
@@ -51,13 +52,30 @@ describe('Resupply',()=>{
     expect(flight).not.toContain('UPGRADES')
   })
 
-  it('lists complete reinforcements with prices in millions',()=>{
+  it('opens the purchase catalog on Aircraft and lists reinforcement prices',()=>{
     const catalog=render(state(),{kind:'campaign',id:'campaign'},'catalog')
+    expect(catalog).toContain('aria-pressed="true">Aircraft</button>')
+    expect(catalog).toContain('aria-pressed="false">Ground</button>')
     expect(catalog).toContain('Buy fighter formation')
     expect(catalog).toContain('Buy recon formation')
     expect(catalog).toContain('$160M</strong>')
     expect(catalog).toContain('$120M</strong>')
     expect(catalog).toContain('Available at home base next round')
+    expect(catalog).not.toContain('BUILD SAM')
+  })
+
+  it('lists ground construction when Ground is selected',()=>{
+    const quotes=economyQuotesFor(state(),{kind:'campaign',id:'campaign'})
+    const catalog=renderToStaticMarkup(<PurchaseCatalog
+      category="ground" quotes={quotes} busy={false} onCategoryChange={noop} onChoose={noop} onClose={noop}
+    />)
+    expect(catalog).toContain('aria-pressed="true">Ground</button>')
+    expect(catalog).toContain('BUILD FOB')
+    expect(catalog).toContain('BUILD DECOY')
+    expect(catalog).toContain('BUILD AAA')
+    expect(catalog).toContain('BUILD SAM')
+    expect(catalog).not.toContain('Buy fighter formation')
+    expect(catalog).not.toContain('Buy recon formation')
   })
 
   it('never exposes unknown enemy site details or enemy upgrade and basing controls',()=>{
