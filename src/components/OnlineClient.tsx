@@ -49,6 +49,47 @@ export function sendOnlineCommand(session: OnlineSession, command: OnlineCommand
   })
 }
 
+export async function copyInviteCode(input: HTMLInputElement): Promise<boolean> {
+  const page = input.ownerDocument
+  try {
+    const clipboard = page.defaultView?.navigator.clipboard
+    if (clipboard?.writeText) {
+      await clipboard.writeText(input.value)
+      return true
+    }
+  } catch {
+    // The browser can deny clipboard access even on a secure origin.
+  }
+
+  // On a LAN HTTP origin this runs within the original click gesture.
+  input.focus({ preventScroll: true })
+  input.select()
+  input.setSelectionRange(0, input.value.length)
+  try {
+    return page.execCommand?.('copy') === true
+  } catch {
+    return false
+  }
+}
+
+export function OnlineInviteCode({ code }: { code: string }) {
+  const input = useRef<HTMLInputElement>(null)
+  const [copyStatus, setCopyStatus] = useState<'idle' | 'copied' | 'manual'>('idle')
+
+  async function copy() {
+    if (input.current) setCopyStatus(await copyInviteCode(input.current) ? 'copied' : 'manual')
+  }
+
+  return <div>
+    <div className="online-invite">
+      <span>Invite code</span>
+      <input ref={input} aria-label="One-use invite code" readOnly value={code} onFocus={event => event.currentTarget.select()}/>
+      <button type="button" onClick={() => void copy()}>{copyStatus === 'copied' ? 'Copied' : 'Copy'}</button>
+    </div>
+    {copyStatus === 'manual' ? <p className="online-invite-help" role="status">Use your device’s Copy action on the selected code.</p> : null}
+  </div>
+}
+
 export function OnlineMenu({ onCreate, onJoin }: { onCreate: (entry: OnlineEntry) => void; onJoin: (entry: { session: OnlineSession; view: OnlineView }) => void }) {
   const [invite, setInvite] = useState('')
   const [busy, setBusy] = useState(false)
@@ -70,7 +111,7 @@ export function OnlineMenu({ onCreate, onJoin }: { onCreate: (entry: OnlineEntry
     <header><span className="online-kicker">LIVE MULTIPLAYER</span><h2 id="online-menu-title">PLAYER VS PLAYER</h2></header>
     <p>Share an invite code, deploy and plan together, then review the server resolved round.</p>
     <button type="button" className="online-create" disabled={busy} onClick={() => void run(async () => { const token = requestTokens.current.create ?? (requestTokens.current.create = newToken()); onCreate(await createOnlineMatch(token)) })}>{busy ? 'CONNECTING…' : 'CREATE MATCH'}</button>
-    <div className="online-join"><label htmlFor="online-invite">INVITE CODE</label><div><input id="online-invite" autoComplete="off" value={invite} onChange={event => { setInvite(event.target.value); requestTokens.current.join = undefined }} placeholder="Paste code"/><button type="button" disabled={busy || !invite.trim()} onClick={() => void run(async () => { const entered = invite.trim(); const current = requestTokens.current.join; const token = current?.invite === entered ? current.token : newToken(); requestTokens.current.join = { invite: entered, token }; onJoin(await joinOnlineMatch(entered, token)) })}>JOIN</button></div></div>
+    <div className="online-join"><label htmlFor="online-invite">INVITE CODE</label><div><input id="online-invite" autoComplete="off" autoCapitalize="characters" spellCheck={false} value={invite} onChange={event => { setInvite(event.target.value); requestTokens.current.join = undefined }} placeholder="Enter or paste code"/><button type="button" disabled={busy || !invite.trim()} onClick={() => void run(async () => { const entered = invite.trim(); const current = requestTokens.current.join; const token = current?.invite === entered ? current.token : newToken(); requestTokens.current.join = { invite: entered, token }; onJoin(await joinOnlineMatch(entered, token)) })}>JOIN</button></div></div>
     {error ? <p className="online-error" role="alert">{error}</p> : null}
   </section>
 }

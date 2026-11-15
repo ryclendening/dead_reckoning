@@ -14,7 +14,7 @@ This is the source of truth for behavior implemented in the current build. It re
 
 ## Online Player vs Player
 
-- The online build adds **Player vs Player** to the title menu. One player creates a match and shares a one-use invite code. The other enters that code on a separate device connected to the same game server. **Continue Online** resumes the saved seat in the same browser.
+- The online build adds **Player vs Player** to the title menu. One player creates a match and shares an eight-character, one-use invite code. **Copy** copies the code on supported HTTPS and LAN HTTP browsers, with manual selection if browser permissions block it. The other player enters that code on a separate device connected to the same game server. **Continue Online** resumes the saved seat in the same browser.
 - Both players start with the standard opening force and manually place their four starting assets in separate territories. The server starts planning after both deployments lock. Each player plans or holds their own formations. Tapping **Lock orders** immediately freezes the submitted package. While waiting, tap a formation to review its committed route without editing it. A timeout keeps the package frozen and lets the player retry the same submission. The server resolves one round when both packages are locked.
 - Each device receives its own forces, resources, recovered site reports, and a replay filtered by its own sensor contacts. Opponent placement drafts, orders, resources, and undetected movements stay on the server. Execute automatically plays the saved result locally at 1×. Each player can switch between 1× and 2×. Debrief opens when playback finishes. An interrupted playback starts again when that seat reconnects, while the browser remembers a completed playback for the current round. Each player can review Debrief, spend their own cash in Resupply, and plan the next round independently.
 - Online campaigns use the ten-round objective, planning-time recon RTB conditions, shared combat and economy rules, and symmetric victory and draw outcomes. Match state and committed actions persist on the server across disconnects. During a submission retry, a previously accepted command does not apply again.
@@ -287,6 +287,8 @@ Available fixtures:
 This log keeps only current net changes. Superseded intermediate states belong in git history.
 
 ### 2026-11-14
+
+- Shortened new PvP invites to eight characters and made joining case-insensitive. Older invites still work. The Copy button supports LAN HTTP and selects the code for manual copying when the browser blocks clipboard access.
 
 - Added Supply Depot to CPU purchase evaluation. Its future income is valued over the remaining campaign rounds against the shared upgrade price; Maintenance Wing continues to use the current repair workload and shared quote.
 

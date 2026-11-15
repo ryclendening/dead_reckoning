@@ -43,6 +43,13 @@
 }
 .online-invite input { width: 95px; font: 700 14px Inter, sans-serif; text-align: center; }
 .online-invite button, .online-command-error button { min-height: 44px; font-size: 13px; }
+.online-invite-help {
+  margin: 0;
+  padding: 0 8px 6px;
+  color: #f0e4b4;
+  text-align: center;
+  font: 600 13px/1.35 Inter, sans-serif;
+}
 .online-command-error { top: 56px; font-size: 13px; z-index: 29; }
 .online-wait-panel strong { font: 700 16px Inter, sans-serif; }
 .online-wait-panel p { font-size: 14px; line-height: 1.35; }

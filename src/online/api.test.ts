@@ -1,6 +1,6 @@
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import { handleOnlineRequest, type MatchStore } from './api'
-import type { OnlineMatch } from './match'
+import { newOnlineMatch, type OnlineMatch } from './match'
 import type { OnlineAction, OnlineEntry, OnlineOrder, OnlineResponse } from './protocol'
 import { generateRouteTemplate } from '../game/routeTemplates'
 import { deriveRecoveryPlanningView } from '../game/forwardBasing'
@@ -17,7 +17,7 @@ function fixture() {
     async get(id) { return structuredClone(games.get(id)) },
     async findByInvite(invite) { return structuredClone([...games.values()].find(game => game.invite === invite)) },
     async create(game) {
-      if (games.has(game.id)) return false
+      if (games.has(game.id) || [...games.values()].some(existing => existing.invite === game.invite)) return false
       games.set(game.id, structuredClone(game))
       return true
     },
@@ -61,17 +61,37 @@ describe('invite-only online campaign API', () => {
   it('allocates exactly one guest seat and lets each device recover a lost entry response', async () => {
     const { request } = fixture()
     const host = await fetchEntry(request('matches', { token: hostToken }))
+    expect(host.invite).toMatch(/^[2-9A-HJ-NP-Z]{8}$/)
     const retry = await fetchEntry(request('matches', { token: hostToken }))
     expect(retry.session).toEqual(host.session)
     expect(retry.invite).toBe(host.invite)
     const tokens = [guestToken, 'c'.repeat(64)]
-    const responses = await Promise.all(tokens.map(token => request('join', { token, invite: host.invite })))
+    const responses = await Promise.all(tokens.map(token => request('join', { token, invite: ` ${host.invite!.toLowerCase()} ` })))
     expect(responses.map(result => result.status).sort()).toEqual([200, 409])
     const guest = await responses.find(response => response.ok)!.json() as OnlineEntry
     expect((await fetchEntry(request('join', { token: guest.session.token, invite: host.invite }))).session).toEqual(guest.session)
     expect(guest.invite).toBeUndefined()
     expect((await request('matches/' + host.session.matchId)).status).toBe(404)
     expect((await request('matches/' + host.session.matchId, undefined, 'd'.repeat(64))).status).toBe(404)
+  })
+
+  it('retries an invite collision without changing the host session', async () => {
+    const { request, store } = fixture()
+    const create = vi.spyOn(store, 'create').mockResolvedValueOnce(false)
+    const host = await fetchEntry(request('matches', { token: hostToken }))
+    expect(create).toHaveBeenCalledTimes(2)
+    expect(create.mock.calls[0][0].id).toBe(host.session.matchId)
+    expect(host.invite).toBe(create.mock.calls[1][0].invite)
+  })
+
+  it('still accepts a legacy invite issued by an older server', async () => {
+    const { request, store } = fixture()
+    const legacyInvite = 'abcdef0123456789'.repeat(2)
+    const game = newOnlineMatch('0'.repeat(32), 'f'.repeat(64), legacyInvite, 123)
+    await store.create(game)
+    const guest = await fetchEntry(request('join', { token: guestToken, invite: legacyInvite.toUpperCase() }))
+    expect(guest.session.matchId).toBe(game.id)
+    expect(guest.view.joined).toBe(true)
   })
 
   it('plays a full ten-round campaign with private orders, concurrent locks and retry-safe settlement', async () => {

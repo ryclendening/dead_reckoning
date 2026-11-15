@@ -11,7 +11,10 @@ export interface MatchStore {
 }
 
 const tokenPattern = /^[a-f0-9]{64}$/
-const invitePattern = /^[a-f0-9]{32}$/
+const inviteAlphabet = '23456789ABCDEFGHJKLMNPQRSTUVWXYZ'
+const inviteLength = 8
+const invitePattern = new RegExp(`^[${inviteAlphabet}]{${inviteLength}}$`, 'i')
+const legacyInvitePattern = /^[a-f0-9]{32}$/i
 const matchPattern = /^\/api\/online\/matches\/([a-f0-9]{32})(\/commands)?$/
 const commandIdPattern = /^[a-zA-Z0-9-]{16,64}$/
 const missionPattern = /^(defensive-cap|forward-patrol|transit|search-area|base-strike)$/
@@ -117,6 +120,9 @@ async function readBody(request: Request) {
 
 const hex = (bytes: Uint8Array) => Array.from(bytes, byte => byte.toString(16).padStart(2, '0')).join('')
 const randomHex = (bytes: number) => hex(crypto.getRandomValues(new Uint8Array(bytes)))
+const randomInvite = () => Array.from(
+  crypto.getRandomValues(new Uint8Array(inviteLength)), byte => inviteAlphabet[byte % inviteAlphabet.length],
+).join('')
 const hash = async (value: string) => hex(new Uint8Array(await crypto.subtle.digest('SHA-256', new TextEncoder().encode(value))))
 
 function response(data: unknown, status = 200) {
@@ -168,17 +174,26 @@ async function enter(request: Request, store: MatchStore, join: boolean) {
   const tokenHash = await hash(token)
   if (!join) {
     const id = (await hash('match:' + token)).slice(0, 32)
-    const invite = randomHex(16)
     const seed = crypto.getRandomValues(new Uint32Array(1))[0]
-    const match = newOnlineMatch(id, tokenHash, invite, seed)
-    const created = await store.create(match)
-    const game = created ? match : await store.get(id)
-    if (!game || game.seats[0].tokenHash !== tokenHash) throw new OnlineError('Could not create match. Try again.', 503)
-    return response({ ...accepted(game, 0), session: { matchId: game.id, token } }, created ? 201 : 200)
+    let match = newOnlineMatch(id, tokenHash, randomInvite(), seed)
+    for (let attempt = 0; attempt < 5; attempt++) {
+      const created = await store.create(match)
+      const game = created ? match : await store.get(id)
+      if (game) {
+        if (game.seats[0].tokenHash !== tokenHash) break
+        return response({ ...accepted(game, 0), session: { matchId: game.id, token } }, created ? 201 : 200)
+      }
+      // The invite collided with another match. Retry with a fresh code.
+      match = { ...match, invite: randomInvite() }
+    }
+    throw new OnlineError('Could not create match. Try again.', 503)
   }
 
-  const invite = body.invite
-  if (typeof invite !== 'string' || !invitePattern.test(invite)) invalid()
+  if (typeof body.invite !== 'string') invalid()
+  const enteredInvite = body.invite.trim()
+  const invite = invitePattern.test(enteredInvite) ? enteredInvite.toUpperCase()
+    : legacyInvitePattern.test(enteredInvite) ? enteredInvite.toLowerCase()
+    : invalid()
   for (let attempt = 0; attempt < 5; attempt++) {
     const game = await store.findByInvite(invite)
     if (!game) throw new OnlineError('That invite was not found.', 404)

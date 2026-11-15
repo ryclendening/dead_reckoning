@@ -30,7 +30,7 @@ npm run start:online
 The server listens on port 4173. On both devices, open the same server address.
 On a shared Wi-Fi network, use the host computer's LAN address, such as
 `http://192.168.1.10:4173`. Choose **Player vs Player → Create Match** on the
-first device. Enter the one-use invite code under **Join** on the other device.
+first device. Copy the eight-character invite code and enter it under **Join** on the other device.
 Each player deploys and locks their own orders. The server resolves after both
 players lock. Use **Continue Online** in the same browser to resume.
 
