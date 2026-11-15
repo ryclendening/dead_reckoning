@@ -14,7 +14,7 @@ describe('campaign outcomes',()=>{
     expect(isCampaign(state)).toBe(true)
     expect(isCampaign({...state,debugScenario:'fighter-duel'})).toBe(false)
     expect(campaignOutcome({...state,enemyBaseHealth:0,playerBaseHealth:0})).toBe('mutual-destruction')
-    expect(campaignOutcome({...state,squadrons:state.squadrons.map(squadron=>({...squadron,aircraft:0})),replacements:0})).toBe('forces-lost')
+    expect(campaignOutcome({...state,squadrons:state.squadrons.map(squadron=>({...squadron,aircraft:0})),logistics:FORMATION_PRICES.recon-1,replacements:0})).toBe('forces-lost')
     const availableCash = { ...state, phase:'adapt' as const, logistics:FORMATION_PRICES.recon, squadrons:state.squadrons.map(squadron=>({...squadron,aircraft:0})) }
     expect(campaignOutcome(availableCash)).toBeUndefined()
     expect(beginNextRound(availableCash)).toBe(availableCash)

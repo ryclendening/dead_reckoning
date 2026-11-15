@@ -47,16 +47,16 @@ describe('Resupply',()=>{
     const flight=render(match,{kind:'squadron',id:'viper'})
     expect(flight).toContain('REPAIR FORMATION')
     expect(flight).toContain('Strength 30 → 50 (+20)')
-    expect(flight).toContain('$1</strong>')
+    expect(flight).toContain('$10M</strong>')
     expect(flight).not.toContain('UPGRADES')
   })
 
-  it('lists complete reinforcements with straight cash prices',()=>{
+  it('lists complete reinforcements with prices in millions',()=>{
     const catalog=render(state(),{kind:'campaign',id:'campaign'},'catalog')
     expect(catalog).toContain('Buy fighter formation')
     expect(catalog).toContain('Buy recon formation')
-    expect(catalog).toContain('$16</strong>')
-    expect(catalog).toContain('$12</strong>')
+    expect(catalog).toContain('$160M</strong>')
+    expect(catalog).toContain('$120M</strong>')
     expect(catalog).toContain('Available at home base next round')
   })
 

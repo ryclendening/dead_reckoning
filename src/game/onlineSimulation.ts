@@ -1,5 +1,6 @@
 import { resolveRound } from './engine'
 import { deriveLogisticsIncome } from './economy'
+import { LOGISTICS_EFFECTS } from './economyRules'
 import { applyRecoveryOutcomesToBasing } from './forwardBasing'
 import type { Asset, EnemyFlight, MatchState, RoundResult, Squadron } from './types'
 import { CAMPAIGN_ROUND_LIMIT, forcesEliminated, type CampaignOutcome } from './campaign'
@@ -243,7 +244,7 @@ function projectSeat(input: MatchState, enemyAssetsForSeat: Asset[], ownAssetsFo
   const statement = settled ? input.economy.statement : [
     ...input.economy.statement,
     { id: `income-${input.round}-base`, round: input.round, direction: 'income' as const, amount: income.base,
-      label: income.base > 6 ? 'ROUND PAY · SUPPLY DEPOT' : 'ROUND PAY', source: 'round-income' },
+      label: income.base > LOGISTICS_EFFECTS.baseIncome ? 'ROUND PAY · SUPPLY DEPOT' : 'ROUND PAY', source: 'round-income' },
     ...(income.intel ? [{ id: `income-${input.round}-intel`, round: input.round, direction: 'income' as const, amount: income.intel, label: 'INTELLIGENCE RECOVERY', source: 'intel-recovery' }] : []),
     ...(income.enemyAircraft ? [{ id: `income-${input.round}-enemy-aircraft`, round: input.round, direction: 'income' as const, amount: income.enemyAircraft, label: 'CONFIRMED ENEMY AIRCRAFT', source: 'enemy-aircraft' }] : []),
   ]

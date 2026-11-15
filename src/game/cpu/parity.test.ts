@@ -166,7 +166,7 @@ describe('symmetric campaign rules',()=>{
     const cpuLost={...s,cpu:{...s.cpu!,logistics:0,reserves:0,formations:s.cpu!.formations.map(f=>({...f,aircraft:0,strength:0}))}}
     expect(campaignOutcome(cpuLost)).toBe('enemy-forces-lost')
     expect(campaignOutcomePhase(campaignOutcome(cpuLost)!)).toBe('victory')
-    expect(campaignOutcome({...cpuLost,replacements:0,squadrons:s.squadrons.map(f=>({...f,aircraft:0,strength:0}))})).toBe('mutual-forces-lost')
+    expect(campaignOutcome({...cpuLost,logistics:0,replacements:0,squadrons:s.squadrons.map(f=>({...f,aircraft:0,strength:0}))})).toBe('mutual-forces-lost')
     const result=resolveRound({...s,squadrons:s.squadrons.map(f=>({...f,sortieOrdered:false}))})
     const deadline={...applyRound(s,result),round:CAMPAIGN_ROUND_LIMIT,lastResult:{...result,round:CAMPAIGN_ROUND_LIMIT}}
     expect(openAdaptPhase(deadline).phase).toBe('draw')

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { CAMPAIGN_ROUND_LIMIT } from './campaign'
-import { FORMATION_PRICES } from './economyRules'
+import { FORMATION_PRICES, LOGISTICS_EFFECTS } from './economyRules'
 import { createMatch } from './data'
 import { resolveOnlineRound } from './onlineSimulation'
 import type { MatchState, Point } from './types'
@@ -112,7 +112,7 @@ describe('authoritative online round adapter', () => {
 
   it('credits the round payout before testing both seats for force elimination', () => {
     const a = seat(137), b = seat(841, 8)
-    const lost = { ...a, logistics: FORMATION_PRICES.recon - 6, squadrons:a.squadrons.map(formation => ({ ...formation, aircraft:0, strength:0 })) }
+    const lost = { ...a, logistics: FORMATION_PRICES.recon - LOGISTICS_EFFECTS.baseIncome, squadrons:a.squadrons.map(formation => ({ ...formation, aircraft:0, strength:0 })) }
     const eligible = resolveOnlineRound([lost,b], 991)
     expect(eligible[0].logistics).toBe(FORMATION_PRICES.recon)
     expect(eligible.every(state => state.onlineOutcome === undefined)).toBe(true)

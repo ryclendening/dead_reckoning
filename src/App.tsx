@@ -18,6 +18,7 @@ import { confirmCampaignSetup, validateCampaignAllocation, SETUP_REQUIRED_ASSET_
 import { applyRound, createRoundSimulation, EXECUTION_SECONDS, missionDistance, resolveRound, TICK_SECONDS, type RoundSimulationController } from './game/engine'
 import { flightRangeFor } from './game/flightRules'
 import { beginNextRound, economyCommandForQuote, economyQuotesFor, executeEconomyCommand, openAdaptPhase, PROCUREMENT_CATALOG, validateAssetPlacement } from './game/economy'
+import { formatCash } from './game/economyRules'
 import { snapToHex } from './game/hex'
 import { deriveKnownWorldModel } from './game/knownWorld'
 import { formationBaseGroups, formationBaseId } from './game/formationBasing'
@@ -580,11 +581,11 @@ export function Debrief({match,onFocus,onResupply,pending=false}:{match:MatchSta
   return <section className="debrief briefing debrief-summary" aria-label="After action summary">
     <div className="debrief-content">
     <header><div><small>MISSION COMPLETE</small><h2>AFTER ACTION</h2></div>{message?<strong className="debrief-outcome">{message.title}</strong>:null}</header>
-    <div className="debrief-metrics"><div><strong>{result.friendlyLosses}</strong><span>FRIENDLY LOST</span></div><div><strong>{result.enemyLosses}</strong><span>ENEMY LOST · CONFIRMED</span></div><div><strong>{intel.length}</strong><span>INTEL RECOVERED</span></div><div><strong>+${result.logisticsIncome.total}</strong><span>Cash earned</span></div></div>
+    <div className="debrief-metrics"><div><strong>{result.friendlyLosses}</strong><span>FRIENDLY LOST</span></div><div><strong>{result.enemyLosses}</strong><span>ENEMY LOST · CONFIRMED</span></div><div><strong>{intel.length}</strong><span>INTEL RECOVERED</span></div><div><strong>+{formatCash(result.logisticsIncome.total)}</strong><span>Cash earned</span></div></div>
     <details className="debrief-cash"><summary>Round payout</summary><div>
-      <span>Round pay <b>${result.logisticsIncome.base}</b></span>
-      {result.logisticsIncome.intel ? <span>Recovered intel <b>${result.logisticsIncome.intel}</b></span> : null}
-      {result.logisticsIncome.enemyAircraft ? <span>Confirmed enemy losses <b>${result.logisticsIncome.enemyAircraft}</b></span> : null}
+      <span>Round pay <b>{formatCash(result.logisticsIncome.base)}</b></span>
+      {result.logisticsIncome.intel ? <span>Recovered intel <b>{formatCash(result.logisticsIncome.intel)}</b></span> : null}
+      {result.logisticsIncome.enemyAircraft ? <span>Confirmed enemy losses <b>{formatCash(result.logisticsIncome.enemyAircraft)}</b></span> : null}
     </div></details>
     <DebriefLegend/>
     <p className="debrief-map-note">Reported locations only. Unlocated losses remain in the totals.</p>

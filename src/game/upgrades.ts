@@ -1,5 +1,5 @@
 import type { Asset, AssetKind, Squadron, UpgradeId } from './types'
-import { LOGISTICS_EFFECTS, LOGISTICS_COSTS } from './economyRules'
+import { formatCash, LOGISTICS_EFFECTS, LOGISTICS_COSTS } from './economyRules'
 
 export type UpgradeStat =
   | 'aircraft.speed' | 'aircraft.range' | 'aircraft.sensorRange'
@@ -24,13 +24,13 @@ export interface UpgradeDefinition {
 export const UPGRADE_CATALOG: readonly UpgradeDefinition[] = [
   {
     id: 'maintenance-wing', label: 'MAINTENANCE WING',
-    detail: 'Formation repairs cost $1 less.', cost: LOGISTICS_COSTS.upgrade, targets: ['base'], group: 'main-airfield',
+    detail: `Formation repairs cost ${formatCash(1)} less.`, cost: LOGISTICS_COSTS.upgrade, targets: ['base'], group: 'main-airfield',
     modifiers: { 'economy.formationRepairCost': { add: -1 } },
   },
   {
     id: 'supply-depot', label: 'SUPPLY DEPOT',
-    detail: `Future completed rounds pay an extra $${LOGISTICS_EFFECTS.supplyDepotIncome}.`, cost: LOGISTICS_COSTS.upgrade, targets: ['base'], group: 'main-airfield',
-    modifiers: { 'economy.baseIncome': { add: 2 } },
+    detail: `Future completed rounds pay an extra ${formatCash(LOGISTICS_EFFECTS.supplyDepotIncome)}.`, cost: LOGISTICS_COSTS.upgrade, targets: ['base'], group: 'main-airfield',
+    modifiers: { 'economy.baseIncome': { add: LOGISTICS_EFFECTS.supplyDepotIncome } },
   },
 ]
 

@@ -13,17 +13,19 @@ describe('logistics economy', () => {
   it('derives base, intelligence, and uncapped confirmed-aircraft income', () => {
     const state = createMatch()
     const result = { ...resultFor(state), enemyLosses: 5, intelReports: [recoveredReport(), { ...recoveredReport(), id: 'intel-2', assetId: 'e-sam' }] }
-    expect(deriveLogisticsIncome(state, result)).toEqual({ base: 6, intel: 4, enemyAircraft: 5, total: 15 })
+    expect(state.logistics).toBe(14)
+    expect(state.cpu?.logistics).toBe(14)
+    expect(deriveLogisticsIncome(state, result)).toEqual({ base: 8, intel: 4, enemyAircraft: 5, total: 17 })
   })
 
   it('settles a committed round once and records only the current Adapt statement', () => {
     const state = createMatch()
-    const result = { ...resultFor(state), enemyLosses: 2, intelReports: [recoveredReport()], logisticsIncome: { base: 6, intel: 2, enemyAircraft: 2, total: 10 } }
+    const result = { ...resultFor(state), enemyLosses: 2, intelReports: [recoveredReport()], logisticsIncome: { base: 8, intel: 2, enemyAircraft: 2, total: 12 } }
     const once = settleLogisticsIncome(state, result)
     const twice = settleLogisticsIncome(once, result)
-    expect(once.logistics).toBe(20)
+    expect(once.logistics).toBe(26)
     expect(twice).toEqual(once)
-    expect(once.economy.statement.map(entry => entry.amount)).toEqual([6, 2, 2])
+    expect(once.economy.statement.map(entry => entry.amount)).toEqual([8, 2, 2])
   })
 
   it('repairs formation condition only during Adapt and never exceeds aircraft-supported strength', () => {
@@ -90,7 +92,7 @@ describe('logistics economy', () => {
     expect(upgraded.logistics).toBe(0)
     expect(upgraded.playerAssets.find(asset => asset.id === 'p-base')?.upgrades).toEqual(['supply-depot'])
     expect(economyQuotesFor(upgraded, { kind: 'asset', id: 'p-base' })).toEqual([])
-    expect(deriveLogisticsIncome(upgraded, resultFor({ ...upgraded, phase: 'plan' }))).toMatchObject({ base: 8 })
+    expect(deriveLogisticsIncome(upgraded, resultFor({ ...upgraded, phase: 'plan' }))).toMatchObject({ base: 10 })
     const loaded = normalizeMatch(JSON.parse(JSON.stringify(upgraded)))
     expect(loaded.playerAssets.find(asset => asset.id === 'p-base')?.upgrades).toEqual(['supply-depot'])
     expect(purchaseEconomyAction(upgraded, 'install-maintenance-wing', { kind: 'asset', id: 'p-base' })).toBe(upgraded)

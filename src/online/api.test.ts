@@ -6,7 +6,8 @@ import { generateRouteTemplate } from '../game/routeTemplates'
 import { deriveRecoveryPlanningView } from '../game/forwardBasing'
 import { flightRangeFor } from '../game/flightRules'
 import { CAMPAIGN_ROUND_LIMIT } from '../game/campaign'
-import { FORMATION_PRICES } from '../game/economyRules'
+import { FORMATION_PRICES, LOGISTICS_EFFECTS } from '../game/economyRules'
+import { OPENING_LOGISTICS } from '../game/openingForces'
 import { axialToPoint } from '../game/hex'
 import type { Point } from '../game/types'
 
@@ -136,7 +137,9 @@ describe('invite-only online campaign API', () => {
       for (const player of [a, b]) {
         expect(player.view.match.phase).toBe('debrief')
         expect(player.view.match.lastResult?.round).toBe(round)
-        expect(player.view.match.logistics).toBe(10 + round * 6 - (player === a && round > 1 ? FORMATION_PRICES.recon : 0))
+        expect(player.view.match.logistics).toBe(OPENING_LOGISTICS + round * LOGISTICS_EFFECTS.baseIncome - (player === a && round > 1 ? FORMATION_PRICES.recon : 0))
+        expect(player.view.match.economy.statement.find(entry => entry.id === `income-${round}-base`))
+          .toMatchObject({ amount: 8, label: 'ROUND PAY' })
         expect(player.view.match.cpu).toBeUndefined()
         expect(player.view.match.lastResult?.cpuReport).toBeUndefined()
         expect(player.view.match.lastResult?.enemyFlights).toEqual([])

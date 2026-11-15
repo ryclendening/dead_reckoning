@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { Check, ChevronRight, X } from 'lucide-react'
 import { economyAttentionTargets, economyCommandForQuote, economyQuotesFor, findMatchingEconomyQuote } from '../game/economy'
+import { formatCash } from '../game/economyRules'
 import { upgradeDefinition } from '../game/upgrades'
 import { defenseProfile } from '../game/equipmentRules'
 import { assetCardData } from '../game/unitCards'
@@ -30,7 +31,7 @@ interface ResupplyPanelProps {
 function PurchaseButton({ quote, onBuy, disabled }: { quote: EconomyActionQuote; onBuy: () => void; disabled?: boolean }) {
   return <button type="button" disabled={disabled || !quote.eligible} onClick={onBuy}>
     <span><b>{quote.label}</b><small>{quote.detail}</small>{quote.reason ? <em>{quote.reason}</em> : null}</span>
-    <strong>${quote.cost}</strong>
+    <strong>{formatCash(quote.cost)}</strong>
   </button>
 }
 
@@ -90,7 +91,7 @@ export function ResupplyPanel({
       </div> : null}
 
       {procurementMode === 'placing' && placement ? <div className="adapt-drawer adapt-placement-drawer" aria-label="Place site">
-        <header className="adapt-build-heading"><b>{placement.label} · ${placement.cost}</b><button type="button" aria-label="Cancel placement" onClick={() => onProcurementMode('closed')}><X/></button></header>
+        <header className="adapt-build-heading"><b>{placement.label} · {formatCash(placement.cost)}</b><button type="button" aria-label="Cancel placement" onClick={() => onProcurementMode('closed')}><X/></button></header>
         <p className="procure-instruction">{hasPlacementPreview ? 'Tap another hex to move the site.' : 'Tap a highlighted hex to place the site.'}</p>
         {hasPlacementPreview ? <div className="campaign-placement-confirm"><button type="button" onClick={onCancelPlacement}>Clear site</button><button type="button" className="confirm" disabled={busy} onClick={onConfirmPlacement}>Confirm build <Check/></button></div> : null}
       </div> : null}
@@ -103,7 +104,7 @@ export function ResupplyPanel({
           const repair = economyQuotesFor(match, target).find(quote => quote.id.startsWith('repair-'))
           return <button type="button" key={target.id} onClick={() => chooseTarget(target)}>
             <span><b>{system?.name ?? system?.kind.toUpperCase() ?? aircraft?.callsign}</b><small>{repair?.detail}</small></span>
-            <strong>${repair?.cost}</strong>
+            {repair ? <strong>{formatCash(repair.cost)}</strong> : null}
           </button>
         })}</div>
       </div> : null}
@@ -127,14 +128,14 @@ export function ResupplyPanel({
           <PurchaseButton key={quote.id} quote={quote} disabled={busy} onBuy={() => chooseAction(quote)}/>
         )}</div> : null}
         {pending ? <div className="adapt-confirm">
-          <div><b>{pending.label}</b><small>${pending.projected.logistics} after purchase</small></div>
+          <div><b>{pending.label}</b><small>{formatCash(pending.projected.logistics)} after purchase</small></div>
           <button type="button" onClick={() => setUpgradePending(undefined)}>Cancel</button>
           <button type="button" className="confirm" disabled={busy || !pending.eligible} onClick={() => { buy(pending); setUpgradePending(undefined) }}>Confirm <Check/></button>
         </div> : null}
       </div> : null}
     </div>
     <div className="resupply-controls">
-      <span className="adapt-balance" aria-label="Cash balance"><b>${match.logistics}</b></span>
+      <span className="adapt-balance" aria-label="Cash balance"><b>{formatCash(match.logistics)}</b></span>
       <button type="button" aria-expanded={procurementMode === 'catalog'} onClick={() => {
         setShowRepairs(false)
         setUpgradePending(undefined)

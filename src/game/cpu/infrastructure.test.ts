@@ -4,6 +4,7 @@ import { executeCpuEconomyCommand } from './economy'
 import { sidePlanningContext } from '../sideContext'
 import { validateAssetPlacement } from '../sideEconomy'
 import { applyRound, resolveRound } from '../engine'
+import { LOGISTICS_COSTS } from '../economyRules'
 import { normalizeMatch } from '../persistence'
 import { formationField } from '../forwardBasing'
 import type { MatchState, Point } from '../types'
@@ -25,8 +26,8 @@ describe('side-aware infrastructure gate', () => {
   it('builds legally, pays once per accepted command, and stages by actual recovery', () => {
     const { s, f } = fixture()
     expect(validateAssetPlacement(sidePlanningContext(s, 'cpu'), 'fob', f).valid).toBe(true)
-    const built = executeCpuEconomyCommand(s, { actionId: 'build-fob', target: { kind: 'campaign', id: 'campaign' }, placement: f, expectedLogistics: 10 })
-    expect(built.cpu!.logistics).toBe(2)
+    const built = executeCpuEconomyCommand(s, { actionId: 'build-fob', target: { kind: 'campaign', id: 'campaign' }, placement: f, expectedLogistics: s.cpu!.logistics })
+    expect(built.cpu!.logistics).toBe(s.cpu!.logistics - LOGISTICS_COSTS.fobConstruction)
     expect(executeCpuEconomyCommand(built, { actionId: 'build-fob', target: { kind: 'campaign', id: 'campaign' }, placement: f })).toBe(built)
     const plan = transit(built, f), result = resolveRound(plan), settled = applyRound(plan, result)
     expect(result.cpuReport!.recoveryOutcomes).toContainEqual(expect.objectContaining({ formationId: 'red-fighter', actualFieldId: 'e-fob-1', outcome: 'recovered' }))
@@ -40,7 +41,7 @@ describe('side-aware infrastructure gate', () => {
   it('a constructed SAM fires through the shared defender resolver', () => {
     const { s, h } = fixture(), placement: Point = [h[0], h[1] + 3]
     const built = executeCpuEconomyCommand({ ...s, enemyAssets: s.enemyAssets.filter(a => a.kind === 'base') }, { actionId: 'build-sam', target: { kind: 'campaign', id: 'campaign' }, placement })
-    expect(built.cpu!.logistics).toBe(2)
+    expect(built.cpu!.logistics).toBe(s.cpu!.logistics - LOGISTICS_COSTS.samConstruction)
     const start: Point = [placement[0] + 1, placement[1]]
     const state: MatchState = { ...built, playerAssets: built.playerAssets.filter(a => a.kind === 'base').map(a => ({ ...a, position: start })), squadrons: built.squadrons.map(u => ({ ...u, sortieOrdered: u.role === 'recon', route: [start, [start[0] + 10, start[1]]], routeIngress: [start, [start[0] + 10, start[1]]] })) }
     const result = resolveRound(state)
@@ -61,7 +62,7 @@ describe('side-aware infrastructure gate', () => {
     expect(result.cpuReport!.sites).toEqual([])
     expect(result.cpuReport!.confirmedKills,JSON.stringify({shots:result.weaponEffects.filter(e=>e.kind==='sam'),squadrons:result.squadrons.map(s=>({id:s.id,aircraft:s.aircraft,strength:s.strength})),sequences:result.combatSequences})).toBe(1)
     const settled=applyRound(ready,result)
-    expect(settled.cpu!.logistics-ready.cpu!.logistics).toBe(7)
+    expect(settled.cpu!.logistics-ready.cpu!.logistics).toBe(9)
     expect(applyRound(settled,result)).toBe(settled)
   })
   it('does not construct on player-only mapping and buys a complete recon at home', () => {
