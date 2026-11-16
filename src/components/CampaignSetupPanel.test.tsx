@@ -4,30 +4,28 @@ import { createCampaignDraft } from '../game/data'
 import { CampaignSetupPanel } from './CampaignSetupPanel'
 
 describe('campaign setup panel', () => {
-  it('shows the fixed force and fixed asset placement package', () => {
+  it('shows the fixed site choices with one instruction and placement progress', () => {
     const match = createCampaignDraft()
-    const markup = renderToStaticMarkup(<CampaignSetupPanel match={match} onContinue={() => {}} />)
+    match.setup!.placedAssetIds = ['p-radar']
+    const markup = renderToStaticMarkup(<CampaignSetupPanel match={match} placementId="p-radar" onContinue={() => {}} />)
 
-    expect(markup).toContain('VIPER 1 FIGHTER')
-    expect(markup).toContain('FALCON 2 FIGHTER')
-    expect(markup).toContain('RAVEN 3 RECON')
+    expect(markup).toContain('Select a site. Tap a highlighted hex.')
+    expect(markup).toContain('1/4 placed')
+    expect(markup).toContain('aria-label="RADAR, placed" aria-pressed="true"')
     expect(markup).toContain('MAIN AIRFIELD')
     expect(markup).toContain('<b>SAM</b>')
     expect(markup).toContain('<b>AAA</b>')
-    expect(markup).not.toContain('DECOY')
-    expect(markup).not.toContain('GHOST')
-    expect(markup).not.toContain('FORMATIONS</b>')
+    expect(markup).toContain('disabled="">Begin planning')
+    expect(markup).not.toContain('VIPER')
+    expect(markup).not.toContain('dashed circle')
   })
 
-  it('describes a legacy saved roster without offering formation selection', () => {
+  it('enables the multiplayer lock after placing all four sites', () => {
     const match = createCampaignDraft()
-    const setup = { ...match.setup!, selectedFormationIds: ['viper', 'raven', 'ghost'] }
-    const legacyDraft = { ...match, setup }
-    const markup = renderToStaticMarkup(<CampaignSetupPanel match={legacyDraft} onContinue={() => {}} />)
+    match.setup!.placedAssetIds = [...match.setup!.selectedAssetIds]
+    const markup = renderToStaticMarkup(<CampaignSetupPanel online match={match} onContinue={() => {}} />)
 
-    expect(markup).toContain('SAVED FORCE')
-    expect(markup).toContain('VIPER 1 FIGHTER · RAVEN 3 RECON · GHOST 4 RECON')
-    expect(markup).not.toContain('FORMATIONS</b>')
-    expect(markup).not.toContain('GHOST</b>')
+    expect(markup).toContain('4/4 placed')
+    expect(markup).toContain('class="campaign-setup-continue">Lock deployment')
   })
 })

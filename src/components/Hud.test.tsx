@@ -4,7 +4,24 @@ import { createMatch,enemyBaseFor } from '../game/data'
 import {createRoundSimulation,resolveRound} from '../game/engine'
 import {createScenario} from '../game/scenarios'
 import type { Asset } from '../game/types'
-import { CommandShelf, ContactTracks, ExecutionChitRail, FormationDock } from './Hud'
+import { TopBar, CommandShelf, ContactTracks, ExecutionChitRail, FormationDock } from './Hud'
+
+describe('phase help in the match header', () => {
+  it('puts the phase help behind a closed dialog and adds the multiplayer instructions for that phase', () => {
+    const noop = () => {}
+    const props = { round: 1, debugScenario: 'campaign' as const, onDebugScenario: noop, onReboot: noop, onMenu: noop }
+    const deploy = renderToStaticMarkup(<TopBar {...props} phase="deploy" onlineStatus="PvP" />)
+    const plan = renderToStaticMarkup(<TopBar {...props} phase="plan" />)
+
+    expect(deploy).toContain('aria-label="Help for Deployment"')
+    expect(deploy).toContain('Linked SAMs can fire anywhere inside')
+    expect(deploy).toContain('after both players lock their deployments')
+    expect(deploy).not.toMatch(/<dialog[^>]* open(?:=|>| )/)
+    expect(plan).toContain('aria-label="Help for Planning"')
+    expect(plan).toContain('Outbound travel, the mission pattern, and the return all use fuel')
+    expect(plan).not.toContain('both players')
+  })
+})
 
 describe('contact and recovery information',()=>{
   it('shows one unknown numbered report per radar contact without leaking aircraft type or count',()=>{

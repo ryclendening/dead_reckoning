@@ -1,4 +1,5 @@
 import { useRef, useState, type PointerEvent } from 'react'
+import { PhaseHelp } from './PhaseHelp'
 import { AlertTriangle, CheckCircle2, ChevronDown, ChevronLeft, ChevronRight, ChevronUp, Crosshair, Eye, List, LocateFixed, Map, RotateCcw, Shield, Sword } from 'lucide-react'
 import { MAX_RECOVERY_WAYPOINTS, type RouteBudget } from '../game/forwardBasing'
 import { formationStatus, recoveryReasonLabel } from '../game/formationStatus'
@@ -9,7 +10,7 @@ import { projectFriendlyUnitAt } from '../game/executionProjection'
 import { templateFor, templatesForRole } from '../game/routeTemplates'
 import {DEBUG_SCENARIOS,DEBUG_SCENARIO_LABELS} from '../game/scenarios'
 import { CAMPAIGN_ROUND_LIMIT } from '../game/campaign'
-import type { Asset, CombatEvent, DebugScenario, MissionId, Point, ReconPosture, RoundResult, Squadron } from '../game/types'
+import type { Asset, CombatEvent, DebugScenario, MissionId, Phase, Point, ReconPosture, RoundResult, Squadron } from '../game/types'
 
 const ROLE_ICONS={fighter:Crosshair,recon:Eye}
 
@@ -28,7 +29,7 @@ export function ContactTracks({result,seconds,home,onFocus}:{result?:RoundResult
 
 export function TopBar({ round, phase, debugScenario, onDebugScenario, onReboot, onMenu, onlineStatus }: {
   round: number
-  phase: string
+  phase: Phase
   debugScenario: DebugScenario
   onDebugScenario: (scenario: DebugScenario) => void
   onReboot: () => void
@@ -39,12 +40,15 @@ export function TopBar({ round, phase, debugScenario, onDebugScenario, onReboot,
   return <header className="topbar match-header">
     <button type="button" className="menu-button" onClick={onMenu}>{onlineStatus ? 'Exit match' : 'Menu'}</button>
     <div className="match-round"><span>Round {round}/{CAMPAIGN_ROUND_LIMIT}</span><strong>{phaseName}</strong></div>
-    {onlineStatus ? <span className="match-connection" role="status">{onlineStatus}</span> : <details className="dev-menu">
-      <summary>Dev <ChevronDown/></summary>
-      <div><select value={debugScenario} onChange={event => onDebugScenario(event.target.value as DebugScenario)} aria-label="Debug scenario">
-        {DEBUG_SCENARIOS.map(scenario => <option key={scenario} value={scenario}>{DEBUG_SCENARIO_LABELS[scenario]}</option>)}
-      </select><button className="reboot" onClick={onReboot}><RotateCcw/> Reboot</button></div>
-    </details>}
+    <div className="match-header-actions">
+      {onlineStatus ? <span className="match-connection" role="status">{onlineStatus}</span> : <details className="dev-menu">
+        <summary>Dev <ChevronDown/></summary>
+        <div><select value={debugScenario} onChange={event => onDebugScenario(event.target.value as DebugScenario)} aria-label="Debug scenario">
+          {DEBUG_SCENARIOS.map(scenario => <option key={scenario} value={scenario}>{DEBUG_SCENARIO_LABELS[scenario]}</option>)}
+        </select><button className="reboot" onClick={onReboot}><RotateCcw/> Reboot</button></div>
+      </details>}
+      <PhaseHelp phase={phase} online={Boolean(onlineStatus)}/>
+    </div>
   </header>
 }
 

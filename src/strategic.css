@@ -31,6 +31,32 @@
 .match-round span { color: #cad5be; white-space: nowrap; }
 .match-round strong { color: #ecf4e8; }
 .match-connection { color: #9de2d5; text-align: right; font-size: 12px; }
+.match-header-actions { display: flex; align-items: center; gap: 6px; min-width: 0; }
+.phase-help-toggle, .phase-help-dialog header button {
+  min-height: 44px;
+  padding: 0 10px;
+  border: 1px solid #526256;
+  background: #19251e;
+  color: #e1ece0;
+  font: 700 14px Inter, sans-serif;
+  cursor: pointer;
+}
+.phase-help-toggle { flex: 0 0 44px; font-size: 18px; }
+.phase-help-dialog {
+  width: min(420px, calc(100% - 28px));
+  max-height: calc(100dvh - 28px);
+  padding: 16px;
+  border: 1px solid #526256;
+  background: #111b16;
+  color: #e1ece0;
+  font: 500 14px/1.5 Inter, sans-serif;
+}
+.phase-help-dialog::backdrop { background: #050907bf; }
+.phase-help-dialog header { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.phase-help-dialog h2 { margin: 0; font: 700 22px/1.15 "Barlow Condensed", sans-serif; }
+.phase-help-dialog dl { display: grid; gap: 10px; margin: 12px 0 0; }
+.phase-help-dialog dt { font-weight: 700; }
+.phase-help-dialog dd { margin: 2px 0 0; color: #bbccb9; }
 .online-invite {
   display: flex;
   justify-content: center;
@@ -264,16 +290,35 @@
 .pvp-base-health { display: flex; justify-content: center; flex-wrap: wrap; gap: 6px 20px; padding: 5px 8px; background: #141d17; border-bottom: 1px solid #435b48; color: #b7cab9; font: 600 13px/1.25 Inter, sans-serif; }
 .pvp-base-health b { margin-left: 4px; color: #eef0df; }
 
-.game-frame.phase-deploy { height: auto; }
-.campaign-setup-float { position: relative; inset: auto; padding: 12px; box-shadow: none; }
-.campaign-setup-float header small, .campaign-setup-float header > span { font: 700 12px/1.25 Inter, sans-serif; }
-.campaign-setup-float header h2 { font-size: 24px; }
-.campaign-setup-copy, .campaign-setup-ready, .campaign-setup-error { font: 600 13px/1.4 Inter, sans-serif; }
-.campaign-setup-option { min-height: 52px; grid-template-rows: auto auto; padding: 6px; }
+.game-frame.phase-deploy { display: flex; flex-direction: column; height: auto; }
+.campaign-setup-float { padding: 12px; background: #0d1510; border-top: 1px solid #586859; }
+.campaign-setup-float header { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; }
+.campaign-setup-float header > span { color: #d9c76f; font: 700 12px/1.25 Inter, sans-serif; white-space: nowrap; }
+.campaign-setup-float header h2 { margin: 0; color: #e4e8d6; font: 700 24px/1.15 "Barlow Condensed", sans-serif; }
+.campaign-setup-copy, .campaign-setup-error, .deployment-panel > p { font: 600 13px/1.4 Inter, sans-serif; }
+.campaign-setup-copy { margin: 4px 0 8px; color: #b8c7b5; }
+.campaign-setup-error { margin: 6px 0 0; color: #ef8e80; }
+.campaign-setup-options { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 4px; }
+.campaign-setup-option {
+  display: flex; align-items: center; justify-content: space-between; gap: 4px;
+  min-height: 44px; padding: 6px 10px; border: 1px solid #425044;
+  background: #111611; color: #dfe7d9; text-align: left; cursor: pointer;
+}
+.campaign-setup-option.placed { border-color: #65bd73; color: #e4f3df; }
+.campaign-setup-option[aria-pressed="true"] { border-color: var(--cyan); background: #17302d; }
+.campaign-setup-option svg { flex: 0 0 16px; height: 16px; color: #a3ec9e; }
 .campaign-setup-option b { font: 700 16px/1.2 "Barlow Condensed", sans-serif; }
-.campaign-setup-option small { font: 600 12px/1.25 Inter, sans-serif; }
-.campaign-setup-continue { min-height: 44px; font: 700 15px/1.25 Inter, sans-serif; }
-.phase-deploy .map-wrap { height: 52dvh; min-height: 230px; }
+.campaign-setup-continue {
+  display: flex; align-items: center; justify-content: center; gap: 5px;
+  width: 100%; min-height: 44px; margin-top: 7px; padding: 6px;
+  border: 1px solid #8ea16c; background: #435839; color: #eff1df;
+  font: 700 15px/1.25 Inter, sans-serif; cursor: pointer;
+}
+.campaign-setup-continue:disabled { opacity: .45; cursor: default; }
+.campaign-setup-continue svg { width: 14px; }
+.phase-deploy .map-wrap { flex: 1 0 auto; height: 52dvh; min-height: 230px; }
+.deployment-panel .asset-picker button { min-height: 44px; }
+.deployment-panel .asset-picker b { font-size: 14px; }
 @media (max-height: 550px) and (orientation: landscape) {
   .phase-deploy .map-wrap { min-height: 145px; }
 }
