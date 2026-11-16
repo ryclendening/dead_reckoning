@@ -213,7 +213,14 @@ export interface ReinforcementCall {
   id: string; type: ReinforcementType; time: number; scoreCost: number; title: string; detail: string
   route: Point[]; targetSquadronId?: string
 }
+export interface GroundSiteSighting { asset: Asset; start: number; end: number }
+export interface GroundReplay {
+  friendlyAtStart: Asset[]
+  knownEnemyAtStart: Asset[]
+  enemySightings: GroundSiteSighting[]
+}
 export interface RoundResult {
+  groundReplay?: GroundReplay
   cpuReport?: CpuRoundReport
   round: number; duration: number; tickSeconds: number; unitTracks: UnitTrack[]; contactIntervals: ContactInterval[]; behaviorIntervals: BehaviorInterval[]
   events: CombatEvent[]; squadrons: Squadron[]; assets: Asset[]; enemyLosses: number; friendlyLosses: number

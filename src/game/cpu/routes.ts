@@ -130,14 +130,14 @@ export function missionOrders(view: CpuPlanningView, formation: Squadron, missio
   if(mission!=='base-strike'&&Math.min(...ingress.map(r=>cpuRouteRisk([...r,from],formation.role,view.cpu.sites,formation)))>12) {
     const path=searched(view,from,[station],formation.role,work,formation); if(path)ingress.push(path)
   }
-  const scoutingReturn=mission==='transit'&&!view.assets.some(a=>isOperationalAirfield(a)&&distance(a.position,station)<.6)
+  const transitField=mission==='transit'?view.assets.find(a=>isOperationalAirfield(a)&&distance(a.position,station)<.001):undefined
+  const scoutingReturn=mission==='transit'&&!transitField
   const paths=scoutingReturn?ingress.flatMap(path=>{const length=Math.max(.01,distance(from,station)),side:Point=[-(station[1]-from[1])/length,(station[0]-from[0])/length];return [-7,-4,4,7].map(offset=>[...path,[(from[0]+station[0])/2+side[0]*offset,(from[1]+station[1])/2+side[1]*offset] as Point,from])}):ingress
   const orders=paths.flatMap(path=> {
     const route=mission==='base-strike'||mission==='transit'?path:generateRouteTemplate({template:mission,ingress:path,maxDistance:budget,bounds:{minX:Math.min(from[0],station[0])-8,maxX:Math.max(from[0],station[0])+8,minZ:Math.min(from[1],station[1])-8,maxZ:Math.max(from[1],station[1])+8}}).route
-    const order:Squadron={...formation,mission,route,routeIngress:path,sortieOrdered:true,protectedTargetId:undefined,strikeTargetId:undefined,protectedPoint:mission==='defensive-cap'?[...station]:undefined}
+    const order:Squadron={...formation,mission,route,routeIngress:path,sortieOrdered:true,plannedRecoveryFieldId:transitField?.id,protectedTargetId:undefined,strikeTargetId:undefined,protectedPoint:mission==='defensive-cap'?[...station]:undefined}
     const recovery=recoveryView(view,order)
     if(!recovery?.valid||recovery.missionDistance>budget+.001){work.rejected.push(recovery?.reason??'No recovery field');return []}
-    // A search/patrol latched by a field cannot claim an unflown mission pattern.
     return [{...order,route:recovery.normalizedRoute,plannedRecoveryFieldId:recovery.intendedField.id}]
   }).sort((a,b)=>orderRisk(view,a)-orderRisk(view,b)||routeDistance(a.route)-routeDistance(b.route))
   if(mission!=='base-strike')return orders.slice(0,3)

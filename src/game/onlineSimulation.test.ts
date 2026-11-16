@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 import { CAMPAIGN_ROUND_LIMIT } from './campaign'
 import { FORMATION_PRICES, LOGISTICS_EFFECTS } from './economyRules'
 import { createMatch } from './data'
+import { projectOnlineGroundReplay } from './executionProjection'
 import { resolveOnlineRound } from './onlineSimulation'
 import type { MatchState, Point } from './types'
 
@@ -20,6 +21,35 @@ function seat(seed: number, offset = 0): MatchState {
 }
 
 describe('authoritative online round adapter', () => {
+  it('shows observed ground sites and their HP to both seats only when their own recon sees them', () => {
+    const prepare = (state: MatchState, x: number) => {
+      const home: Point = [x, 0]
+      const route: Point[] = [home, [-x, 0], home]
+      state.enemyAssets = []
+      state.playerAssets = state.playerAssets.flatMap(asset => {
+        if (asset.kind === 'base') return [{ ...asset, position: home, health: 84 }]
+        if (asset.kind === 'radar') return [{ ...asset, position: [x, 1] as Point, health: 47 }]
+        if (asset.kind === 'aaa') return [{ ...asset, position: [x, 10] as Point }]
+        return []
+      })
+      state.squadrons = state.squadrons.map(formation => formation.id==='raven'
+        ? {...formation,sortieOrdered:true,mission:'search-area',route,routeIngress:route,plannedRecoveryFieldId:'p-base'}
+        : formation)
+      return state
+    }
+    const seats=resolveOnlineRound([prepare(seat(120),-7),prepare(seat(121),7)],39)
+    for(const state of seats){
+      const result=state.lastResult!
+      expect(projectOnlineGroundReplay(result,0)?.enemyAssets).toEqual([])
+      expect(projectOnlineGroundReplay(result,0)?.playerAssets.find(asset=>asset.kind==='base')?.health).toBe(84)
+      const radar=result.groundReplay!.enemySightings.find(sighting=>sighting.asset.kind==='radar')!
+      expect(projectOnlineGroundReplay(result,radar.start)?.enemyAssets.find(asset=>asset.id==='opponent:p-radar')).toMatchObject({health:47,intel:'probable'})
+      expect(projectOnlineGroundReplay(result,result.duration)?.enemyAssets).toEqual([])
+      expect(state.enemyAssets.find(asset=>asset.id==='opponent:p-radar'), JSON.stringify({recovery:result.recoveryOutcomes,assets:state.enemyAssets})).toMatchObject({health:47,intel:'confirmed'})
+      expect(result.groundReplay!.enemySightings.some(sighting=>sighting.asset.kind==='aaa')).toBe(false)
+    }
+  })
+
   it('resolves once into self-oriented settled replays without exposing hidden opponent deployment', () => {
     const a = seat(137, 0), b = seat(841, 8)
     const [resolvedA, resolvedB] = resolveOnlineRound([a, b], 991)
@@ -102,6 +132,11 @@ describe('authoritative online round adapter', () => {
       expect(state.lastResult?.baseDamage).toBe(40)
       expect(state.lastResult?.enemyBaseDamage).toBe(40)
       expect(state.lastResult?.combatSequences.filter(sequence => sequence.kind === 'strike')).toHaveLength(2)
+      const result=state.lastResult!
+      const impact=result.combatSequences.flatMap(sequence=>sequence.exchanges).find(shot=>shot.defenderId==='p-base')!
+      expect(projectOnlineGroundReplay(result,impact.time-.05)?.playerAssets[0].health).toBe(40)
+      expect(projectOnlineGroundReplay(result,impact.time)?.playerAssets[0].health).toBe(0)
+      expect(projectOnlineGroundReplay(result,result.duration)?.enemyAssets[0].health).toBe(0)
     }
   })
 

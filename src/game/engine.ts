@@ -4,7 +4,7 @@ import {calculateFighterSidePower,createFighterEngagementRecord,evaluateFighterN
 import type { ActiveDogfightPresentation, Asset, BehaviorInterval, CombatEvent, CombatExchange, CombatProbabilityRecord, CombatSequence, ContactInterval, ContactObservation, DebugScenario, DefenseCue, EnemyFlight, FighterPositionalAssessment, FlightMode, FormationAttrition, FormationRecoveryOutcome, IntelLevel, IntelReport, InterceptPlan, MatchState, Point, ReinforcementCall, ReinforcementType, Role, RoundResult, SimulationCommand, Squadron, ThreatAlert, UnitFrame, WeaponEffect, WeaponKind } from './types'
 import { intersectMovementWithWorld, mergeBoundarySegments, MAPPED_AREA_RADIUS } from './world'
 import { deriveLogisticsIncome, settleLogisticsIncome } from './economy'
-import { applyRecoveryOutcomesToBasing, formationField, isOperationalAirfield, nearestReachableAlternate, normalizeFormationBasing, recoveryPath, setAirfieldOperational } from './forwardBasing'
+import { applyRecoveryOutcomesToBasing, formationField, isOperationalAirfield, nearestReachableAlternate, normalizeFormationBasing, recoveryPath, setAirfieldOperational, transitDestination } from './forwardBasing'
 import { fighterIsResponsibleFor, mayContinueMissionPursuit, nearestResponsibleContact, preferredObjectiveThreat } from './missionResponsibility'
 import { decideReaction } from './reactionLifecycle'
 import { BASE_STRIKE_DAMAGE, BASE_STRIKE_RANGE, ENEMY_TARGETING_THRESHOLD, selectedStrikeTarget, isCampaign } from './campaign'
@@ -372,8 +372,10 @@ function* simulateRoundTicks(state:MatchState, recordOpponentView:boolean):Gener
       const route=cpuActive&&distance(flight.route.at(-1)!,home)>.03?[...flight.route,home]:flight.route
       return {id:s.id,callsign:s.callsign,role:s.role,friendly:false,position:[...route[0]] as Point,facing:facingAfterMove(route[0],route[0],route[1]??route[0]),route,waypoint:1,mode:s.aircraft<=0?'destroyed':flight.sortieOrdered===false?'grounded':'following-route',strength:strengthOf(s),morale:s.morale??70,aircraft:s.aircraft,maxAircraft:flight.maxAircraft??flight.initialAircraft,traveled:0,frames:[],observed:new Set,source:s}
     }
-    const ownAssets=friendly?playerAssets:assets;const squadron=s as Squadron;const launch=formationField(ownAssets,squadron.id)??ownAssets.find(asset=>asset.kind==='base')!;const ordered=squadron.sortieOrdered!==false;const intended=ownAssets.find(asset=>asset.id===(ordered?squadron.plannedRecoveryFieldId:undefined))??launch;const validStrike=friendly?validateGroundStrikeOrder(simulationState,squadron)===undefined:validateStrikeGeometry(squadron,launch,state.cpu?.sites.find(site=>site.id===squadron.strikeTargetId))===undefined;const route:Point[]=!ordered||squadron.mission==='base-strike'&&!validStrike?[[...launch.position]]:[[...launch.position],...squadron.route.slice(1)]
-    const plannedReturnStart = route.length >= 2 && squadron.recoveryWaypoints?.length ? route.length : undefined
+    const ownAssets=friendly?playerAssets:assets;const squadron=s as Squadron;const launch=formationField(ownAssets,squadron.id)??ownAssets.find(asset=>asset.kind==='base')!;const ordered=squadron.sortieOrdered!==false;const intended=ownAssets.find(asset=>asset.id===(ordered?squadron.plannedRecoveryFieldId:undefined))??launch;const validStrike=friendly?validateGroundStrikeOrder(simulationState,squadron)===undefined:validateStrikeGeometry(squadron,launch,state.cpu?.sites.find(site=>site.id===squadron.strikeTargetId),intended)===undefined;const route:Point[]=!ordered||squadron.mission==='base-strike'&&!validStrike?[[...launch.position]]:[[...launch.position],...squadron.route.slice(1)]
+    const hasExplicitReturn = Boolean(squadron.recoveryWaypoints?.length)
+      || (squadron.plannedRecoveryFieldId === intended.id && intended.id !== launch.id && !transitDestination(squadron,route,intended))
+    const plannedReturnStart = route.length >= 2 && hasExplicitReturn ? route.length : undefined
     if (plannedReturnStart !== undefined) {
       route.push(...recoveryPath(route.at(-1)!, intended.position, squadron.recoveryWaypoints).slice(1))
     } else if (ordered && route.length && (squadron.mission === 'base-strike' || distance(route.at(-1)!, intended.position) > .03)) {
@@ -422,6 +424,18 @@ function* simulateRoundTicks(state:MatchState, recordOpponentView:boolean):Gener
   for(const u of units)transition(u,u.mode,0,'round-start')
   record(0)
   const liveResult=(duration:number):RoundResult=>({round:state.round,duration:Math.max(TICK_SECONDS,duration),tickSeconds:TICK_SECONDS,unitTracks:units.map(u=>({unitId:u.id,frames:u.frames})),contactIntervals:intervals,behaviorIntervals:behavior.map(item=>openBehavior.get(item.unitId)===item?{...item,end:duration}:item),events,squadrons,assets,enemyLosses:0,friendlyLosses:0,friendlyAttrition:[],enemyAttrition:[],friendlyFormationsDestroyed:0,enemyFormationsDestroyed:0,intelGained:[],baseDamage,enemyBaseDamage,logisticsIncome:{base:0,intel:0,enemyAircraft:0,total:0},command:state.command,executionRoutes:Object.fromEntries(units.map(u=>[u.id,u.frames.map(f=>f.position)])),enemyFlights:flights.map(f=>({...f,detectionWindows:intervals.filter(i=>i.targetId===f.id).map(i=>({start:i.start/Math.max(TICK_SECONDS,duration),end:i.end/Math.max(TICK_SECONDS,duration),source:i.source,observer:i.observerId}))})),defenseCues:[],defensiveAwareness:0,lessons:[],playerAssets,reinforcementCalls:[],roundScore:0,baseExposure,baseExposureDelta,combatSequences:sequences,activeDogfights:activeEngagements.filter(engagement=>engagement.kind==='dogfight').map(activeDogfightPresentation),weaponEffects:[...effects,...activeEngagements.flatMap(engagement=>engagement.effects)],contactObservations:observations,interceptPlans:plans,intelReports:[],mappedAreas:[],discoveredBoundaries:[],recoveryOutcomes:[],simulationCommands:commands,threatAlerts})
+  const groundSightings: [import('./types').GroundSiteSighting[], import('./types').GroundSiteSighting[]] = [[], []]
+  const latestSightings: [Map<string, import('./types').GroundSiteSighting>, Map<string, import('./types').GroundSiteSighting>] = [new Map(), new Map()]
+  const recordGroundSighting = (asset: Asset, side: 0 | 1, time: number) => {
+    const last = latestSightings[side].get(asset.id)
+    if (last && time-last.end <= TICK_SECONDS+.000001 && last.asset.health === asset.health && last.asset.operational === asset.operational) {
+      last.end = time
+      return
+    }
+    const sighting = { asset: { ...asset, basedFormationIds: undefined, intel: 'probable' as const, confidence: 70, hidden: false }, start: time, end: time }
+    groundSightings[side].push(sighting)
+    latestSightings[side].set(asset.id, sighting)
+  }
   let debugFieldDisabled=false
   let pendingCommands:SimulationCommand[]=yield liveResult(0)
   for(let time=TICK_SECONDS;time<=MAX_EXECUTION_SECONDS+1e-6;time+=TICK_SECONDS){
@@ -618,7 +632,7 @@ function* simulateRoundTicks(state:MatchState, recordOpponentView:boolean):Gener
     // no pre-combat target or pursuit intent survives this point.
     for(const unit of released.sort((a,b)=>a.id.localeCompare(b.id)))evaluateReaction(unit)
     for(const unit of units.filter(unit=>unit.mode==='destroyed'))releaseClaim(unit)
-    for(const observer of units.filter(u=>!terminal(u)))for(const asset of observer.friendly?assets:(isCampaign(state)?playerAssets:[]))if(distance(observer.position,asset.position)<=FIXED_ASSET_OBSERVATION_RANGE){observer.observed.add(asset.id);if(cpuActive&&!observer.friendly){const reports=cpuSites.get(observer.id)??new Map<string,CpuSiteReport>();reports.set(asset.id,cpuReportAt(asset,state.round,time));cpuSites.set(observer.id,reports)}}
+    for(const observer of units.filter(u=>!terminal(u)))for(const asset of observer.friendly?assets:(isCampaign(state)?playerAssets:[]))if(distance(observer.position,asset.position)<=FIXED_ASSET_OBSERVATION_RANGE){observer.observed.add(asset.id);if(recordOpponentView)recordGroundSighting(asset,observer.friendly?0:1,time);if(cpuActive&&!observer.friendly){const reports=cpuSites.get(observer.id)??new Map<string,CpuSiteReport>();reports.set(asset.id,cpuReportAt(asset,state.round,time));cpuSites.set(observer.id,reports)}}
     record(time)
     if(time>=22&&units.every(terminal)&&activeEngagements.length===0&&pendingImpacts.length===0)break
     if(time>=60&&!units.some(unit=>unit.mode==='stranded')&&pendingImpacts.length===0)break
@@ -640,7 +654,8 @@ function* simulateRoundTicks(state:MatchState, recordOpponentView:boolean):Gener
     sites:[...recoveredSites.values()].map(site => site.report),
     traffic:[...cpuApproaches.values(),...recoveredCpu.flatMap(unit=>[...(cpuTraffic.get(unit.id)?.values()??[])])],
     recoveredIds:recoveredCpu.map(unit=>unit.id),
-    ...(recordOpponentView ? { opponentContacts, siteObservers: Object.fromEntries([...recoveredSites].map(([id, site]) => [id, site.observerId])) } : {}),
+    ...(recordOpponentView ? { opponentContacts, groundSightings,
+      recoveredFriendlySiteIds: [...new Set(units.filter(unit=>unit.friendly&&unit.mode==='recovered').flatMap(unit=>[...unit.observed]))], siteObservers: Object.fromEntries([...recoveredSites].map(([id, site]) => [id, site.observerId])) } : {}),
   }:undefined
   if(isCampaign(state)){
     let gained=0

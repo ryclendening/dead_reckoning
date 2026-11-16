@@ -47,14 +47,13 @@ describe('deterministic debug scenarios',()=>{
     expect(applyRound(match,result).discoveredBoundaries).toEqual(result.discoveredBoundaries)
   })
 
-  it('latches a crossed FOB, lands there, and launches the next round from that physical field',()=>{
+  it('lands an explicit Transit order at a FOB and launches the next round there',()=>{
     const initial=createScenario('fob-recovery')
     const base=initial.playerAssets.find(asset=>asset.id==='p-base')!,fob=initial.playerAssets.find(asset=>asset.id==='p-fob-1')!
-    const rawRoute=[base.position,fob.position,[fob.position[0]+4,fob.position[1]]] as [number,number][]
-    const planning=deriveRecoveryPlanningView(initial,'viper',rawRoute,MAX_FLIGHT_DISTANCE.fighter)!
-    expect(planning.normalizedRoute).toEqual([base.position,fob.position])
-    expect(planning.intendedField.id).toBe('p-fob-1')
-    const match={...initial,squadrons:initial.squadrons.map(squadron=>squadron.id==='viper'?{...squadron,route:planning.normalizedRoute,routeIngress:planning.normalizedRoute,plannedRecoveryFieldId:planning.intendedField.id}:squadron)}
+    const route=[base.position,fob.position]
+    const match={...initial,squadrons:initial.squadrons.map(squadron=>squadron.id==='viper'?{...squadron,mission:'transit' as const,route,routeIngress:route,plannedRecoveryFieldId:fob.id}:squadron)}
+    const planning=deriveRecoveryPlanningView(match,'viper',route,MAX_FLIGHT_DISTANCE.fighter)!
+    expect(planning).toMatchObject({valid:true,recoveryRoute:[],intendedField:{id:fob.id}})
     const result=resolveRound(match),outcome=result.recoveryOutcomes.find(item=>item.formationId==='viper')!
     expect(outcome).toMatchObject({launchFieldId:'p-base',plannedFieldId:'p-fob-1',actualFieldId:'p-fob-1',outcome:'recovered'})
     expect(result.playerAssets.find(asset=>asset.id==='p-fob-1')?.basedFormationIds).toEqual(['viper'])

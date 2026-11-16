@@ -240,10 +240,43 @@
 .resupply-panel .adapt-drawer-title > button, .resupply-panel .adapt-build-heading > button { width: 44px; height: 44px; }
 .resupply-panel .adapt-based-flights > button, .resupply-panel .adapt-confirm button,
 .resupply-panel .campaign-placement-confirm button { min-height: 44px; font-size: 14px; }
-.debrief-cash { padding: 8px 0; font: 600 14px/1.4 Inter, sans-serif; }
-.debrief-cash summary { cursor: pointer; }
-.debrief-cash > div { display: grid; gap: 4px; padding: 6px 10px; color: #c1d4ba; }
-.debrief-cash span { display: flex; justify-content: space-between; }
+.debrief-cash { padding: 10px 12px; background: #16231b; border: 1px solid #435b48; font: 600 14px/1.35 Inter, sans-serif; }
+.debrief-metrics { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.debrief-cash > header, .debrief-cash dl > div { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; }
+.debrief-cash > header { padding-bottom: 6px; border-bottom: 1px solid #435b48; }
+.debrief-cash > header strong { color: #b7e6a6; font-size: 20px; }
+.debrief-cash dl { display: grid; gap: 4px; margin: 6px 0 0; }
+.debrief-cash dd { margin: 0; color: #d6e7c9; white-space: nowrap; }
+.debrief-cash dt small { margin-left: 4px; color: #a8bba5; font-size: 12px; }
+
+.planning-fuel { display: grid; gap: 5px; padding: 8px; margin-top: 6px; background: #101914; border: 1px solid #435b48; font: 600 13px/1.3 Inter, sans-serif; }
+.planning-fuel-header, .planning-fuel-legs { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 4px 8px; }
+.planning-fuel-header > span, .planning-fuel > small { color: #b0c3b0; font-size: 12px; }
+.planning-fuel-meter { display: flex; height: 8px; background: #2a372d; overflow: hidden; }
+.planning-fuel-meter > span { flex-shrink: 0; }
+.planning-fuel-legs .outbound { color: #7ceaf0; }
+.planning-fuel-legs .pattern { color: #f1c65b; }
+.planning-fuel-legs .return { color: #d4b4ff; }
+.planning-fuel-meter .outbound { background: #7ceaf0; }
+.planning-fuel-meter .pattern { background: #f1c65b; }
+.planning-fuel-meter .return { background: #d4b4ff; }
+.planning-route-notice { margin: 6px 0 0; color: #ffd291; font: 600 13px/1.35 Inter, sans-serif; }
+.pvp-base-health { display: flex; justify-content: center; flex-wrap: wrap; gap: 6px 20px; padding: 5px 8px; background: #141d17; border-bottom: 1px solid #435b48; color: #b7cab9; font: 600 13px/1.25 Inter, sans-serif; }
+.pvp-base-health b { margin-left: 4px; color: #eef0df; }
+
+.game-frame.phase-deploy { height: auto; }
+.campaign-setup-float { position: relative; inset: auto; padding: 12px; box-shadow: none; }
+.campaign-setup-float header small, .campaign-setup-float header > span { font: 700 12px/1.25 Inter, sans-serif; }
+.campaign-setup-float header h2 { font-size: 24px; }
+.campaign-setup-copy, .campaign-setup-ready, .campaign-setup-error { font: 600 13px/1.4 Inter, sans-serif; }
+.campaign-setup-option { min-height: 52px; grid-template-rows: auto auto; padding: 6px; }
+.campaign-setup-option b { font: 700 16px/1.2 "Barlow Condensed", sans-serif; }
+.campaign-setup-option small { font: 600 12px/1.25 Inter, sans-serif; }
+.campaign-setup-continue { min-height: 44px; font: 700 15px/1.25 Inter, sans-serif; }
+.phase-deploy .map-wrap { height: 52dvh; min-height: 230px; }
+@media (max-height: 550px) and (orientation: landscape) {
+  .phase-deploy .map-wrap { min-height: 145px; }
+}
 
 .game-frame:is(.phase-plan, .phase-execute, .phase-debrief) {
   display: flex;

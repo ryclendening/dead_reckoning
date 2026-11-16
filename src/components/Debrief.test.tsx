@@ -13,9 +13,9 @@ describe('mission debrief surface',()=>{
     const markup=renderToStaticMarkup(<Debrief match={view} onFocus={()=>{}} onResupply={()=>{}}/>)
 
     expect(markup).toContain('+$110M')
-    expect(markup).toContain('Round pay <b>$80M</b>')
-    expect(markup).toContain('Recovered intel <b>$20M</b>')
-    expect(markup).toContain('Confirmed enemy losses <b>$10M</b>')
+    expect(markup).toContain('<dt>Round pay</dt><dd>+$80M</dd>')
+    expect(markup).toContain('Recovered intelligence <small>$20M per new site</small></dt><dd>+$20M</dd>')
+    expect(markup).toContain('Confirmed enemy aircraft lost <small>$10M per aircraft</small></dt><dd>+$10M</dd>')
     expect(markup).toContain('Round map key')
     expect(markup).toContain('Round highlights')
     expect(markup).toContain('debrief-symbol')

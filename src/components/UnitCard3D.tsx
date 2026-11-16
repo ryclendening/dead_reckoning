@@ -5,7 +5,7 @@ import * as THREE from 'three'
 import { usesCompactUnitCards } from '../game/unitCards'
 import type { UnitCardData } from '../game/unitCards'
 
-interface UnitCard3DProps {actionLabel?:string;data:UnitCardData;color:string;position?:[number,number,number];selected?:boolean;onSelect?:()=>void}
+interface UnitCard3DProps {ground?:boolean;actionLabel?:string;data:UnitCardData;color:string;position?:[number,number,number];selected?:boolean;onSelect?:()=>void}
 
 export function UnitCard3D(props:UnitCard3DProps){
   const compact=useThree(state=>usesCompactUnitCards(state.size.width,state.size.height))
@@ -13,8 +13,8 @@ export function UnitCard3D(props:UnitCard3DProps){
 }
 
 /** Both layouts stay in map units so labels shrink with the battlefield instead of covering it. */
-function WorldUnitCard({data,color,position=[0,1.15,0],selected=false,actionLabel,onSelect,compact}:{compact:boolean}&UnitCard3DProps){
-  const value=Math.max(0,Math.min(1,data.health/Math.max(1,data.maxHealth))),width=compact?1.15:1.9
+function WorldUnitCard({data,color,position=[0,1.15,0],selected=false,actionLabel,onSelect,compact,ground=false}:{compact:boolean}&UnitCard3DProps){
+  const value=Math.max(0,Math.min(1,data.health/Math.max(1,data.maxHealth))),width=compact&&ground?1.6:compact?1.15:1.9
   const fill=useRef<THREE.Mesh>(null),trail=useRef<THREE.Mesh>(null),flash=useRef<THREE.Mesh>(null)
   const shown=useRef(value),delayed=useRef(value),previous=useRef(value),hitAge=useRef(2)
   useEffect(()=>{if(value<previous.current-.001)hitAge.current=0;previous.current=value},[value])
@@ -25,12 +25,12 @@ function WorldUnitCard({data,color,position=[0,1.15,0],selected=false,actionLabe
     hitAge.current+=delta
     if(flash.current)(flash.current.material as THREE.MeshBasicMaterial).opacity=Math.max(0,1-hitAge.current/.45)*.55
   })
-  const height=compact?.27:actionLabel?.92:.66,centerY=compact?0:actionLabel?-.13:0
+  const height=compact&&ground?.43:compact?.27:actionLabel?.92:.66,centerY=compact?0:actionLabel?-.13:0
   const barY=compact?-.085:-.095,barHeight=compact?.055:.1
   const shortLabel=`${actionLabel?(actionLabel==='STRIKE TARGET ASSIGNED'?'✓ ':'⌖ '):''}${data.mapLabel??data.title}`
   return <Billboard position={position} follow lockZ={false}>
     <group onClick={event=>{event.stopPropagation();onSelect?.()}}>
-      {compact?<mesh><planeGeometry args={[width+.1,height]}/><meshBasicMaterial transparent opacity={0} depthWrite={false}/></mesh>:null}
+      {compact?<mesh position={[0,ground?-.07:0,-.002]} renderOrder={29}><planeGeometry args={[width+.1,height]}/><meshBasicMaterial color="#080e0b" transparent opacity={ground?.88:0} depthTest={false} depthWrite={false}/></mesh>:null}
       {!compact?<mesh position={[0,centerY,-.003]} renderOrder={29}><planeGeometry args={[width+.14,height]}/><meshBasicMaterial color={selected?color:'#314038'} depthTest={false} depthWrite={false}/></mesh>:null}
       {!compact?<mesh position={[0,centerY,0]} renderOrder={30}><planeGeometry args={[width+.1,height-.04]}/><meshBasicMaterial color="#080e0b" transparent opacity={.97} depthTest={false} depthWrite={false}/></mesh>:null}
       <mesh ref={flash} position={[0,centerY,.002]} renderOrder={31}><planeGeometry args={[width+.1,height-.04]}/><meshBasicMaterial color="#ff6653" transparent opacity={0} depthTest={false} depthWrite={false}/></mesh>
@@ -39,6 +39,7 @@ function WorldUnitCard({data,color,position=[0,1.15,0],selected=false,actionLabe
       <mesh position={[0,barY,.004]} renderOrder={31}><planeGeometry args={[width,barHeight]}/><meshBasicMaterial color="#25332c" depthTest={false} depthWrite={false}/></mesh>
       <mesh ref={trail} position={[-width*(1-value)/2,barY,.006]} scale={[Math.max(.0001,value),1,1]} renderOrder={32}><planeGeometry args={[width,barHeight]}/><meshBasicMaterial color="#edc16d" depthTest={false} depthWrite={false}/></mesh>
       <mesh ref={fill} position={[-width*(1-value)/2,barY,.008]} scale={[Math.max(.0001,value),1,1]} renderOrder={33}><planeGeometry args={[width,barHeight]}/><meshBasicMaterial color={color} depthTest={false} depthWrite={false}/></mesh>
+      {compact&&ground?<Text position={[0,-.21,.01]} fontSize={.12} color="#f7f2de" anchorX="center" anchorY="middle" renderOrder={34}>{`${Math.round(data.health)} / ${data.maxHealth} HP`}</Text>:null}
       {!compact?<Text position={[-width/2,-.235,.01]} fontSize={.09} color="#f2efdc" anchorX="left" anchorY="middle" renderOrder={34}>{`${Math.round(data.health)} / ${data.maxHealth}`}</Text>:null}
       {!compact?<Text position={[width/2,-.235,.01]} fontSize={.08} maxWidth={1.25} color={color} anchorX="right" anchorY="middle" renderOrder={34}>{data.status}</Text>:null}
       {!compact&&actionLabel?<Text position={[0,-.43,.01]} fontSize={.105} color="#edc16d" anchorX="center" anchorY="middle" renderOrder={34}>{actionLabel}</Text>:null}

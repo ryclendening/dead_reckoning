@@ -5,7 +5,7 @@ import { friendlyAssetsFor, squadronsFor } from '../game/data'
 import { beginNextRound, createEconomyState, executeEconomyCommand, openAdaptPhase } from '../game/economy'
 import { maxEscortRoute } from '../game/escortRoute'
 import { flightRangeFor } from '../game/flightRules'
-import { deriveRecoveryPlanningView, distanceBetween, fieldAtRouteEnd, formationField, isOperationalAirfield, validateRecoveryPackage } from '../game/forwardBasing'
+import { deriveRecoveryPlanningView, distanceBetween, formationField, isOperationalAirfield, transitDestination, validateRecoveryPackage } from '../game/forwardBasing'
 import { snapToHex } from '../game/hex'
 import { OPENING_LOGISTICS, OPENING_RESERVES } from '../game/openingForces'
 import { generateRouteTemplate, templatesForRole, validateGroundStrikeOrder } from '../game/routeTemplates'
@@ -115,11 +115,14 @@ function validateOrderGeometry(match: MatchState, squadron: Squadron) {
     return matchesEscort ? undefined : 'REDRAW THE ESCORT ROUTE FOR THE CURRENT TARGET ORDER'
   }
 
-  const recovered = fieldAtRouteEnd(match.playerAssets, routeIngress)
-  const normalizedIngress = normalize(routeIngress)
-  const directRecovery = normalizedIngress && matchingRoute(route, normalizedIngress) && recovered && isOperationalAirfield(recovered)
-  if (mission === 'transit') return directRecovery ? undefined : 'TRANSIT MUST END AT AN OPERATIONAL AIRFIELD'
-  if (mission === 'search-area' && directRecovery) return undefined
+  if (mission === 'transit') {
+    const destination = match.playerAssets.find(asset => asset.id === squadron.plannedRecoveryFieldId)
+    return destination && transitDestination(squadron, route, destination) && matchingRoute(route, routeIngress)
+      ? undefined : 'TRANSIT MUST END AT THE SELECTED AIRFIELD'
+  }
+
+  if (mission === 'search-area' && squadron.plannedRecoveryFieldId === field.id &&
+      distanceBetween(route.at(-1)!, field.position) <= .001 && matchingRoute(route, routeIngress)) return undefined
 
   const generated = generateRouteTemplate({ template: mission, ingress: routeIngress, maxDistance: flightRangeFor(squadron), bounds })
   const expected = normalize(generated.route)

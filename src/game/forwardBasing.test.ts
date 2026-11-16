@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { createMatch } from './data'
 import { MAX_FLIGHT_DISTANCE } from './engine'
-import { deriveRecoveryPlanningView, deriveRouteBudget, fieldAtRouteEnd, firstRouteFobLatch, formationField, normalizeFormationBasing, routeDistanceForBasing, routeToRecoveryField, validateRecoveryPackage } from './forwardBasing'
+import { deriveRecoveryPlanningView, deriveRouteBudget, formationField, normalizeFormationBasing, routeDistanceForBasing, routeToRecoveryField, validateRecoveryPackage } from './forwardBasing'
 import type { Asset, MatchState, Point } from './types'
 
 const withFob = (position: Point = [0, 0], basedFormationIds: string[] = []): MatchState => {
@@ -29,43 +29,41 @@ describe('forward basing planning model', () => {
     expect(assets.flatMap(asset => asset.basedFormationIds ?? []).filter(id => id === 'raven')).toHaveLength(1)
   })
 
-  it('latches the first crossed FOB and truncates later route points into a landing order', () => {
+  it('keeps a Protect route and its return intact when it passes directly through a FOB', () => {
     const state = withFob([2, 2])
     const base = formationField(state.playerAssets, 'viper')!
-    const route: Point[] = [base.position, [2, 2.5], [8, 8]]
+    const route: Point[] = [base.position, [2, 2], [4, 4]]
     const view = deriveRecoveryPlanningView(state, 'viper', route, MAX_FLIGHT_DISTANCE.fighter)!
-    expect(fieldAtRouteEnd(state.playerAssets, route)).toBeUndefined()
-    expect(firstRouteFobLatch(state.playerAssets, route)?.field.id).toBe('p-fob-1')
-    expect(view.normalizedRoute.at(-1)).toEqual([2, 2])
-    expect(view.normalizedRoute).toHaveLength(2)
-    expect(view.intendedField.id).toBe('p-fob-1')
-    expect(view.summary).toContain('RECOVERY: FOB ALPHA')
+    expect(view.normalizedRoute).toEqual(route)
+    expect(view.intendedField.id).toBe(base.id)
+    expect(view.recoveryRoute).toEqual([[4, 4], base.position])
   })
 
-  it('does not immediately latch the FOB from which the formation launches', () => {
-    const state = withFob([0, 0], ['viper'])
-    const route: Point[] = [[0, 0], [3, 3], [5, 5]]
-    expect(firstRouteFobLatch(state.playerAssets, route)).toBeUndefined()
-    expect(deriveRecoveryPlanningView(state, 'viper', route, MAX_FLIGHT_DISTANCE.fighter)?.intendedField.id).toBe('p-fob-1')
-  })
-
-  it('routes a staged recon home when the home airfield is selected as recovery', () => {
-    const initial = withFob([0, 0], ['raven'])
-    const state = { ...initial, squadrons: initial.squadrons.map(squadron => squadron.id === 'raven' ? { ...squadron, route: [[0, 0]] as Point[], routeIngress: [[0, 0]] as Point[] } : squadron) }
-    const route = routeToRecoveryField(state, 'raven', 'p-base')!
-    expect(route).toEqual([[0, 0], state.playerAssets.find(asset => asset.id === 'p-base')!.position])
-    expect(routeToRecoveryField({ ...state, squadrons: state.squadrons.map(squadron => squadron.id === 'raven' ? { ...squadron, routeIngress: [[0, 0], [8, 8]] as Point[] } : squadron) }, 'raven', 'p-base', true)).toEqual(route)
-    const view = deriveRecoveryPlanningView(state, 'raven', route, MAX_FLIGHT_DISTANCE.recon)
-    expect(view).toMatchObject({ valid: true, intendedField: { id: 'p-base' } })
-  })
-
-  it('keeps nominal range fixed while calculating recovery against launch or destination fields', () => {
-    const state = withFob([0, 0])
+  it('keeps the mission route when a FOB is explicitly selected on the return leg', () => {
+    const state = withFob([2, 2])
     const base = formationField(state.playerAssets, 'viper')!
-    const landing = deriveRecoveryPlanningView(state, 'viper', [base.position, [0, 0]], MAX_FLIGHT_DISTANCE.fighter)!
-    const patrol = deriveRecoveryPlanningView(state, 'viper', [base.position, [0, 0.8]], MAX_FLIGHT_DISTANCE.fighter)!
-    expect(landing.missionDistance).toBeLessThanOrEqual(MAX_FLIGHT_DISTANCE.fighter)
-    expect(patrol.missionDistance).toBeGreaterThan(landing.missionDistance)
+    const squadron=state.squadrons.find(item=>item.id==='viper')!
+    squadron.plannedRecoveryFieldId='p-fob-1'
+    squadron.recoveryWaypoints=[[5, 4]]
+    const route:Point[]=[base.position,[2,2],[4,4]]
+    const view=deriveRecoveryPlanningView(state,squadron.id,route,MAX_FLIGHT_DISTANCE.fighter)!
+    expect(view.normalizedRoute).toEqual(route)
+    expect(view.recoveryRoute).toEqual([[4, 4],[5, 4],[2, 2]])
+    expect(view.intendedField.id).toBe('p-fob-1')
+  })
+
+  it('requires a selected landing field on outbound Transit and preserves points on the way there', () => {
+    const state=withFob([0,0])
+    const squadron=state.squadrons.find(item=>item.id==='viper')!
+    squadron.mission='transit'
+    const base=formationField(state.playerAssets,squadron.id)!
+    const enRoute:Point=[2,2]
+    squadron.routeIngress=[base.position,enRoute]
+    const route=routeToRecoveryField(state,squadron.id,'p-fob-1')!
+    expect(route).toEqual([base.position,enRoute,[0,0]])
+    expect(deriveRecoveryPlanningView(state,squadron.id,route,40)?.intendedField.id).toBe(base.id)
+    squadron.plannedRecoveryFieldId='p-fob-1'
+    expect(deriveRecoveryPlanningView(state,squadron.id,route,40)).toMatchObject({valid:true,recoveryRoute:[],intendedField:{id:'p-fob-1'}})
   })
 
   it('lets recon and a fighter share a FOB, then rejects a third confirmed recovery', () => {
@@ -74,8 +72,11 @@ describe('forward basing planning model', () => {
     const state = { ...initial, squadrons: initial.squadrons.map(squadron => squadron.id === 'viper' ? { ...squadron, route: [base.position, [0, 0]] as Point[], plannedRecoveryFieldId: 'p-fob-1' } : squadron.id === 'falcon' ? { ...squadron, route: [base.position, [0, 0]] as Point[] } : squadron.id === 'raven' ? squadron : { ...squadron, aircraft: 0, strength: 0 }) }
     expect(normalizeFormationBasing(state.squadrons, state.playerAssets).find(asset => asset.id === 'p-fob-1')?.capacity).toBe(2)
     expect(deriveRecoveryPlanningView(state, 'viper', state.squadrons.find(item => item.id === 'viper')!.route, MAX_FLIGHT_DISTANCE.fighter)?.valid).toBe(true)
-    expect(deriveRecoveryPlanningView(state, 'falcon', state.squadrons.find(item => item.id === 'falcon')!.route, MAX_FLIGHT_DISTANCE.fighter)).toMatchObject({ valid: false, reason: 'FOB ALPHA IS AT CAPACITY' })
-    expect(validateRecoveryPackage(state, MAX_FLIGHT_DISTANCE)).toMatchObject({ valid: false })
+    const full={...state,squadrons:state.squadrons.map(squadron=>squadron.id==='falcon'
+      ? {...squadron,plannedRecoveryFieldId:'p-fob-1'}
+      : squadron)}
+    expect(deriveRecoveryPlanningView(full, 'falcon', full.squadrons.find(item => item.id === 'falcon')!.route, MAX_FLIGHT_DISTANCE.fighter)).toMatchObject({ valid: false, reason: 'FOB ALPHA IS AT CAPACITY' })
+    expect(validateRecoveryPackage(full, MAX_FLIGHT_DISTANCE)).toMatchObject({ valid: false })
   })
 
   it('keeps formations at an unusable FOB trapped and out of valid planning', () => {

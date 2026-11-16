@@ -37,56 +37,21 @@ export function formationField(assets: Asset[], formationId: string): Asset | un
   return assets.filter(isAirfield).find(asset => asset.basedFormationIds?.includes(formationId)) ?? assets.find(asset => asset.kind === 'base')
 }
 
-export function fieldAtRouteEnd(assets: Asset[], route: Point[]): Asset | undefined {
+export function transitDestination(squadron: Pick<Squadron, 'mission'>, route: Point[], field: Asset): boolean {
   const end = route.at(-1)
-  if (!end) return undefined
-  return assets.filter(isAirfield).map(asset => ({ asset, distance: distanceBetween(end, asset.position) })).filter(item => item.distance <= AIRFIELD_LANDING_RADIUS).sort((a, b) => a.distance - b.distance || a.asset.id.localeCompare(b.asset.id))[0]?.asset
+  return squadron.mission === 'transit' && !!end && route.length >= 2 && distanceBetween(end, field.position) <= .001
 }
 
-export interface RouteFobLatch { field: Asset; segmentIndex: number; segmentProgress: number }
-
-const segmentDistance = (point: Point, from: Point, to: Point) => {
-  const dx = to[0] - from[0]; const dz = to[1] - from[1]
-  const lengthSquared = dx * dx + dz * dz
-  const progress = lengthSquared <= 1e-9 ? 0 : Math.max(0, Math.min(1, ((point[0] - from[0]) * dx + (point[1] - from[1]) * dz) / lengthSquared))
-  return { distance: distanceBetween(point, [from[0] + dx * progress, from[1] + dz * progress]), progress }
-}
-
-/** Return the first operational FOB crossed by the route, ignoring its launch field. */
-export function firstRouteFobLatch(assets: Asset[], route: Point[]): RouteFobLatch | undefined {
-  if (route.length < 2) return undefined
-  const launchFieldIds = new Set(assets.filter(isAirfield).filter(field => distanceBetween(route[0], field.position) <= AIRFIELD_LANDING_RADIUS).map(field => field.id))
-  const fobs = assets.filter(asset => asset.kind === 'fob' && isOperationalAirfield(asset) && !launchFieldIds.has(asset.id))
-  for (let segmentIndex = 1; segmentIndex < route.length; segmentIndex++) {
-    const matches = fobs.map(field => ({ field, ...segmentDistance(field.position, route[segmentIndex - 1], route[segmentIndex]) })).filter(item => item.distance <= AIRFIELD_LANDING_RADIUS).sort((a, b) => a.progress - b.progress || a.field.id.localeCompare(b.field.id))
-    const first = matches[0]
-    if (first) return { field: first.field, segmentIndex, segmentProgress: first.progress }
-  }
-  return undefined
-}
-
-export function snapRouteToRecoveryField(route: Point[], assets: Asset[]): Point[] {
-  const latch = firstRouteFobLatch(assets, route)
-  if (latch) return [...route.slice(0, latch.segmentIndex), [...latch.field.position] as Point]
-  const field = fieldAtRouteEnd(assets, route)
-  return field && route.length ? [...route.slice(0, -1), [...field.position] as Point] : route
-}
-
-/** End the selected formation's drawn ingress at an airfield instead of applying a patrol/search pattern. */
+/** Build a Transit path to the airfield the player explicitly selected. */
 export function routeToRecoveryField(state: BasingContext, formationId: string, fieldId: string, direct = false): Point[] | undefined {
   const squadron = state.squadrons.find(item => item.id === formationId)
-  const assets = normalizeFormationBasing(state.squadrons, state.playerAssets)
-  const launch = formationField(assets, formationId)
-  const destination = assets.find(asset => asset.id === fieldId && isOperationalAirfield(asset))
+  const launch = formationField(state.playerAssets, formationId)
+  const destination = state.playerAssets.find(asset => asset.id === fieldId && isOperationalAirfield(asset))
   if (!squadron || !launch || !destination) return undefined
   const prior = direct ? [] : squadron.routeIngress.slice(1)
-  const last = prior.at(-1)
-  const previousDestination = last && assets.some(asset => isAirfield(asset) && distanceBetween(last, asset.position) <= AIRFIELD_LANDING_RADIUS)
-  const route: Point[] = [[...launch.position], ...(previousDestination ? prior.slice(0, -1) : prior), [...destination.position]]
-  const snapped = snapRouteToRecoveryField(route, assets)
-  if (fieldAtRouteEnd(assets, snapped)?.id === destination.id) return route
-  const directRoute: Point[] = [[...launch.position], [...destination.position]]
-  return fieldAtRouteEnd(assets, snapRouteToRecoveryField(directRoute, assets))?.id === destination.id ? directRoute : undefined
+  const previousField = state.playerAssets.find(asset => asset.id === squadron.plannedRecoveryFieldId)
+  const hasDestination = previousField && transitDestination(squadron, squadron.routeIngress, previousField)
+  return [[...launch.position], ...(hasDestination ? prior.slice(0, -1) : prior), [...destination.position]]
 }
 
 function projectedOccupants(state: BasingContext, omitFormationId?: string): Map<string, Set<string>> {
@@ -136,16 +101,17 @@ export function deriveRouteBudget(state: BasingContext, formationId: string, rou
   const view = deriveRecoveryPlanningView(state, formationId, route, maxDistance)
   if (!view) return undefined
   const flownDistance = routeDistanceForBasing(view.normalizedRoute)
-  // A FOB latch can truncate the committed route before the drawn ingress
-  // ends; report only the portion that is actually flown.
   const ingressDistance = Math.min(routeDistanceForBasing(routeIngress), flownDistance)
-  const recoveryReserve = Math.max(0, view.missionDistance - flownDistance)
+  const formation=state.squadrons.find(item=>item.id===formationId)
+  const unfinishedTransit=formation?.mission==='transit'&&!formation.plannedRecoveryFieldId
+  const recoveryReserve = unfinishedTransit?0:Math.max(0, view.missionDistance - flownDistance)
+  const missionDistance=flownDistance+recoveryReserve
   return {
     ingressDistance,
     patternDistance: Math.max(0, flownDistance - ingressDistance),
     recoveryReserve,
-    missionDistance: view.missionDistance,
-    remainingRange: Math.max(0, maxDistance - view.missionDistance),
+    missionDistance,
+    remainingRange: Math.max(0, maxDistance - missionDistance),
     maxDistance,
     intendedField: view.intendedField,
     alternateField: view.alternateField,
@@ -166,13 +132,13 @@ export function deriveRecoveryPlanningView(state: BasingContext, formationId: st
   const launchField = formationField(assets, formationId)
   if (!launchField) return undefined
   const formation = state.squadrons.find(item => item.id === formationId)
-  const strike = formation?.mission === 'base-strike'
-  const normalizedRoute = strike ? route : snapRouteToRecoveryField(route, assets)
-  const recognized = strike ? undefined : fieldAtRouteEnd(assets, normalizedRoute)
-  const intendedField = recognized ?? launchField
+  const requestedField = assets.find(asset => asset.id === formation?.plannedRecoveryFieldId && isAirfield(asset))
+  const intendedField = requestedField ?? launchField
+  const normalizedRoute = route
+  const landsOutbound = formation && transitDestination(formation, route, intendedField)
   const flown = routeDistanceForBasing(normalizedRoute)
   const waypoints = formation?.recoveryWaypoints ?? []
-  const recoveryRoute = !recognized && normalizedRoute.length >= 2
+  const recoveryRoute = !landsOutbound && normalizedRoute.length >= 2
     ? recoveryPath(normalizedRoute.at(-1)!, intendedField.position, waypoints)
     : []
   const validRecovery = waypoints.length === 0 || (recoveryRoute.length > 0

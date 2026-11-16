@@ -228,3 +228,29 @@ export function projectGroundAssetAt(asset:Asset,result:RoundResult|undefined,se
     .reduce((sum,exchange)=>sum+exchange.damage,0)
   return damage>0?{...asset,health:Math.max(0,asset.health-damage),struck:true}:asset
 }
+
+/** PvP replays start with each seat's own sites and previously confirmed intelligence. */
+export function projectOnlineGroundReplay(result:RoundResult, seconds:number): {playerAssets:Asset[];enemyAssets:Asset[]} | undefined {
+  const replay=result.groundReplay
+  if(!replay)return undefined
+  const hits=result.combatSequences.filter(sequence=>sequence.kind==='strike').flatMap(sequence=>sequence.exchanges)
+    .filter(shot=>shot.hit&&shot.time<=seconds+.000001).reverse()
+  const applyHits=(asset:Asset,since=-1)=>{
+    const hit=hits.find(shot=>shot.defenderId===asset.id&&shot.time>since+.000001)
+    return hit?{...asset,health:hit.targetStrength,struck:true,operational:hit.targetStrength>0?asset.operational:false}:asset
+  }
+  const enemy=new Map(replay.knownEnemyAtStart.map(asset=>[asset.id,asset]))
+  const latest=new Map<string,typeof replay.enemySightings[number]>()
+  for(const sighting of replay.enemySightings){
+    if(sighting.start>seconds+.000001 || (!enemy.has(sighting.asset.id)&&sighting.end+result.tickSeconds<=seconds))continue
+    const prior=latest.get(sighting.asset.id)
+    if(!prior||prior.start<=sighting.start)latest.set(sighting.asset.id,sighting)
+  }
+  for(const asset of enemy.values()){
+    const sighting=latest.get(asset.id)
+    enemy.set(asset.id,sighting?applyHits({...sighting.asset,intel:asset.intel,confidence:asset.confidence},sighting.start):applyHits(asset))
+    latest.delete(asset.id)
+  }
+  for(const {asset,start} of latest.values())enemy.set(asset.id,applyHits(asset,start))
+  return {playerAssets:replay.friendlyAtStart.map(asset=>applyHits(asset)),enemyAssets:[...enemy.values()]}
+}

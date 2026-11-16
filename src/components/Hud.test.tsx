@@ -57,7 +57,7 @@ describe('mission planning shelf', () => {
     const match = createMatch()
     const markup = renderToStaticMarkup(<CommandShelf
       squadrons={match.squadrons} bases={match.playerAssets} activeBaseId="p-base" rosterMode="closed"
-      squadron={match.squadrons[0]} routeDistance={0} maxDistance={40} onSelect={noop} onBaseSelect={noop}
+      squadron={match.squadrons[0]} onSelect={noop} onBaseSelect={noop}
       onRosterMode={noop} onMission={noop} onClear={noop} onCommit={noop}
       step="idle" onClose={noop} reviewedIds={new Set()} reviewedCount={0} totalCount={4} onlineLock allowEmptyCommit
     />)
@@ -70,7 +70,7 @@ describe('mission planning shelf', () => {
     const fighter = { ...match.squadrons[0], mission: 'base-strike' as const, strikeTargetId: target.id }
     const markup = renderToStaticMarkup(<CommandShelf
       squadrons={match.squadrons} bases={match.playerAssets} activeBaseId="p-base" rosterMode="closed"
-      squadron={fighter} routeDistance={10} maxDistance={40} onSelect={noop} onBaseSelect={noop}
+      squadron={fighter} onSelect={noop} onBaseSelect={noop}
       onRosterMode={noop} onMission={noop} onClear={noop} onCommit={noop}
       step="route" onClose={noop} reviewedIds={new Set()} reviewedCount={0} totalCount={4}
       onRouteLegChange={noop} editingReturn groundTargets={[target]}
@@ -85,7 +85,7 @@ describe('mission planning shelf', () => {
     const fighter = match.squadrons.find(squadron => squadron.role === 'fighter')!
     const markup = renderToStaticMarkup(<CommandShelf
       squadrons={match.squadrons} bases={match.playerAssets} activeBaseId="p-base" rosterMode="closed"
-      squadron={fighter} routeDistance={10} maxDistance={40} onSelect={noop} onBaseSelect={noop}
+      squadron={fighter} onSelect={noop} onBaseSelect={noop}
       onRosterMode={noop} onMission={noop} onClear={noop} onCommit={noop}
       step="mission" onClose={noop} reviewedIds={new Set()} reviewedCount={0} totalCount={4}
     />)
@@ -104,11 +104,11 @@ describe('mission planning shelf', () => {
     const fighter=match.squadrons.find(squadron=>squadron.role==='fighter')!
     const markup=renderToStaticMarkup(<CommandShelf
       squadrons={match.squadrons} bases={match.playerAssets} activeBaseId="p-base" rosterMode="closed"
-      squadron={fighter} routeDistance={10} maxDistance={40} onSelect={noop} onBaseSelect={noop}
+      squadron={fighter} onSelect={noop} onBaseSelect={noop}
       onRosterMode={noop} onMission={noop} onPickProtectTarget={noop} onProtectFlight={noop} onClear={noop} onCommit={noop}
       step="route" onClose={noop} reviewedIds={new Set([match.squadrons.find(item=>item.role==='recon')!.id])} reviewedCount={1} totalCount={4} selectingProtectTarget
     />)
-    expect(markup).toContain('Tap a site or map point.')
+    expect(markup).toContain('Tap a site or map point to defend.')
     expect(markup).toContain('DEFEND AREA')
     expect(markup).toContain('ESCORT FLIGHT')
     expect(markup).toContain('RAVEN 3')
@@ -123,7 +123,7 @@ describe('mission planning shelf', () => {
     const fighter=match.squadrons.find(squadron=>squadron.role==='fighter')!
     const markup=renderToStaticMarkup(<CommandShelf
       squadrons={match.squadrons} bases={match.playerAssets} activeBaseId="p-base" rosterMode="closed"
-      squadron={fighter} routeDistance={10} maxDistance={40} onSelect={noop} onBaseSelect={noop}
+      squadron={fighter} onSelect={noop} onBaseSelect={noop}
       onRosterMode={noop} onMission={noop} onClear={noop} onCommit={noop}
       step="idle" onClose={noop} reviewedIds={new Set([fighter.id])} reviewedCount={1} totalCount={4}
       protectSummary="ESCORT RECON 60% COVERED · 40% UNCOVERED"
@@ -138,7 +138,7 @@ describe('mission planning shelf', () => {
     const recon = match.squadrons.find(squadron => squadron.role === 'recon')!
     const markup = renderToStaticMarkup(<CommandShelf
       squadrons={match.squadrons} bases={match.playerAssets} activeBaseId="p-base" rosterMode="closed"
-      squadron={recon} routeDistance={10} maxDistance={48} onSelect={noop} onBaseSelect={noop}
+      squadron={recon} onSelect={noop} onBaseSelect={noop}
       onRosterMode={noop} onMission={noop} onClear={noop} onCommit={noop}
       step="route" onClose={noop} reviewedIds={new Set()} reviewedCount={0} totalCount={4}
     />)
@@ -159,7 +159,7 @@ describe('mission planning shelf', () => {
       capacity: 2, basedFormationIds: [recon.id] }
     const markup = renderToStaticMarkup(<CommandShelf
       squadrons={match.squadrons} bases={[...match.playerAssets, fob]} activeBaseId={fob.id} rosterMode="closed"
-      squadron={recon} routeDistance={10} maxDistance={48} onSelect={noop} onBaseSelect={noop}
+      squadron={recon} onSelect={noop} onBaseSelect={noop}
       onRosterMode={noop} onMission={noop} onRecoverHome={noop} onClear={noop} onCommit={noop}
       step="route" onClose={noop} reviewedIds={new Set()} reviewedCount={0} totalCount={4}
     />)
@@ -171,7 +171,7 @@ describe('mission planning shelf', () => {
     const fighter = match.squadrons.find(squadron => squadron.role === 'fighter')!
     const markup = renderToStaticMarkup(<CommandShelf
       squadrons={match.squadrons} bases={match.playerAssets} activeBaseId="p-base" rosterMode="closed"
-      squadron={fighter} routeDistance={10} maxDistance={40} onSelect={noop} onBaseSelect={noop}
+      squadron={fighter} onSelect={noop} onBaseSelect={noop}
       onRosterMode={noop} onMission={noop} onClear={noop} onCommit={noop}
       step="mission" onClose={noop} reviewedIds={new Set()} reviewedCount={0} totalCount={4}
       campaign strikeDisabledReason="RECOVER GROUND TARGET INTELLIGENCE FIRST"

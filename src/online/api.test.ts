@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest'
 import { handleOnlineRequest, type MatchStore } from './api'
-import { newOnlineMatch, type OnlineMatch } from './match'
+import { applyOnlineAction, newOnlineMatch, type OnlineMatch } from './match'
 import type { OnlineAction, OnlineEntry, OnlineOrder, OnlineResponse } from './protocol'
 import { generateRouteTemplate } from '../game/routeTemplates'
 import { deriveRecoveryPlanningView } from '../game/forwardBasing'
@@ -58,6 +58,30 @@ function plannedOrder(player: OnlineResponse, destination: Point): OnlineOrder {
 }
 
 describe('invite-only online campaign API', () => {
+  it('locks a Protect pattern over a FOB and validates outbound Transit only at its selected field', () => {
+    const game=newOnlineMatch('0'.repeat(32),hostToken,'ABCD2345',123)
+    const match=game.seats[0].match
+    match.phase='plan'
+    const home=match.playerAssets.find(asset=>asset.kind==='base')!
+    const fob={...home,kind:'fob' as const,id:'p-fob-1',position:[home.position[0]+5,home.position[1]] as Point,basedFormationIds:[]}
+    match.playerAssets.push(fob)
+    const fighter=match.squadrons.find(formation=>formation.role==='fighter')!
+    const generated=generateRouteTemplate({template:'defensive-cap',ingress:[home.position,fob.position],
+      maxDistance:flightRangeFor(fighter),bounds:match.world.presentationBounds})
+    const protect:OnlineOrder={id:fighter.id,mission:'defensive-cap',protectedPoint:fob.position,route:generated.route,
+      routeIngress:generated.ingress,plannedRecoveryFieldId:'p-base'}
+    const result=structuredClone(game)
+    applyOnlineAction(result,0,{type:'lock-plan',orders:[protect]})
+    expect(result.seats[0].match.squadrons.find(formation=>formation.id===fighter.id)).toMatchObject({
+      mission:'defensive-cap',route:generated.route,plannedRecoveryFieldId:'p-base',
+    })
+    const route=[home.position,fob.position]
+    const transit:OnlineOrder={id:fighter.id,mission:'transit',route,routeIngress:route,plannedRecoveryFieldId:home.id}
+    expect(()=>applyOnlineAction(game,0,{type:'lock-plan',orders:[transit]})).toThrow('TRANSIT MUST END AT THE SELECTED AIRFIELD')
+    applyOnlineAction(game,0,{type:'lock-plan',orders:[{...transit,plannedRecoveryFieldId:fob.id}]})
+    expect(game.seats[0].match.squadrons.find(formation=>formation.id===fighter.id)?.plannedRecoveryFieldId).toBe(fob.id)
+  })
+
   it('allocates exactly one guest seat and lets each device recover a lost entry response', async () => {
     const { request } = fixture()
     const host = await fetchEntry(request('matches', { token: hostToken }))

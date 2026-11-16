@@ -21,7 +21,7 @@ import { fighterResponsibilityFor } from '../game/missionResponsibility'
 import { cameraPresentationForPhase, commandMapFitZoomForBounds } from '../game/cameraPresentation'
 import { FOB_PLACEMENT_MAX_TERRITORY_GAP } from '../game/economy'
 import { territoryBounds, territoryRegions } from '../game/territory'
-import { firstRouteFobLatch, MAX_RECOVERY_WAYPOINTS, recoveryPath } from '../game/forwardBasing'
+import { MAX_RECOVERY_WAYPOINTS, recoveryPath, transitDestination } from '../game/forwardBasing'
 import type { ActiveDogfightPresentation, Asset, BoundarySegment, CombatEvent, CombatSequence, ConstructibleAssetKind, EnemyFlight, FriendlyTerritory, Phase, Point, ReinforcementCall, RoundResult, Squadron, UnitFrame, UnitTrack, WeaponEffect, WorldBounds } from '../game/types'
 import { advanceFrameClock, createFrameClock, type FrameClock } from '../game/frameClock'
 import { identifiedAircraftType } from '../game/contactTracks'
@@ -405,12 +405,6 @@ const ResponsibilityOverlay=memo(function ResponsibilityOverlay({squadron,select
   return responsibility.kind==='circle'?<ResponsibilityCircle center={responsibility.center} radius={responsibility.radius} selected={selected}/>:<ResponsibilityCorridor path={responsibility.path} halfWidth={responsibility.halfWidth} selected={selected}/>
 })
 
-function RecoveryLatchCue({position,selected}:{position:Point;selected:boolean}){
-  const pulse=useRef<THREE.Group>(null)
-  useFrame(()=>{if(!pulse.current)return;const phase=(performance.now()/1000)%1.6;const scale=.65+phase/1.6*1.2;pulse.current.scale.setScalar(scale);pulse.current.children.forEach(child=>{const material=(child as THREE.Mesh).material as THREE.MeshBasicMaterial;if(material)material.opacity=(1-phase/1.6)*(selected?.72:.38)})})
-  return <group position={to3(position,.06)}><group ref={pulse}><mesh rotation={[-Math.PI/2,0,0]}><ringGeometry args={[.48,.56,32]}/><meshBasicMaterial color="#9ee6a8" transparent opacity={.65} depthWrite={false}/></mesh><mesh rotation={[-Math.PI/2,0,0]}><ringGeometry args={[.12,.17,24]}/><meshBasicMaterial color="#d7ffe0" transparent opacity={.7} depthWrite={false}/></mesh></group><Billboard position={[0,.42,0]} follow lockZ={false}><Text fontSize={.17} color="#9ee6a8" anchorX="center" outlineWidth={.012} outlineColor="#102015">LATCHED · TRANSIT</Text></Billboard></group>
-}
-
 function Route({squadron,selected,packageReview=false,recoveryLabel,escortRoute=false,showPattern=true,returnRoute}:{squadron:Squadron,selected:boolean,packageReview?:boolean;recoveryLabel?:string;escortRoute?:boolean;showPattern?:boolean;returnRoute?:Point[]}){
   if(squadron.route.length<2)return null
   const ingressLength=Math.min(squadron.routeIngress.length,squadron.route.length),ingress=escortRoute?squadron.route:squadron.route.slice(0,ingressLength),station=squadron.route.slice(Math.max(0,ingressLength-1)),hasStation=station.length>1
@@ -679,9 +673,9 @@ function enemyStatusAt(flight:EnemyFlight,frame:UnitFrame,initialStrength?:numbe
 }
 
 
-export interface BattlefieldProps {cameraMemory?:{current:CameraPoseSnapshot|undefined};squadrons:Squadron[]; assets:Asset[]; playerAssets:Asset[]; mappedAreas:Point[]; discoveredBoundaries?:BoundarySegment[]; presentationBounds?:WorldBounds; planningBounds?:WorldBounds; friendlyTerritory?:FriendlyTerritory; selectedId:string; followId?:string; focusPoint?:Point; focusRequestKey?:number; placementId:string; positionedPlacementIds?:string[]; showDefenseCoverage?:boolean; onPlacementSelect?:(id:string)=>void; planningBaseId?:string; executionBaseId?:string; planningRecoveryFieldId?:string; plannedFormationIds?:string[]; routeOrigin?:Point; editingReturn?:boolean; recoveryRoute?:Point[]; onReturnWaypoints?:(waypoints:Point[])=>boolean|void; routePlanningEnabled?:boolean; lockedPlan?:boolean; showMissionPreview?:boolean; selectingProtectTarget?:boolean; selectingGroundTarget?:boolean; onGroundTargetSelect?:(id:string)=>void; selectedAssetId?:string; inspectedFlightId?:string; onAssetInspect?:(id:string)=>void; onFlightInspect?:(id:string)=>void; escortPreview?:{targetId:string}; phase:Phase; progress:number; activeEvent?:CombatEvent; executionResult?:RoundResult; packageReview?:boolean; economySelectionId?:string; onPlanningBaseSelect?:(id:string)=>void; onPlanningFormationSelect?:(id:string)=>void; onPlanningProtectTarget?:(id:string)=>void; onPlanningProtectPoint?:(point:Point)=>void; onPlanningProtectFlight?:(id:string)=>void; onPlanningRecoverySelect?:(id:string)=>void; onExecutionBaseSelect?:(id:string)=>void; onEconomySelect?:(id:string)=>void; onEconomyFormationSelect?:(id:string)=>void; construction?:{kind:ConstructibleAssetKind;placement?:Point;isValid:(point:Point)=>boolean;onStage:(point:Point)=>void}; isPlacementValid?:(point:Point)=>boolean; onRoute:(route:Point[])=>boolean|void; onPlace:(id:string,position:Point)=>void}
+export interface BattlefieldProps {cameraMemory?:{current:CameraPoseSnapshot|undefined};squadrons:Squadron[]; assets:Asset[]; playerAssets:Asset[]; mappedAreas:Point[]; discoveredBoundaries?:BoundarySegment[]; presentationBounds?:WorldBounds; planningBounds?:WorldBounds; friendlyTerritory?:FriendlyTerritory; selectedId:string; followId?:string; focusPoint?:Point; focusRequestKey?:number; placementId:string; positionedPlacementIds?:string[]; showDefenseCoverage?:boolean; groundAssetsProjected?:boolean; onPlacementSelect?:(id:string)=>void; planningBaseId?:string; executionBaseId?:string; planningRecoveryFieldId?:string; plannedFormationIds?:string[]; routeOrigin?:Point; editingReturn?:boolean; recoveryRoute?:Point[]; onReturnWaypoints?:(waypoints:Point[])=>boolean|void; routePlanningEnabled?:boolean; lockedPlan?:boolean; showMissionPreview?:boolean; selectingProtectTarget?:boolean; selectingGroundTarget?:boolean; onGroundTargetSelect?:(id:string)=>void; selectedAssetId?:string; inspectedFlightId?:string; onAssetInspect?:(id:string)=>void; onFlightInspect?:(id:string)=>void; escortPreview?:{targetId:string}; phase:Phase; progress:number; activeEvent?:CombatEvent; executionResult?:RoundResult; packageReview?:boolean; economySelectionId?:string; onPlanningBaseSelect?:(id:string)=>void; onPlanningFormationSelect?:(id:string)=>void; onPlanningProtectTarget?:(id:string)=>void; onPlanningProtectPoint?:(point:Point)=>void; onPlanningProtectFlight?:(id:string)=>void; onPlanningRecoverySelect?:(id:string)=>void; onExecutionBaseSelect?:(id:string)=>void; onEconomySelect?:(id:string)=>void; onEconomyFormationSelect?:(id:string)=>void; construction?:{kind:ConstructibleAssetKind;placement?:Point;isValid:(point:Point)=>boolean;onStage:(point:Point)=>void}; isPlacementValid?:(point:Point)=>boolean; onRoute:(route:Point[])=>boolean|void; onPlace:(id:string,position:Point)=>void}
 type BattlefieldSceneProps=BattlefieldProps&{poseMemory:{current:CameraPoseSnapshot|undefined}}
-function BattlefieldScene({squadrons,assets,playerAssets,mappedAreas,presentationBounds,planningBounds,friendlyTerritory,selectedId,followId,focusPoint,focusRequestKey,placementId,positionedPlacementIds,showDefenseCoverage=true,onPlacementSelect,planningBaseId,executionBaseId,planningRecoveryFieldId,plannedFormationIds=[],routeOrigin,editingReturn=false,recoveryRoute,onReturnWaypoints,routePlanningEnabled=false,lockedPlan=false,showMissionPreview=false,selectingProtectTarget=false,selectingGroundTarget=false,onGroundTargetSelect,selectedAssetId,inspectedFlightId,onAssetInspect,onFlightInspect,escortPreview,phase,progress,activeEvent,executionResult,packageReview,economySelectionId,onPlanningBaseSelect,onPlanningFormationSelect,onPlanningProtectTarget,onPlanningProtectPoint,onPlanningProtectFlight,onPlanningRecoverySelect,onExecutionBaseSelect,onEconomySelect,onEconomyFormationSelect,construction,isPlacementValid,onRoute,onPlace,poseMemory}:BattlefieldSceneProps){
+function BattlefieldScene({squadrons,assets,playerAssets,mappedAreas,presentationBounds,planningBounds,friendlyTerritory,selectedId,followId,focusPoint,focusRequestKey,placementId,positionedPlacementIds,showDefenseCoverage=true,groundAssetsProjected=false,onPlacementSelect,planningBaseId,executionBaseId,planningRecoveryFieldId,plannedFormationIds=[],routeOrigin,editingReturn=false,recoveryRoute,onReturnWaypoints,routePlanningEnabled=false,lockedPlan=false,showMissionPreview=false,selectingProtectTarget=false,selectingGroundTarget=false,onGroundTargetSelect,selectedAssetId,inspectedFlightId,onAssetInspect,onFlightInspect,escortPreview,phase,progress,activeEvent,executionResult,packageReview,economySelectionId,onPlanningBaseSelect,onPlanningFormationSelect,onPlanningProtectTarget,onPlanningProtectPoint,onPlanningProtectFlight,onPlanningRecoverySelect,onExecutionBaseSelect,onEconomySelect,onEconomyFormationSelect,construction,isPlacementValid,onRoute,onPlace,poseMemory}:BattlefieldSceneProps){
   const selected=squadrons.find(s=>s.id===selectedId)!
   const playerBase=playerAssets.find(a=>a.kind==='base')?.position??[-7.8,11.2]
   const resolvedTerritory=useMemo<FriendlyTerritory>(()=>friendlyTerritory??{center:playerBase,radius:4.5},[friendlyTerritory,playerBase[0],playerBase[1]])
@@ -699,6 +693,8 @@ function BattlefieldScene({squadrons,assets,playerAssets,mappedAreas,presentatio
   const [activeWaypoint,setActiveWaypoint]=useState<number>()
   useEffect(()=>{if(!construction)setConstructionHover(undefined)},[construction])
   const draft=useRef<Point[]>([])
+  const transitField=playerAssets.find(asset=>asset.id===selected.plannedRecoveryFieldId)
+  const fixedTransitEnd=!!transitField&&transitDestination(selected,selected.routeIngress,transitField)
   const editPath=editingReturn?recoveryRoute:selected.routeIngress
   useEffect(()=>{draft.current=[];setActiveWaypoint(undefined)},[selectedId,routePlanningEnabled,editingReturn,phase])
   useEffect(()=>{if(draft.current.length>0)draft.current=editPath?.map(point=>[...point] as Point)??[]},[editPath])
@@ -707,7 +703,6 @@ function BattlefieldScene({squadrons,assets,playerAssets,mappedAreas,presentatio
   const friendlyProjections=useMemo(()=>new globalThis.Map(phase==='execute'?squadrons.flatMap(squadron=>{const projection=projectFriendlyUnitAt(executionResult,squadron.id,seconds);return projection?[[squadron.id,projection] as const]:[]}):[]),[executionResult,phase,seconds,squadrons])
   const hostileProjections=useMemo(()=>new globalThis.Map(phase==='execute'?(executionResult?.enemyFlights??[]).flatMap(flight=>{const projection=projectHostileUnitAt(executionResult,flight.id,seconds);return projection?[[flight.id,projection] as const]:[]}):[]),[executionResult,phase,seconds])
   const selectedFrame=friendlyProjections.get(selected.id)?.frame
-  const routeFobLatch=useMemo(()=>phase==='plan'&&selected.mission!=='base-strike'?firstRouteFobLatch(playerAssets,selected.route):undefined,[phase,playerAssets,selected.route,selected.mission])
   const followSquadron=followId?squadrons.find(s=>s.id===followId):undefined
   const followFrame=followId?(friendlyProjections.get(followId)?.frame??hostileProjections.get(followId)?.frame):undefined
   const followingDogfight=phase==='execute'&&followFrame?.mode==='dogfighting'
@@ -727,8 +722,8 @@ function BattlefieldScene({squadrons,assets,playerAssets,mappedAreas,presentatio
     if(!frame||frame.aircraft<=0||frame.mode==='recovered'||frame.mode==='trapped')return []
     return [{position:frame.position,radius:squadron.role==='recon'?2.7:1.45}]
   }):[]
-  const displayedPlayerAssets=playerAssets.map(asset=>phase==='execute'?projectGroundAssetAt(asset,executionResult,seconds):asset)
-  const displayedEnemyAssets=assets.map(asset=>{const timed=phase==='execute'?projectGroundAssetAt(asset,executionResult,seconds):asset;return observedAssetIds.has(asset.id)&&timed.intel==='unknown'?{...timed,intel:'probable' as const,confidence:70,hidden:false}:timed})
+  const displayedPlayerAssets=playerAssets.map(asset=>phase==='execute'&&!groundAssetsProjected?projectGroundAssetAt(asset,executionResult,seconds):asset)
+  const displayedEnemyAssets=assets.map(asset=>{const timed=phase==='execute'&&!groundAssetsProjected?projectGroundAssetAt(asset,executionResult,seconds):asset;return observedAssetIds.has(asset.id)&&timed.intel==='unknown'?{...timed,intel:'probable' as const,confidence:70,hidden:false}:timed})
   const recoveryById=useMemo(()=>new globalThis.Map((executionResult?.recoveryOutcomes??[]).map(outcome=>[outcome.formationId,outcome])),[executionResult])
   const friendlyDefenseSites=phase==='deploy'&&positionedPlacementIds
     ? displayedPlayerAssets.filter(asset=>positionedPlacementIds.includes(asset.id))
@@ -759,7 +754,12 @@ function BattlefieldScene({squadrons,assets,playerAssets,mappedAreas,presentatio
     const airfield=asset.kind==='base'||asset.kind==='fob'
     if(phase==='deploy'){onPlacementSelect?.(asset.id);return}
     if(phase==='plan'&&selectingProtectTarget){onPlanningProtectTarget?.(asset.id);return}
-    if(phase==='plan'&&routePlanningEnabled&&airfield){if(!editingReturn&&selected.mission!=='base-strike')onPlanningRecoverySelect?.(asset.id);return}
+    if(phase==='plan'&&routePlanningEnabled){
+      if(airfield&&(editingReturn||selected.mission==='transit')){onPlanningRecoverySelect?.(asset.id);return}
+      if(!editingReturn&&selected.mission==='defensive-cap'){onPlanningProtectTarget?.(asset.id);return}
+      onAssetInspect?.(asset.id)
+      return
+    }
     if(phase==='plan'&&airfield)onPlanningBaseSelect?.(asset.id)
     if(phase==='execute'&&airfield)onExecutionBaseSelect?.(asset.id)
     if(phase==='adapt'){if(!construction)onEconomySelect?.(asset.id);return}
@@ -794,7 +794,7 @@ function BattlefieldScene({squadrons,assets,playerAssets,mappedAreas,presentatio
   }
   const moveWaypoint=(routeIndex:number,point:Point)=>{
     startDraft()
-    if(routeIndex<=0||routeIndex>=draft.current.length-Number(editingReturn))return false
+    if(routeIndex<=0||routeIndex>=draft.current.length-Number(editingReturn||fixedTransitEnd))return false
     const next=draft.current.map(item=>[...item] as Point)
     next[routeIndex]=point
     if(!applyDraft(next))return false
@@ -807,16 +807,16 @@ function BattlefieldScene({squadrons,assets,playerAssets,mappedAreas,presentatio
     const point=mapPoint(e)
     if(selectingProtectTarget){onPlanningProtectPoint?.(point);return}
     startDraft()
-    if(activeWaypoint!==undefined&&activeWaypoint<draft.current.length-Number(editingReturn)){moveWaypoint(activeWaypoint,point);return}
+    if(activeWaypoint!==undefined&&activeWaypoint<draft.current.length-Number(editingReturn||fixedTransitEnd)){moveWaypoint(activeWaypoint,point);return}
     if(activeWaypoint!==undefined)setActiveWaypoint(undefined)
-    const fixedEnd=editingReturn||selected.mission==='base-strike'
+    const fixedEnd=editingReturn||fixedTransitEnd||selected.mission==='base-strike'
     const limit=editingReturn?MAX_RECOVERY_WAYPOINTS+2:fixedEnd?7:6
     if(draft.current.length>=limit||(fixedEnd&&draft.current.length<2))return
     const next=fixedEnd?[...draft.current.slice(0,-1),point,draft.current.at(-1)!]:[...draft.current,point]
     applyDraft(next)
   }
   const mapMove=(e:ThreeEvent<PointerEvent>)=>{if(phase==='adapt'&&construction){const hit=e.ray.intersectPlane(groundPlane,new THREE.Vector3());setConstructionHover(snapToHex(hit?[hit.x,hit.z]:[e.point.x,e.point.z]))}}
-  const editableWaypoints=editingReturn?(recoveryRoute??[]).slice(1,-1).map((position,index)=>({position,routeIndex:index+1,label:`R${index+1}`,release:false})):selected.mission==='base-strike'?selected.routeIngress.slice(1).map((position,index,array)=>({position,routeIndex:index+1,label:index===array.length-1?'S':String(index+1),release:index===array.length-1})):selected.routeIngress.slice(1,6).map((position,index)=>({position,routeIndex:index+1,label:String(index+1),release:false}))
+  const editableWaypoints=editingReturn?(recoveryRoute??[]).slice(1,-1).map((position,index)=>({position,routeIndex:index+1,label:`R${index+1}`,release:false})):selected.mission==='base-strike'?selected.routeIngress.slice(1).map((position,index,array)=>({position,routeIndex:index+1,label:index===array.length-1?'S':String(index+1),release:index===array.length-1})):selected.routeIngress.slice(1,fixedTransitEnd?-1:6).map((position,index)=>({position,routeIndex:index+1,label:String(index+1),release:false}))
   return <>
     <CameraRig phase={phase} friendlyTerritory={resolvedTerritory} planningBounds={resolvedPlanningBounds} presentationBounds={resolvedPresentationBounds} focusPoint={cameraFocus} focusRequestKey={focusRequestKey} followKey={followId} poseMemory={poseMemory}/>
     <color attach="background" args={['#11140f']}/><fog attach="fog" args={['#11140f',34,60]}/>
@@ -828,12 +828,11 @@ function BattlefieldScene({squadrons,assets,playerAssets,mappedAreas,presentatio
     {displayedPlayerAssets.map(a=>{const chosen=a.id===selectedAssetId||phase==='deploy'&&a.id===placementId||phase==='plan'&&a.id===planningBaseId||phase==='execute'&&a.id===executionBaseId||phase==='adapt'&&a.id===economySelectionId;return a.kind==='base'||a.kind==='fob'||a.kind==='decoy'?<Runway key={a.id} asset={a} selected={chosen} onSelect={()=>selectFriendlyAsset(a)}/>:<Defense key={a.id} asset={a} enemy={false} selected={chosen} missiles={samStatusForPhase(a.id,phase,executionResult?.weaponEffects,seconds,a).remaining} onSelect={()=>selectFriendlyAsset(a)}/>})}
     {phase==='plan'||phase==='adapt'&&!construction?formationBaseGroups(squadrons,playerAssets).map(group=><AirfieldFormationPips key={`airfield-pips-${group.base.id}`} base={group.base} formations={group.formationIds.flatMap(id=>squadrons.find(item=>item.id===id)??[])} selectedId={phase==='adapt'?economySelectionId??'':selectedId} plannedFormationIds={phase==='adapt'?[]:plannedFormationIds} selectingProtectTarget={selectingProtectTarget} resupply={phase==='adapt'} readOnly={lockedPlan} onSelect={id=>phase==='adapt'?onEconomyFormationSelect?.(id):selectingProtectTarget?onPlanningProtectFlight?.(id):onPlanningFormationSelect?.(id)}/>):null}
     {displayedEnemyAssets.map(a=>{const chosen=a.id===selectedAssetId||selectingGroundTarget&&a.intel==='confirmed'||a.id===assignedStrike?.id;return (a.kind==='base'||a.kind==='fob'||a.kind==='decoy')&&a.intel!=='unknown'?<Runway key={a.id} asset={a} enemy selected={chosen} onSelect={()=>selectEnemyAsset(a)}/>:<Defense key={a.id} asset={a} selected={chosen} missiles={samStatusForPhase(a.id,phase,executionResult?.weaponEffects,seconds,a).remaining} onSelect={()=>selectEnemyAsset(a)}/>})}
-    {[...displayedPlayerAssets.map(asset=>({asset,enemy:false})),...displayedEnemyAssets.map(asset=>({asset,enemy:true}))].map(({asset,enemy})=>{const data=assetCardData(asset,enemy,phase,executionResult,seconds);return data?<group key={`${asset.id}-card`} position={to3(asset.position,.1)}><UnitCard3D data={data} color={enemy?asset.intel==='confirmed'?hostile:amber:friendly} position={[0,.88,asset.kind==='base'||asset.kind==='fob'?1:.3]} selected={asset.id===selectedAssetId||enemy&&asset.id===assignedStrike?.id} actionLabel={enemy&&asset.id===assignedStrike?.id?'STRIKE TARGET ASSIGNED':enemy&&selectingGroundTarget&&asset.intel==='confirmed'&&asset.health>0?'CLICK TO STRIKE':undefined} onSelect={()=>enemy?selectEnemyAsset(asset):selectFriendlyAsset(asset)}/></group>:null})}
+    {[...displayedPlayerAssets.map(asset=>({asset,enemy:false})),...displayedEnemyAssets.map(asset=>({asset,enemy:true}))].map(({asset,enemy})=>{const data=assetCardData(asset,enemy,phase,executionResult,seconds);return data?<group key={`${asset.id}-card`} position={to3(asset.position,.1)}><UnitCard3D ground data={data} color={enemy?asset.intel==='confirmed'?hostile:amber:friendly} position={[0,.88,asset.kind==='base'||asset.kind==='fob'?1:.3]} selected={asset.id===selectedAssetId||enemy&&asset.id===assignedStrike?.id} actionLabel={enemy&&asset.id===assignedStrike?.id?'STRIKE TARGET ASSIGNED':enemy&&selectingGroundTarget&&asset.intel==='confirmed'&&asset.health>0?'CLICK TO STRIKE':undefined} onSelect={()=>enemy?selectEnemyAsset(asset):selectFriendlyAsset(asset)}/></group>:null})}
 
-    {phase==='plan'&&(showMissionPreview||plannedFormationIds.includes(selected.id))&&selected.route.length>=2&&!planningRecoveryFieldId&&!selected.protectedTargetId?<ResponsibilityOverlay squadron={selected} protectedPosition={selected.protectedPoint} selected/>:phase==='execute'&&followId&&!followingDogfight?squadrons.filter(s=>s.id===followId).map(s=>{const protectedId=s.protectedTargetId;const protectedPosition=protectedId?friendlyProjections.get(protectedId)?.frame.position:s.protectedPoint;return <ResponsibilityOverlay key={`${s.id}-responsibility`} squadron={s} protectedPosition={protectedPosition} selected/>}):null}
+    {phase==='plan'&&(showMissionPreview||plannedFormationIds.includes(selected.id))&&selected.route.length>=2&&!selected.protectedTargetId?<ResponsibilityOverlay squadron={selected} protectedPosition={selected.protectedPoint} selected/>:phase==='execute'&&followId&&!followingDogfight?squadrons.filter(s=>s.id===followId).map(s=>{const protectedId=s.protectedTargetId;const protectedPosition=protectedId?friendlyProjections.get(protectedId)?.frame.position:s.protectedPoint;return <ResponsibilityOverlay key={`${s.id}-responsibility`} squadron={s} protectedPosition={protectedPosition} selected/>}):null}
     {phase==='plan'&&routePlanningEnabled&&!selectingProtectTarget?editableWaypoints.map(({position,routeIndex,label,release})=><RouteWaypoint key={`${selected.id}-waypoint-${routeIndex}`} position={position} index={label} release={release} returnLeg={editingReturn} selected={activeWaypoint===routeIndex} onSelect={()=>selectWaypoint(routeIndex)} onMove={point=>moveWaypoint(routeIndex,point)}/>):null}
     {phase==='plan'&&showMissionPreview&&selected.mission==='base-strike'&&selected.routeIngress.length>=2?<><group position={to3(selected.routeIngress[0],.18)}><Ring radius={.3} color="#7ceaf0" opacity={.9}/><Text position={[0,.35,0]} fontSize={.2} rotation={[-Math.PI/2,0,0]} color="#7ceaf0">TAKEOFF · FIXED</Text></group><Billboard position={to3([selected.routeIngress.at(-1)![0],selected.routeIngress.at(-1)![1]+.38],.19)} follow lockZ={false}><Text fontSize={.17} color="#edc16d" anchorX="center" outlineWidth={.012} outlineColor="#21190a">{editingReturn||lockedPlan?'STRIKE POINT':'STRIKE POINT · DRAG TO MOVE'}</Text></Billboard></>:null}
-    {phase==='plan'&&showMissionPreview&&(planningRecoveryFieldId||routeFobLatch)?(()=>{const field=planningRecoveryFieldId?playerAssets.find(asset=>asset.id===planningRecoveryFieldId):routeFobLatch?.field;return field?<RecoveryLatchCue position={field.position} selected={Boolean(planningRecoveryFieldId)}/>:null})():null}
     {phase==='plan'&&(routePlanningEnabled||showMissionPreview)?<Route squadron={selected} selected packageReview={packageReview} showPattern={false} returnRoute={recoveryRoute} escortRoute={showMissionPreview&&escortPreview?.targetId===selected.id} recoveryLabel={showMissionPreview&&planningRecoveryFieldId?playerAssets.find(asset=>asset.id===planningRecoveryFieldId)?.name??'HOME BASE':undefined}/>:phase==='execute'&&followId&&!followingDogfight?squadrons.filter(s=>s.id===followId).map(s=>{
       const field=playerAssets.find(asset=>asset.id===(recoveryById.get(s.id)?.plannedFieldId??s.plannedRecoveryFieldId))
       const end=s.route.at(-1)

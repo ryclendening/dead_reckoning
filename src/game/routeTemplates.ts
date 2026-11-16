@@ -38,7 +38,7 @@ export function groundStrikeRoute(anchors:Point[],waypoints:Point[],releasePoint
 }
 
 /** Shared geometry and payload-role validation; callers supply only authorized target knowledge. */
-export function validateStrikeGeometry(squadron:Squadron,launch:Asset|undefined,target:Pick<Asset,'position'>|undefined):string|undefined {
+export function validateStrikeGeometry(squadron:Squadron,launch:Asset|undefined,target:Pick<Asset,'position'>|undefined,recoveryField=launch):string|undefined {
   if(squadron.mission!=='base-strike')return undefined
   if(!target)return 'SELECT A CONFIRMED GROUND TARGET'
   if(squadron.role!=='fighter')return 'GROUND STRIKE REQUIRES A FIGHTER'
@@ -46,12 +46,12 @@ export function validateStrikeGeometry(squadron:Squadron,launch:Asset|undefined,
   const route=squadron.route
   if(route.length<2||route.length>7||distance(route[0],launch.position)>.001)return 'KEEP THE FIXED TAKEOFF POINT'
   if(distance(route.at(-1)!,target.position)>BASE_STRIKE_RANGE+.001)return 'KEEP THE STRIKE POINT INSIDE THE 6-UNIT RELEASE CIRCLE'
-  const recovery = recoveryPath(route.at(-1)!, launch.position, squadron.recoveryWaypoints)
+  const recovery = recoveryPath(route.at(-1)!, recoveryField?.position??launch.position, squadron.recoveryWaypoints)
   if(routeDistanceForBasing(route)+routeDistanceForBasing(recovery)>flightRangeFor(squadron)+.001)return 'GROUND STRIKE ROUTE EXCEEDS AVAILABLE RANGE'
   return undefined
 }
 export function validateGroundStrikeOrder(state:MatchState,squadron:Squadron):string|undefined {
-  return validateStrikeGeometry(squadron,formationField(state.playerAssets,squadron.id),selectedStrikeTarget(state,squadron.strikeTargetId))
+  return validateStrikeGeometry(squadron,formationField(state.playerAssets,squadron.id),selectedStrikeTarget(state,squadron.strikeTargetId),state.playerAssets.find(asset=>asset.id===squadron.plannedRecoveryFieldId&&(asset.kind==='base'||asset.kind==='fob')))
 }
 
 const distance=(a:Point,b:Point)=>Math.hypot(a[0]-b[0],a[1]-b[1])
