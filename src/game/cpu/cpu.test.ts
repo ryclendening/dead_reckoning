@@ -158,7 +158,7 @@ describe('CPU execution and persistence', () => {
       squadrons: state.squadrons.map(s => ({ ...s, sortieOrdered: s.role === 'recon', route: [launch, launch], routeIngress: [launch, launch] })), cpu: { ...state.cpu!, plan: undefined } }
     state.enemyAssets = state.enemyAssets.map(a => a.kind === 'radar' ? { ...a, position: home } : a)
     state = prepareCpuRound(state)
-    const route:[number,number][]=[home,[home[0]+.1,home[1]]]
+    const route:[number,number][]=[home,[home[0]+.45,home[1]]]
     state.cpu!.plan!.orders=state.cpu!.plan!.orders.map(o=>o.role==='fighter'?{...o,mission:'defensive-cap',protectedPoint:home,protectedTargetId:undefined,sortieOrdered:true,route,routeIngress:route,plannedRecoveryFieldId:'e-base'}:{...o,sortieOrdered:false})
     const result = resolveRound(state)
     expect(result.interceptPlans.some(p => p.squadronId === 'red-fighter' && p.source === 'radar')).toBe(true)

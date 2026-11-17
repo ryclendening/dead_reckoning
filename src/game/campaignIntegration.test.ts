@@ -4,7 +4,6 @@ import { beginNextRound, executeEconomyCommand, openAdaptPhase } from './economy
 import { confirmCampaignSetup, validateCampaignSetup } from './campaignSetup'
 import { createCampaignDraft } from './data'
 import { deriveRecoveryPlanningView, validateRecoveryPackage } from './forwardBasing'
-import { deriveKnownEnvelope, derivePlanningEnvelope } from './world'
 import { buildGroundStrikeRoute, generateRouteTemplate, validateGroundStrikeOrder } from './routeTemplates'
 import { campaignOutcome, confirmedStrikeTarget } from './campaign'
 import { normalizeMatch } from './persistence'
@@ -27,19 +26,10 @@ function openingPackage(seed: number): MatchState {
     asset.kind === 'radar' ? { ...asset, operational: false } : asset) })
 }
 
-function searchFrontier(state: MatchState): Point {
-  const bounds = derivePlanningEnvelope(deriveKnownEnvelope(state.world, state.mappedAreas, state.discoveredBoundaries, state.world.friendlyTerritory))
-  const [homeX, homeZ] = state.world.friendlyTerritory.center
-  const oppositeX = homeX >= 0 ? -1 : 1
-  const oppositeZ = homeZ >= 0 ? -1 : 1
-  return [oppositeX < 0 ? bounds.minX + .25 : bounds.maxX - .25, oppositeZ < 0 ? bounds.minZ + .25 : bounds.maxZ - .25]
-}
-
 function planRound(input: MatchState): MatchState {
   const state = { ...input, squadrons: input.squadrons.map(squadron => ({ ...squadron })) }
-  const bounds = derivePlanningEnvelope(deriveKnownEnvelope(state.world, state.mappedAreas, state.discoveredBoundaries, state.world.friendlyTerritory))
+  const bounds = state.world.presentationBounds
   const target = confirmedStrikeTarget(state)
-  const frontier = searchFrontier(state)
   state.squadrons = state.squadrons.map(squadron => {
     if (squadron.aircraft <= 0 || squadron.status === 'trapped') return squadron
     // Once coordinates are recovered, keep recon grounded instead of repeatedly crossing a live SAM.
@@ -53,8 +43,13 @@ function planRound(input: MatchState): MatchState {
     }
 
     const origin = state.playerAssets.find(asset => asset.kind === 'base')!.position
+    // Authored route for this seeded layout, clipped short of the enemy field.
+    const enemy = state.enemyAssets.find(asset => asset.kind === 'base')!.position
+    const approach = Math.hypot(origin[0]-enemy[0],origin[1]-enemy[1])
+    const dx = (origin[0]-enemy[0])/approach, dz = (origin[1]-enemy[1])/approach
+    const reconPoint: Point = [enemy[0]+dz*3.65, enemy[1]-dx*3.65]
     const ingress = squadron.role === 'recon'
-      ? [[...origin] as Point, frontier]
+      ? [origin, reconPoint]
       : [[...origin] as Point, [origin[0] + (state.world.friendlyTerritory.center[0] >= 0 ? -1 : 1) * 1.5, origin[1]] as Point]
     const generated = generateRouteTemplate({
       template: squadron.role === 'recon' ? 'search-area' : 'defensive-cap',

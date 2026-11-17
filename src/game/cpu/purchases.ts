@@ -27,7 +27,8 @@ function commands(view:CpuPlanningView):EconomyCommand[] {
     const available=ctx.formations.filter(f=>f.role===role&&f.aircraft>0&&f.status!=='trapped').length
     if(available===0)filtered.push(economyCommandForQuote(ctx,quote))
   }
-  for(const kind of ['sam','aaa','fob'] as const) {
+  for(const kind of ['sam','aaa','radar','fob'] as const) {
+    if(!campaignQuotes.some(quote=>quote.id===`build-${kind}`&&quote.eligible))continue
     const ranked=legalPlacements(view,kind).map(p=>{const effects=kind==='fob'?undefined:defenseBenefits(view,p,kind);return {p,value:effects?effects.coverage*observedThreat(view)+effects.reconDenial+effects.opponentAttrition:forwardValue(view,p)?.gain??0}}).filter(c=>c.value>0)
       .sort((a,b)=>b.value-a.value||a.p[0]-b.p[0]||a.p[1]-b.p[1]).slice(0,2)
     for(const {p} of ranked)if(validateAssetPlacement(ctx,kind,p).valid)filtered.push({actionId:`build-${kind}`,target:{kind:'campaign',id:'campaign'},placement:p,expectedLogistics:ctx.logistics})
@@ -104,9 +105,8 @@ export function planPurchases(view:CpuPlanningView):ReturnType<typeof choosePack
       const current=withContext(view,node.ctx)
       return commands(current).flatMap(command=>{
         const next=executeEconomyCommand(node.ctx,command);if(next===node.ctx)return []
-        const kind=command.actionId==='build-sam'?'sam':command.actionId==='build-aaa'?'aaa':undefined
-        const restored=command.actionId==='repair-defense'&&node.ctx.assets.some(a=>a.id===command.target.id&&a.health<=0&&a.operational!==false)
-        const effects=kind||restored?defenseNetworkBenefits(current,next.assets):{coverage:0,reconDenial:0,opponentAttrition:0}
+        const changesDefense=['build-sam','build-aaa','build-radar'].includes(command.actionId)
+        const effects=changesDefense?defenseNetworkBenefits(current,next.assets):{coverage:0,reconDenial:0,opponentAttrition:0}
         const forward=command.actionId==='build-fob'&&command.placement?forwardValue(current,command.placement)?.gain??0:0
         return [{ctx:next,commands:[...node.commands,command],coverage:node.coverage+effects.coverage,forward:Math.max(node.forward,forward),reconDenial:Math.min(1,node.reconDenial+effects.reconDenial),opponentAttrition:Math.min(1,node.opponentAttrition+effects.opponentAttrition)}]
       })

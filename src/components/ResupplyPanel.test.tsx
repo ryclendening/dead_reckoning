@@ -30,7 +30,7 @@ describe('Resupply',()=>{
     match.playerAssets=match.playerAssets.map(asset=>asset.id==='p-sam'?{...asset,health:75}:asset)
     const sam=render(match,{kind:'asset',id:'p-sam'})
     expect(sam).toContain('75 / 100 HP')
-    expect(sam).toContain('SAM damage is permanent.')
+    expect(sam).toContain('3/3 MSL')
     expect(sam).not.toContain('REPAIR SAM')
     expect(sam).not.toContain('Repairs and replacements')
     expect(sam).not.toContain('MAINTENANCE WING')
@@ -50,6 +50,13 @@ describe('Resupply',()=>{
     expect(flight).toContain('Strength 30 → 50 (+20)')
     expect(flight).toContain('$10M</strong>')
     expect(flight).not.toContain('UPGRADES')
+  })
+
+  it('allows planning with no aircraft and no cash',()=>{
+    const match=state()
+    match.logistics=0
+    match.squadrons=match.squadrons.map(formation=>({...formation,aircraft:0,strength:0}))
+    expect(render(match)).toContain('class="adapt-next">Plan round 2')
   })
 
   it('opens the purchase catalog on Aircraft and lists reinforcement prices',()=>{
@@ -74,6 +81,8 @@ describe('Resupply',()=>{
     expect(catalog).toContain('BUILD DECOY')
     expect(catalog).toContain('BUILD AAA')
     expect(catalog).toContain('BUILD SAM')
+    expect(catalog).toContain('BUILD RADAR')
+    expect(catalog).toContain('$180M</strong>')
     expect(catalog).not.toContain('Buy fighter formation')
     expect(catalog).not.toContain('Buy recon formation')
   })

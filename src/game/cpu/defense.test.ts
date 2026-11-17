@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest'
 import { CAMPAIGN_ROUND_LIMIT } from '../campaign'
 import { createMatch } from '../data'
+import { LOGISTICS_COSTS } from '../economyRules'
 import { resolveRound, applyRound } from '../engine'
 import { normalizeMatch } from '../persistence'
 import { validateAssetPlacement } from '../sideEconomy'
@@ -32,14 +33,16 @@ function strike(s:MatchState):MatchState {
 }
 
 describe('territory-aware defensive capabilities',()=>{
-  it('can restore an offline radar when it makes existing SAM cover useful against an observed strike approach',()=>{
+  it('can replace a destroyed radar to extend existing SAM coverage',()=>{
     const s=fixture()
     const base=s.enemyAssets[0]
-    s.cpu!.logistics=2
+    s.cpu!.logistics=LOGISTICS_COSTS.radarConstruction
+    base.upgrades=['supply-depot']
     s.enemyAssets.push({...base,id:'e-sam',kind:'sam',position:[3,0],health:100},{...base,id:'e-radar',kind:'radar',position:[3,1],health:0})
     const restored=maintainCpu(s),after=cpuPlanningView(restored)!
-    expect(restored.cpu!.spending).toMatchObject([{action:'repair-defense',targetId:'e-radar'}])
-    expect(after.assets.find(a=>a.id==='e-radar')?.health).toBe(25)
+    expect(restored.cpu!.spending).toMatchObject([{action:'build-radar'}])
+    expect(after.assets.find(a=>a.id==='e-radar')?.health).toBe(0)
+    expect(after.assets.filter(a=>a.kind==='radar'&&a.health>0)).toHaveLength(1)
     expect(residualApproachRisk(after)).toBeLessThan(residualApproachRisk(cpuPlanningView(s)!))
   })
 
@@ -65,7 +68,9 @@ describe('territory-aware defensive capabilities',()=>{
   })
 
   it.each([0,Math.PI/2,-Math.PI/2])('selects a complete defensive FOB and weapon on observed bearing %s',angle=>{
-    const s=fixture(angle),before=cpuPlanningView(s)!,adapted=maintainCpu(s)
+    const s=fixture(angle)
+    s.cpu!.logistics=LOGISTICS_COSTS.fobConstruction+LOGISTICS_COSTS.samConstruction
+    const before=cpuPlanningView(s)!,adapted=maintainCpu(s)
     const fob=adapted.enemyAssets.find(a=>a.kind==='fob'),weapon=adapted.enemyAssets.find(a=>a.kind==='sam'||a.kind==='aaa')
     expect(fob).toBeDefined();expect(weapon).toBeDefined()
     expect(before.cpu.sites).toEqual([]) // No known offensive target justifies this FOB.
@@ -90,16 +95,16 @@ describe('territory-aware defensive capabilities',()=>{
     // Fixed geometry with several combat seeds; no campaign benchmark seed is used.
     for(const seed of [2,17,43,67]) {
       let s=fixture(0,'recon',seed)
-      s={...s,enemyBaseHealth:100,enemyAssets:s.enemyAssets.map(a=>({...a,health:100})),cpu:{...s.cpu!,logistics:8,mappedAreas:[],traffic:s.cpu!.traffic.map(t=>({...t,strength:35,aircraft:2}))}}
+      s={...s,enemyBaseHealth:100,enemyAssets:s.enemyAssets.map(a=>({...a,health:100})),cpu:{...s.cpu!,logistics:LOGISTICS_COSTS.samConstruction,mappedAreas:[],traffic:s.cpu!.traffic.map(t=>({...t,strength:20,aircraft:1}))}}
       const adapted=maintainCpu(s),weapon=adapted.enemyAssets.find(a=>a.kind==='sam'||a.kind==='aaa')!
-      expect(weapon).toBeDefined();expect(weapon.kind).toBe('sam')
-      const view=cpuPlanningView(s)!,effects=defenseBenefits(view,weapon.position,weapon.kind as 'sam')
+      expect(weapon).toBeDefined()
+      const view=cpuPlanningView(s)!,effects=defenseBenefits(view,weapon.position,weapon.kind as 'sam'|'aaa')
       expect(effects.coverage).toBe(0);expect(effects.reconDenial).toBeGreaterThan(0)
       expect(adapted.cpu!.adaptTrace!.chosenEffects!.reconDenial).toBeGreaterThan(0)
       const run=(state:MatchState)=>{
         const order=state.squadrons.find(f=>f.role==='recon')!,home=state.playerAssets[0].position
         const route:Point[]=[home,[3.7,0],home]
-        return resolveRound({...holdCpu(state),squadrons:state.squadrons.map(f=>f.id===order.id?{...f,strength:35,aircraft:2,mission:'search-area',sortieOrdered:true,route,routeIngress:route,plannedRecoveryFieldId:state.playerAssets[0].id}:{...f,sortieOrdered:false})})
+        return resolveRound({...holdCpu(state),squadrons:state.squadrons.map(f=>f.id===order.id?{...f,strength:20,aircraft:1,mission:'search-area',sortieOrdered:true,route,routeIngress:route,plannedRecoveryFieldId:state.playerAssets[0].id}:{...f,sortieOrdered:false})})
       }
       baselineReports+=run(s).intelReports.filter(r=>r.assetId==='e-base'&&r.recovered).length
       lost+=run(adapted).intelReports.filter(r=>r.assetId==='e-base'&&r.recovered).length

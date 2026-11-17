@@ -1,7 +1,8 @@
 import {describe,expect,it} from 'vitest'
 import {createRoundSimulation,resolveRound,TICK_SECONDS} from './engine'
 import {createScenario} from './scenarios'
-import type {SimulationCommand} from './types'
+import {createMatch} from './data'
+import type {Point, SimulationCommand} from './types'
 
 describe('shared real-time reaction lifecycle',()=>{
   it('interrupts recon pursuit for direct fighter combat without restoring hidden pursuit intent',()=>{
@@ -23,6 +24,29 @@ describe('shared real-time reaction lifecycle',()=>{
     const reconTrack=result.unitTracks.find(track=>track.unitId==='red-recon')!
     const duringCombat=reconTrack.frames.filter(frame=>frame.time>=dogfight!.start&&frame.time<=dogfight!.end)
     expect(new Set(duringCombat.map(frame=>frame.position.map(value=>value.toFixed(3)).join(':'))).size).toBeGreaterThan(1)
+  })
+
+  it('lets both fighters shoot on a direct return-leg pass without merging',()=>{
+    const state=createMatch()
+    const home:Point=[-10,0], opposingHome:Point=[8.4,3]
+    const outbound:Point[]=[home,[0,0]]
+    const crossing:Point[]=[opposingHome,[-3,3],[-5,0],[-7,0],opposingHome]
+    state.playerAssets=state.playerAssets.filter(asset=>asset.kind==='base').map(asset=>({...asset,position:home}))
+    state.enemyAssets=state.enemyAssets.filter(asset=>asset.kind==='base').map(asset=>({...asset,position:opposingHome}))
+    state.squadrons=state.squadrons.map(formation=>formation.id==='viper'
+      ? {...formation,mission:'forward-patrol',sortieOrdered:true,route:outbound,routeIngress:outbound,plannedRecoveryFieldId:'p-base'}
+      : {...formation,sortieOrdered:false})
+    state.cpu!.plan={round:state.round,objective:'defend',reason:'Scripted crossing',candidates:[],
+      orders:state.cpu!.formations.map(formation=>formation.id==='red-fighter'
+        ? {...formation,mission:'transit',sortieOrdered:true,route:crossing,routeIngress:crossing,plannedRecoveryFieldId:'e-base'}
+        : {...formation,sortieOrdered:false})}
+    const result=resolveRound(state)
+    const shots=result.combatSequences.filter(sequence=>sequence.kind==='flyby').flatMap(sequence=>sequence.exchanges)
+    expect(shots).toHaveLength(2)
+    expect(shots.map(shot=>shot.attackerId).sort()).toEqual(['red-fighter','viper'])
+    expect(shots[0].time).toBe(shots[1].time)
+    expect(result.combatSequences.some(sequence=>sequence.kind==='dogfight')).toBe(false)
+    expect(result.recoveryOutcomes.find(outcome=>outcome.formationId==='viper')?.outcome).toBe('recovered')
   })
 
   it('resolves independent dogfights concurrently without duplicate ownership',()=>{

@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { createMatch } from './data'
 import { MAX_FLIGHT_DISTANCE } from './engine'
-import { deriveRecoveryPlanningView, deriveRouteBudget, formationField, normalizeFormationBasing, routeDistanceForBasing, routeToRecoveryField, validateRecoveryPackage } from './forwardBasing'
+import { deriveRecoveryPlanningView, deriveRouteBudget, formationField, nearbyRecoveryFob, normalizeFormationBasing, routeDistanceForBasing, routeToRecoveryField, validateRecoveryPackage } from './forwardBasing'
 import type { Asset, MatchState, Point } from './types'
 
 const withFob = (position: Point = [0, 0], basedFormationIds: string[] = []): MatchState => {
@@ -11,6 +11,14 @@ const withFob = (position: Point = [0, 0], basedFormationIds: string[] = []): Ma
 }
 
 describe('forward basing planning model', () => {
+  it('snaps near the runway edge only for operational FOBs', () => {
+    const state = withFob([2, 2])
+    expect(nearbyRecoveryFob(state.playerAssets, [2.9,2])?.id).toBe('p-fob-1')
+    expect(nearbyRecoveryFob(state.playerAssets, [3.2,2])).toBeUndefined()
+    const disabled = state.playerAssets.map(asset => asset.kind === 'fob' ? { ...asset, operational: false } : asset)
+    expect(nearbyRecoveryFob(disabled, [2.9,2])).toBeUndefined()
+  })
+
   it('breaks the committed route into ingress, pattern, recovery, and remaining range', () => {
     const state = withFob([2, 2])
     const squadron = state.squadrons.find(item => item.id === 'viper')!

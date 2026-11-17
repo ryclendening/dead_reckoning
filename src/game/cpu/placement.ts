@@ -63,8 +63,8 @@ const prospectiveBattery=(position:Point,kind:'sam'|'aaa'):DefenseSite=>({id:'pr
 export interface DefenseBenefits { coverage:number; reconDenial:number; opponentAttrition:number }
 /** Marginal effects on observed approaches, never the opponent's actual route
  * or recovered knowledge. Late hits are deliberately separate from protection. */
-export function defenseBenefits(view:CpuPlanningView,point:Point,kind:'sam'|'aaa'):DefenseBenefits {
-  return defenseNetworkBenefits(view,[...view.assets,prospectiveBattery(point,kind)])
+export function defenseBenefits(view:CpuPlanningView,point:Point,kind:'sam'|'aaa'|'radar'):DefenseBenefits {
+  return defenseNetworkBenefits(view,[...view.assets,{id:'prospective-defense',kind,position:point,health:100}])
 }
 export function defenseNetworkBenefits(view:CpuPlanningView,nextSites:readonly DefenseSite[]):DefenseBenefits {
   const before=batteries(view.assets),after=batteries(nextSites)

@@ -3,7 +3,7 @@ import { SETUP_FORMATION_IDS, SETUP_REQUIRED_ASSET_IDS } from './campaignSetup'
 import { campaignOutcome, campaignOutcomePhase } from './campaign'
 import { createEconomyState } from './economy'
 import { MAX_RECOVERY_WAYPOINTS, normalizeFormationBasing } from './forwardBasing'
-import type { Asset, CampaignSetupState, DebugScenario, EconomyState, MatchState, MissionId, Point, RoundResult, Squadron } from './types'
+import type { Asset, CampaignSetupState, DebugScenario, EconomyState, MatchState, Point, RoundResult, Squadron } from './types'
 import { DEBUG_SCENARIOS } from './scenarios'
 import { createCpuState, prepareCpuRound } from './cpu/planner'
 import { validCpuReport, validCpuState } from './cpu/persistence'
@@ -72,7 +72,7 @@ function validSquadron(value: unknown): value is Squadron {
   if (value.reconPosture !== undefined && value.reconPosture !== 'aggressive' && value.reconPosture !== 'conservative') return false
   if (value.aircraftTypeId !== undefined && !text(value.aircraftTypeId)) return false
   if (!validUpgrades(value.upgrades)) return false
-  return value.role === 'fighter' ? value.mission !== 'search-area' : value.mission === 'search-area'
+  return value.role === 'fighter' ? value.mission !== 'search-area' : value.mission === 'search-area' || value.mission === 'transit'
 }
 
 function validAsset(value: unknown): value is Asset {
@@ -244,7 +244,6 @@ export function normalizeMatch(input: unknown): MatchState {
       ...squadron,
       ...normalizeAircraftType(squadron),
       routeIngress,
-      mission: (squadron.role === 'recon' ? 'search-area' : squadron.mission) as MissionId,
       strength: squadron.strength ?? Math.max(0, Math.min(100, squadron.aircraft / Math.max(1, squadron.maxAircraft) * 100)),
       morale: squadron.morale ?? Math.round(48 + squadron.readiness * 0.42),
       status: squadron.status ?? 'enroute' as const,

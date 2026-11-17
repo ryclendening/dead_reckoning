@@ -3,7 +3,7 @@ import { createMatch } from '../data'
 import { cpuPlanningView, cpuReportAt, planCpu, prepareCpuRound } from './planner'
 import { maintainCpu } from './settlement'
 import { applyRound, resolveRound } from '../engine'
-import { beginNextRound, openAdaptPhase } from '../economy'
+import { beginNextRound, LOGISTICS_COSTS, openAdaptPhase } from '../economy'
 import { normalizeMatch } from '../persistence'
 import { formationField, validateRecoveryPackage } from '../forwardBasing'
 import { MAX_FLIGHT_DISTANCE } from '../flightRules'
@@ -127,7 +127,7 @@ describe('CPU v2 behavioral acceptance',()=>{
   })
   it('places forward SAM fire early enough to affect a real inbound strike',()=>{
     const run=(placement:Point)=>{
-      let s=setup([0,0],[-20,0]);s.cpu!.mappedAreas=[[-8,0]]
+      let s=setup([0,0],[-20,0]);s.cpu!.mappedAreas=[[-8,0]];s.cpu!.logistics=LOGISTICS_COSTS.fobConstruction+LOGISTICS_COSTS.samConstruction
       if(placement[0]<-4.5) {
         s=executeCpuEconomyCommand(s,{actionId:'build-fob',target:{kind:'campaign',id:'campaign'},placement:[-8,0]})
         expect(s.enemyAssets.some(a=>a.kind==='fob')).toBe(true)
@@ -316,15 +316,14 @@ describe('capability and evidence boundaries',()=>{
     s.cpu!.traffic=[{position:[24,0],role:'fighter',observedRound:2,source:'visual',bearing:0,sector:0}]
     expect(maintainCpu(s).cpu!.spending.filter(purchase=>purchase.action!=='install-supply-depot')).toEqual([])
   })
-  it('repairs a disabled owned FOB when doing so restores an executable strike',()=>{
+  it('leaves formations trapped at permanently disabled FOBs',()=>{
     const s=setup(),position:Point=[8,0]
     s.enemyAssets.push({...s.enemyAssets[0],id:'e-fob-1',kind:'fob',position,health:0,operational:false,capacity:2,basedFormationIds:['red-fighter']})
     s.cpu!.formations[0].status='trapped'
     const adapted=maintainCpu(s)
-    expect(adapted.enemyAssets.find(a=>a.id==='e-fob-1')!.operational).toBe(true)
-    expect(adapted.cpu!.spending.some(p=>p.action==='repair-fob')).toBe(true)
+    expect(adapted.enemyAssets.find(a=>a.id==='e-fob-1')).toMatchObject({ operational: false, health: 0 })
+    expect(adapted.cpu!.spending.some(p=>p.action==='repair-fob')).toBe(false)
     const next=beginNextRound(adapted)
-    expect(next.cpu!.plan!.orders[0].route[0]).toEqual(position)
-    expect(next.cpu!.plan!.orders[0].strikeTargetId).toBe('p-base')
+    expect(next.cpu!.plan!.orders.find(order=>order.id==='red-fighter')?.sortieOrdered).toBe(false)
   })
 })

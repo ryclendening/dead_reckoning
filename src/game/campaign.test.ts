@@ -1,12 +1,11 @@
 import { describe, expect, it } from 'vitest'
 import { CAMPAIGN_ROUND_LIMIT, campaignOutcome, confirmedStrikeTarget, isCampaign } from './campaign'
 import { applyRound, createRoundSimulation, resolveRound } from './engine'
-import { beginNextRound, openAdaptPhase } from './economy'
+import { beginNextRound, executeEconomyCommand, LOGISTICS_COSTS, openAdaptPhase } from './economy'
 import { buildGroundStrikeRoute, validateGroundStrikeOrder } from './routeTemplates'
-import { FORMATION_PRICES } from './economyRules'
 import { createMatch } from './data'
 import { createScenario } from './scenarios'
-import type { MatchState } from './types'
+import type { MatchState, Point } from './types'
 
 describe('campaign outcomes',()=>{
   it('keeps debug fixtures isolated, draws simultaneous destruction, and waits for the settled deadline',()=>{
@@ -14,10 +13,6 @@ describe('campaign outcomes',()=>{
     expect(isCampaign(state)).toBe(true)
     expect(isCampaign({...state,debugScenario:'fighter-duel'})).toBe(false)
     expect(campaignOutcome({...state,enemyBaseHealth:0,playerBaseHealth:0})).toBe('mutual-destruction')
-    expect(campaignOutcome({...state,squadrons:state.squadrons.map(squadron=>({...squadron,aircraft:0})),logistics:FORMATION_PRICES.recon-1,replacements:0})).toBe('forces-lost')
-    const availableCash = { ...state, phase:'adapt' as const, logistics:FORMATION_PRICES.recon, squadrons:state.squadrons.map(squadron=>({...squadron,aircraft:0})) }
-    expect(campaignOutcome(availableCash)).toBeUndefined()
-    expect(beginNextRound(availableCash)).toBe(availableCash)
     expect(campaignOutcome({...state,round:CAMPAIGN_ROUND_LIMIT})).toBeUndefined()
     expect(beginNextRound({...state,phase:'adapt',round:CAMPAIGN_ROUND_LIMIT-1}).round).toBe(CAMPAIGN_ROUND_LIMIT)
     const settled={...state,round:CAMPAIGN_ROUND_LIMIT,lastResult:{round:CAMPAIGN_ROUND_LIMIT} as MatchState['lastResult']}
@@ -26,6 +21,23 @@ describe('campaign outcomes',()=>{
     expect(campaignOutcome({...settled,debugScenario:'fighter-duel',enemyBaseHealth:0})).toBeUndefined()
     expect(openAdaptPhase({...settled,phase:'debrief'}).phase).toBe('draw')
     expect(beginNextRound({...settled,phase:'adapt'}).round).toBe(CAMPAIGN_ROUND_LIMIT)
+  })
+
+  it('advances and settles a ground-only round after spending the remaining cash', () => {
+    const original = createMatch()
+    const state = { ...original, phase: 'adapt' as const, logistics: LOGISTICS_COSTS.decoyConstruction,
+      squadrons: original.squadrons.map(formation => ({ ...formation, aircraft: 0, strength: 0 })) }
+    const [x,z] = state.world.friendlyTerritory.center
+    const placement: Point = [x, z - 4]
+    const spent = executeEconomyCommand(state, { actionId: 'build-decoy', target: { kind: 'campaign', id: 'campaign' }, placement })
+    expect(spent.logistics).toBe(0)
+    expect(campaignOutcome(spent)).toBeUndefined()
+    const next = beginNextRound(spent)
+    expect(next).toMatchObject({ phase: 'plan', round: state.round + 1 })
+    const planned = { ...next, squadrons: next.squadrons.map(formation => ({ ...formation, sortieOrdered: false })) }
+    const settled = applyRound(planned, resolveRound(planned))
+    expect(settled.phase).toBe('debrief')
+    expect(settled.logistics).toBeGreaterThan(0)
   })
 
   it('builds a legal standoff route to naturally confirmed enemy bases across the four start regions',()=>{

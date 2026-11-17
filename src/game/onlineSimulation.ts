@@ -3,7 +3,7 @@ import { deriveLogisticsIncome } from './economy'
 import { LOGISTICS_EFFECTS } from './economyRules'
 import { applyRecoveryOutcomesToBasing } from './forwardBasing'
 import type { Asset, EnemyFlight, GroundSiteSighting, MatchState, RoundResult, Squadron } from './types'
-import { CAMPAIGN_ROUND_LIMIT, forcesEliminated, type CampaignOutcome } from './campaign'
+import { CAMPAIGN_ROUND_LIMIT, type CampaignOutcome } from './campaign'
 import type { CpuSiteReport, CpuState } from './cpu/types'
 
 const opponentId = (id: string) => `opponent:${id.replace(/^opponent:/, '')}`
@@ -63,17 +63,10 @@ function observedEnemyAssets(input: Asset[], actual: Asset[], refreshed: Set<str
   return [...known.values()]
 }
 
-function outcomeFor(home: MatchState, enemyBaseHealth: number, enemyFormations: Squadron[], round: number, enemyCash: number): CampaignOutcome | undefined {
-  const ownBase = home.playerAssets.find(asset => asset.kind === 'base')
-  const ownHealth = Math.min(home.playerBaseHealth, ownBase?.health ?? home.playerBaseHealth)
+function outcomeFor(ownHealth: number, enemyBaseHealth: number, round: number): CampaignOutcome | undefined {
   if (ownHealth <= 0 && enemyBaseHealth <= 0) return 'mutual-destruction'
   if (enemyBaseHealth <= 0) return 'enemy-base-destroyed'
   if (ownHealth <= 0) return 'home-base-destroyed'
-  const ownLost = forcesEliminated(home.squadrons, home.logistics)
-  const enemyLost = forcesEliminated(enemyFormations, enemyCash)
-  if (ownLost && enemyLost) return 'mutual-forces-lost'
-  if (ownLost) return 'forces-lost'
-  if (enemyLost) return 'enemy-forces-lost'
   return round >= CAMPAIGN_ROUND_LIMIT ? 'deadline' : undefined
 }
 
@@ -204,6 +197,16 @@ function projectResult(result: RoundResult, ownIds: Set<string>, opponentIds: Se
       return { ...clone(effect), id: `replay-effect-${Math.round(effect.start * 20)}-${ownId(effect.sourceId)}-${ownId(effect.targetId)}`,
         sourceId: ownId(effect.sourceId), targetId: ownId(effect.targetId), to }
     })
+  // An own battery's flash is public to its operator even when the target has
+  // no authorized track. Strip the target identity, trajectory and outcome.
+  const ownAaaLaunches = result.weaponEffects.filter(effect =>
+    effect.kind === 'aaa' && inputOwnAssets.has(localId(effect.sourceId)) && hasOwn(effect.sourceId)
+    && !authorizedFrame(effect.targetId, effect.start))
+    .map((effect, index) => ({
+      id: `aaa-launch-${index}`, kind: 'aaa' as const, sourceId: ownId(effect.sourceId),
+      targetId: 'untracked-aircraft', from: clone(effect.from), to: clone(effect.from),
+      start: effect.start, end: effect.start, hit: false, damage: 0, launchOnly: true as const,
+    }))
   const recovery = result.recoveryOutcomes.filter(item => hasOwn(item.formationId)).map(item => ({ ...clone(item),
     formationId: ownId(item.formationId), launchFieldId: localId(item.launchFieldId), plannedFieldId: localId(item.plannedFieldId), actualFieldId: item.actualFieldId ? localId(item.actualFieldId) : undefined,
   }))
@@ -212,7 +215,7 @@ function projectResult(result: RoundResult, ownIds: Set<string>, opponentIds: Se
     unitTracks: tracks, enemyFlights: ownFlights, executionRoutes: Object.fromEntries(tracks.map(track => [track.unitId, track.frames.map(frame => clone(frame.position))])),
     contactIntervals: visibleIntervals.map(item => ({ ...clone(item), observerId: ownId(item.observerId), targetId: ownId(item.targetId) })),
     behaviorIntervals: result.behaviorIntervals.filter(item => hasOwn(item.unitId)).map(item => ({ ...clone(item), unitId: ownId(item.unitId), targetId: item.targetId && authorizedParticipant(item.targetId, item.start) ? ownId(item.targetId) : undefined })),
-    events, lessons: [], combatSequences: sequences, activeDogfights: undefined, weaponEffects: effects,
+    events, lessons: [], combatSequences: sequences, activeDogfights: undefined, weaponEffects: [...effects, ...ownAaaLaunches],
     contactObservations: result.contactObservations.filter(item => hasOwn(item.observerId) && hasOpponent(item.targetId) && visibleTargets.has(item.targetId)).map(item => ({ ...clone(item), observerId: ownId(item.observerId), targetId: ownId(item.targetId) })),
     interceptPlans: result.interceptPlans.filter(item => hasOwn(item.squadronId) && hasOpponent(item.targetId) && visibleTargets.has(item.targetId)).map(item => ({ ...clone(item), squadronId: ownId(item.squadronId), targetId: ownId(item.targetId) })),
     intelReports: ownReports, intelGained: ownReports.filter(item => item.recovered).map(item => item.detail), recoveryOutcomes: recovery,
@@ -353,12 +356,10 @@ export function resolveOnlineRound(seats: [MatchState, MatchState], seed: number
   const aResultWithRound = { ...aResult, round: a.round }
   const bResultWithRound = { ...bResult, round: b.round }
   const aOwnAssets = raw.playerAssets.map(asset => clone(asset))
-  const aOutcome = outcomeFor({ ...a, logistics: a.logistics + aResult.logisticsIncome.total, squadrons: aFormations, playerAssets: aOwnAssets,
-    playerBaseHealth: aOwnAssets.find(asset => asset.kind === 'base')?.health ?? 0 },
-    bOwnAssets.find(asset => asset.kind === 'base')?.health ?? 0, bFormations, a.round, b.logistics + bResult.logisticsIncome.total)
-  const bOutcome = outcomeFor({ ...b, logistics: b.logistics + bResult.logisticsIncome.total, squadrons: bFormations, playerAssets: bSettledAssets,
-    playerBaseHealth: bSettledAssets.find(asset => asset.kind === 'base')?.health ?? 0 },
-    aOwnAssets.find(asset => asset.kind === 'base')?.health ?? 0, aFormations, b.round, a.logistics + aResult.logisticsIncome.total)
+  const aHealth = aOwnAssets.find(asset => asset.kind === 'base')?.health ?? 0
+  const bHealth = bSettledAssets.find(asset => asset.kind === 'base')?.health ?? 0
+  const aOutcome = outcomeFor(aHealth, bHealth, a.round)
+  const bOutcome = outcomeFor(bHealth, aHealth, b.round)
   const aState = projectSeat(a, aResult.assets, aOwnAssets, aFormations, aResultWithRound, aOutcome)
   const bState = projectSeat(b,
     bResult.assets, bSettledAssets, bFormations, bResultWithRound, bOutcome)

@@ -1,6 +1,6 @@
 import type { ConstructibleAssetKind, EconomyActionId, EconomyActionQuote, EconomyCommand, EconomyTarget, MatchState, Point, RoundResult, LogisticsIncome, LogisticsStatementEntry } from './types'
 import { normalizeFormationBasing, formationField } from './forwardBasing'
-import { campaignOutcome, campaignOutcomePhase, isCampaign } from './campaign'
+import { campaignOutcome, campaignOutcomePhase } from './campaign'
 import { maintainCpu, planNextCpuRound } from './cpu/settlement'
 import { modifiedStat } from './upgrades'
 import { LOGISTICS_EFFECTS } from './economyRules'
@@ -45,7 +45,6 @@ export const openAdaptPhase = (state: MatchState): MatchState => {
 }
 export const beginNextRound = (state: MatchState): MatchState => {
   if (state.phase !== 'adapt' || campaignOutcome(state)) return state
-  if (isCampaign(state) && !state.squadrons.some(formation => formation.aircraft > 0)) return state
   const playerAssets = normalizeFormationBasing(state.squadrons, state.playerAssets)
   const squadrons = state.squadrons.map(squadron => {
     const field = formationField(playerAssets, squadron.id)

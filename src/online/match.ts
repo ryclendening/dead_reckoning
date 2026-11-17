@@ -121,8 +121,9 @@ function validateOrderGeometry(match: MatchState, squadron: Squadron) {
       ? undefined : 'TRANSIT MUST END AT THE SELECTED AIRFIELD'
   }
 
-  if (mission === 'search-area' && squadron.plannedRecoveryFieldId === field.id &&
-      distanceBetween(route.at(-1)!, field.position) <= .001 && matchingRoute(route, routeIngress)) return undefined
+  if (mission === 'search-area') {
+    return matchingRoute(route, routeIngress) ? undefined : 'RECON ROUTE MUST MATCH THE PLOTTED WAYPOINTS'
+  }
 
   const generated = generateRouteTemplate({ template: mission, ingress: routeIngress, maxDistance: flightRangeFor(squadron), bounds })
   const expected = normalize(generated.route)
@@ -214,9 +215,12 @@ export function applyOnlineAction(game: OnlineMatch, index: SeatIndex, action: O
     case 'purchase': {
       if (match.phase !== 'adapt') break
       if (action.placement && !isHex(action.placement)) throw new OnlineError('Choose a construction hex.')
-      const next = executeEconomyCommand(match, action)
-      if (next === match) throw new OnlineError('That purchase is unavailable.')
-      seat.match = next
+      const placementMatch = action.placement
+        ? { ...match, enemyAssets: game.seats[other(index)].match.playerAssets }
+        : match
+      const next = executeEconomyCommand(placementMatch, action)
+      if (next === placementMatch) throw new OnlineError('That purchase is unavailable.')
+      seat.match = { ...next, enemyAssets: match.enemyAssets }
       return
     }
     case 'next-round':

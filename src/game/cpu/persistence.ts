@@ -51,7 +51,7 @@ export function validCpuState(v: unknown, validFormation: (v: unknown) => v is S
       && (f.maxAircraft !== 4 || !new RegExp(`^red-reinforcement-${f.role}-[1-9][0-9]*$`).test(f.id)))
     || !Array.isArray(v.sites) || !v.sites.every(s => site(s) && (s as { observedRound: number }).observedRound <= round)
     || !Array.isArray(v.traffic) || !v.traffic.every(t => traffic(t) && (t as { observedRound: number }).observedRound <= round)
-    || !Array.isArray(v.spending) || !v.spending.every(s => record(s) && integer(s.round) && s.round <= round && text(s.targetId) && number(s.cost) && ['repair', 'replace', 'repair-defense', 'repair-formation', 'replace-aircraft', 'buy-fighter', 'buy-recon', 'repair-fob', 'build-sam', 'build-aaa', 'build-fob', 'install-maintenance-wing', 'install-supply-depot'].includes(String(s.action)))
+    || !Array.isArray(v.spending) || !v.spending.every(s => record(s) && integer(s.round) && s.round <= round && text(s.targetId) && number(s.cost) && ['repair', 'replace', 'repair-defense', 'repair-formation', 'replace-aircraft', 'buy-fighter', 'buy-recon', 'repair-fob', 'build-sam', 'build-aaa', 'build-radar', 'build-fob', 'install-maintenance-wing', 'install-supply-depot'].includes(String(s.action)))
     || [v.lastSettledRound, v.lastAdaptedRound].some(n => n !== undefined && (!integer(n) || n > round))) return false
   if (v.mappedAreas !== undefined && (!Array.isArray(v.mappedAreas) || !v.mappedAreas.every(point))) return false
   if (v.intent !== undefined && !intent(v.intent) || v.adaptTrace !== undefined && !trace(v.adaptTrace)) return false

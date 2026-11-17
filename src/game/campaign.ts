@@ -15,20 +15,20 @@ export function confirmedStrikeTarget(state: Pick<MatchState, 'enemyAssets'>): A
 
 export type CampaignOutcome = 'enemy-base-destroyed' | 'home-base-destroyed' | 'deadline' | 'forces-lost' | 'enemy-forces-lost' | 'mutual-destruction' | 'mutual-forces-lost'
 
-export const forcesEliminated = (formations: Squadron[], cash: number): boolean =>
+const forcesEliminated = (formations: Squadron[], cash: number): boolean =>
   formations.every(formation => formation.aircraft <= 0) && !canAffordFormation(cash)
 
 export function campaignOutcome(state: MatchState): CampaignOutcome | undefined {
   const current = outcomeUnderRules(state)
   const completed = state.phase === 'victory' || state.phase === 'defeat' || state.phase === 'draw'
   if (!completed || state.onlineOutcome || current && campaignOutcomePhase(current) === state.phase) return current
-  // Completed six-round saves predate the cash-only force and deadline rules.
-  return legacyCampaignOutcome(state) ?? current
+  // Preserve finished campaigns recorded under either earlier elimination rule.
+  return outcomeUnderRules(state, 'cash') ?? legacyCampaignOutcome(state) ?? current
 }
 
-export const legacyCampaignOutcome = (state: MatchState): CampaignOutcome | undefined => outcomeUnderRules(state, true)
+export const legacyCampaignOutcome = (state: MatchState): CampaignOutcome | undefined => outcomeUnderRules(state, 'reserves')
 
-function outcomeUnderRules(state: MatchState, legacy = false): CampaignOutcome | undefined {
+function outcomeUnderRules(state: MatchState, legacy?: 'cash' | 'reserves'): CampaignOutcome | undefined {
   if (!isCampaign(state)) return undefined
   if (state.onlineOutcome) return state.onlineOutcome
   const homeHealth = Math.min(state.playerBaseHealth, state.playerAssets.find(asset => asset.kind === 'base')?.health ?? state.playerBaseHealth)
@@ -36,14 +36,17 @@ function outcomeUnderRules(state: MatchState, legacy = false): CampaignOutcome |
   if (homeHealth <= 0 && enemyHealth <= 0) return 'mutual-destruction'
   if (enemyHealth <= 0) return 'enemy-base-destroyed'
   if (homeHealth <= 0) return 'home-base-destroyed'
-  const playerLost = legacy ? state.squadrons.every(s => s.aircraft <= 0) && state.replacements <= 0 : forcesEliminated(state.squadrons, state.logistics)
-  const cpuLost = state.cpu && (legacy
-    ? state.cpu.formations.every(s => s.aircraft <= 0) && state.cpu.reserves <= 0
-    : forcesEliminated(state.cpu.formations, state.cpu.logistics))
-  if(playerLost&&cpuLost)return 'mutual-forces-lost'
-  if(playerLost)return 'forces-lost'
-  if(cpuLost)return 'enemy-forces-lost'
-  if (state.round >= (legacy ? 6 : CAMPAIGN_ROUND_LIMIT) && state.lastResult?.round === state.round) return 'deadline'
+  if (legacy) {
+    const eliminated = (formations: Squadron[], cash: number, reserves: number) => legacy === 'cash'
+      ? forcesEliminated(formations, cash)
+      : formations.every(formation => formation.aircraft <= 0) && reserves <= 0
+    const playerLost = eliminated(state.squadrons, state.logistics, state.replacements)
+    const cpuLost = state.cpu && eliminated(state.cpu.formations, state.cpu.logistics, state.cpu.reserves)
+    if (playerLost && cpuLost) return 'mutual-forces-lost'
+    if (playerLost) return 'forces-lost'
+    if (cpuLost) return 'enemy-forces-lost'
+  }
+  if (state.round >= (legacy === 'reserves' ? 6 : CAMPAIGN_ROUND_LIMIT) && state.lastResult?.round === state.round) return 'deadline'
   return undefined
 }
 

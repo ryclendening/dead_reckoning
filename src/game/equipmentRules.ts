@@ -1,6 +1,7 @@
 import type { Asset, Point } from './types'
 import { modifiedStat } from './upgrades'
 
+export const SAM_DEPLOYMENT_LIMIT = 3
 export const SAM_FLIGHT_SECONDS=1.05
 export const AAA_FLIGHT_SECONDS=.5
 export const AAA_BURST_INTERVAL=.14
