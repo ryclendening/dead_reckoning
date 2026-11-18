@@ -20,6 +20,10 @@ export function groundAttackProfile(formation: Pick<Squadron, 'role' | 'aircraft
 }
 
 export function groundAttackDamage(formation: Pick<Squadron, 'role' | 'strength'>, target: AssetKind, strength = formation.strength ?? 100): number {
+  // A carried bomb remains a full ordnance payload even when the formation is
+  // damaged. Non-base sites top out at 100 health, so one release destroys
+  // equipment; base damage still scales with strength and takes two hits.
+  if (formation.role === 'bomber' && target !== 'base') return BOMBER_DAMAGE
   const fullStrength = formation.role === 'bomber'
     ? target === 'base' ? BOMBER_BASE_DAMAGE : BOMBER_DAMAGE
     : FIGHTER_STRIKE_DAMAGE
