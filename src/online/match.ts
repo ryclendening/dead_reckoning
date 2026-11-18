@@ -214,9 +214,14 @@ export function applyOnlineAction(game: OnlineMatch, index: SeatIndex, action: O
     case 'purchase': {
       if (match.phase !== 'adapt') break
       if (action.placement && !isHex(action.placement)) throw new OnlineError('Choose a construction hex.')
-      const next = executeEconomyCommand(match, action)
-      if (next === match) throw new OnlineError('That purchase is unavailable.')
-      seat.match = next
+      // Keep opposing assets private in each seat's match, but include them in
+      // the authoritative placement check so the shared economy validator can
+      // reject construction inside the opponent's territory.
+      const opponentAssets = game.seats[other(index)].match.playerAssets
+      const placementMatch = { ...match, enemyAssets: opponentAssets }
+      const next = executeEconomyCommand(placementMatch, action)
+      if (next === placementMatch) throw new OnlineError('That purchase is unavailable.')
+      seat.match = { ...next, enemyAssets: match.enemyAssets }
       return
     }
     case 'next-round':

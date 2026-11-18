@@ -17,7 +17,7 @@ import { placeInitialAsset, validateInitialPlacement } from './game/campaignPlac
 import { confirmCampaignSetup, validateCampaignAllocation, SETUP_REQUIRED_ASSET_IDS } from './game/campaignSetup'
 import { applyRound, createRoundSimulation, EXECUTION_SECONDS, resolveRound, TICK_SECONDS, type RoundSimulationController } from './game/engine'
 import { flightRangeFor } from './game/flightRules'
-import { beginNextRound, economyCommandForQuote, economyQuotesFor, executeEconomyCommand, openAdaptPhase, PROCUREMENT_CATALOG, validateAssetPlacement } from './game/economy'
+import { advanceToNextRound, beginNextRound, economyCommandForQuote, economyQuotesFor, executeEconomyCommand, openAdaptPhase, openAdaptPhaseImmediately, PROCUREMENT_CATALOG, validateAssetPlacement } from './game/economy'
 import { formatCash, LOGISTICS_EFFECTS } from './game/economyRules'
 import { snapToHex } from './game/hex'
 import { deriveKnownWorldModel } from './game/knownWorld'
@@ -52,6 +52,16 @@ function loadCompletedPlayback(){
   try{return localStorage.getItem(ONLINE_PLAYBACK_KEY)??undefined}catch{return undefined}
 }
 const pointDistance=(a:Point,b:Point)=>Math.hypot(a[0]-b[0],a[1]-b[1])
+interface CpuPlanningWorkerResponse {
+  requestId:number
+  round:number
+  phase:MatchState['phase']
+  cpu?:MatchState['cpu']
+  enemyAssets:Asset[]
+  enemyBaseHealth:number
+  onlineOutcome?:MatchState['onlineOutcome']
+  error?:string
+}
 function assetsAtRoundStart(assets:Asset[],result:RoundResult):Asset[]{
   const damageByTarget=new globalThis.Map<string,number>()
   for(const sequence of result.combatSequences)if(sequence.kind==='strike')for(const exchange of sequence.exchanges)damageByTarget.set(exchange.defenderId,(damageByTarget.get(exchange.defenderId)??0)+exchange.damage)
@@ -95,6 +105,11 @@ export default function App(){
   const [planningBaseId,setPlanningBaseId]=useState('p-base')
   const [planningRosterMode,setPlanningRosterMode]=useState<PlanningRosterMode>('closed')
   const [reviewedIds,setReviewedIds]=useState<Set<string>>(()=>new Set())
+  const [cpuPlanningRound,setCpuPlanningRound]=useState<number>()
+  const [cpuAdaptingRound,setCpuAdaptingRound]=useState<number>()
+  const [cpuPlanError,setCpuPlanError]=useState<string>()
+  const cpuPlanRequestRef=useRef(0)
+  const cpuPlanWorkerRef=useRef<Worker|undefined>(undefined)
   const [placementId,setPlacementId]=useState('p-base')
   const [worldMapOpen,setWorldMapOpen]=useState(false)
   const [showDefenseCoverage,setShowDefenseCoverage]=useState(true)
@@ -108,7 +123,8 @@ export default function App(){
   const [acknowledgedThreatIds,setAcknowledgedThreatIds]=useState<Set<string>>(()=>new Set())
   const completingRef=useRef(false)
   useEffect(()=>{speedRef.current=speed},[speed])
-  useEffect(()=>{if(hasCampaign&&!onlineSession)try{localStorage.setItem(SAVE_KEY,JSON.stringify(match))}catch{}},[match,hasCampaign,onlineSession])
+  useEffect(()=>()=>{cpuPlanRequestRef.current++;cpuPlanWorkerRef.current?.terminate()},[])
+  useEffect(()=>{if(hasCampaign&&!onlineSession&&cpuPlanningRound===undefined&&cpuAdaptingRound===undefined)try{localStorage.setItem(SAVE_KEY,JSON.stringify(match))}catch{}},[match,hasCampaign,onlineSession,cpuPlanningRound,cpuAdaptingRound])
   const acceptOnlineResponse=useCallback((response:OnlineResponse,session:OnlineSession)=>{
     const current=onlineRef.current
     if(current?.session!==session)return
@@ -426,6 +442,7 @@ export default function App(){
   }
   const commit=(includeSelectedRoute=false)=>{
     if(onlineSession&&(isPlanReadOnly()||inFlightCommandRef.current))return
+    if(cpuPlanningRound===match.round||cpuPlanError)return
     const orderedIds=new Set(reviewedIds)
     let source=match
     if(includeSelectedRoute){
@@ -488,10 +505,61 @@ export default function App(){
   const enterResupply=()=>{
     if(replayActive)return
     if(onlineSession){void sendOnlineAction({type:'debrief'});return}
-    const next=openAdaptPhase(match);setWorldMapOpen(false);setFollowId(undefined);setExecutionBaseId(undefined);setSelectedAssetId(undefined);setInspectedFlightId(undefined);closeProcurement();setEconomyTarget({kind:'campaign',id:'campaign'});setFocusPoint(playerBase);setMatch(next)
+    const next=openAdaptPhaseImmediately(match);setWorldMapOpen(false);setFollowId(undefined);setExecutionBaseId(undefined);setSelectedAssetId(undefined);setInspectedFlightId(undefined);closeProcurement();setEconomyTarget({kind:'campaign',id:'campaign'});setFocusPoint(playerBase);setMatch(next)
+    if(next.phase==='adapt'&&match.cpu)runCpuWork(match,'adapt')
   }
-  const nextRound=()=>{if(onlineSession){void sendOnlineAction({type:'next-round'});return}setSelectedAssetId(undefined);setInspectedFlightId(undefined);simulationRef.current=undefined;setLiveResult(undefined);setAcknowledgedThreatIds(new Set());setWorldMapOpen(false);setFollowId(undefined);setExecutionBaseId(undefined);setFocusPoint(undefined);setRouteNotice(undefined);setPlanningStep('idle');setReviewedIds(new Set());setPlanningBaseId('p-base');setPlanningRosterMode('closed');closeProcurement();setMatch(beginNextRound)}
-  const resetPlanningUi=()=>{cameraMemory.current=undefined;setSelectedAssetId(undefined);setInspectedFlightId(undefined);simulationRef.current=undefined;setLiveResult(undefined);setAcknowledgedThreatIds(new Set());setWorldMapOpen(false);setProgress(0);setPlayback(undefined);setActiveEvent(undefined);setFollowId(undefined);setExecutionBaseId(undefined);setFocusPoint(undefined);setRouteNotice(undefined);setPlanningStep('idle');setPlanningBaseId('p-base');setPlanningRosterMode('closed');setReviewedIds(new Set());closeProcurement()}
+  const runCpuWork=(source:MatchState,action:'adapt'|'plan')=>{
+    const requestId=++cpuPlanRequestRef.current
+    const targetRound=action==='adapt'?source.round:source.round+1
+    const targetPhase=action==='adapt'?'adapt':'plan'
+    const clearPending=()=>{
+      if(action==='adapt')setCpuAdaptingRound(undefined)
+      else setCpuPlanningRound(undefined)
+    }
+    const applyResult=(result:CpuPlanningWorkerResponse)=>{
+      if(requestId!==cpuPlanRequestRef.current)return
+      if(result.error||result.round!==targetRound||result.phase!==targetPhase){runFallback();return}
+      cpuPlanWorkerRef.current?.terminate();cpuPlanWorkerRef.current=undefined
+      setMatch(current=>current.round===targetRound&&current.phase===targetPhase?{
+        ...current,cpu:result.cpu,enemyAssets:result.enemyAssets,enemyBaseHealth:result.enemyBaseHealth,onlineOutcome:result.onlineOutcome,
+      }:current)
+      clearPending();setCpuPlanError(undefined)
+    }
+    const runFallback=()=>{
+      cpuPlanWorkerRef.current?.terminate();cpuPlanWorkerRef.current=undefined
+      try{
+        const updated=action==='adapt'?openAdaptPhase(source):beginNextRound(source)
+        if(updated.phase!==targetPhase||updated.round!==targetRound)throw new Error('The CPU plan is unavailable.')
+        applyResult({requestId,round:updated.round,phase:updated.phase,cpu:updated.cpu,enemyAssets:updated.enemyAssets,enemyBaseHealth:updated.enemyBaseHealth,onlineOutcome:updated.onlineOutcome})
+      }catch{
+        if(requestId===cpuPlanRequestRef.current){clearPending();setCpuPlanError('CPU planning failed. Reload to retry.')}
+      }
+    }
+    setCpuPlanError(undefined)
+    if(action==='adapt')setCpuAdaptingRound(targetRound)
+    else setCpuPlanningRound(targetRound)
+    try{
+      const worker=new Worker(new URL('./game/cpu/next-round.worker.ts',import.meta.url),{type:'module'})
+      cpuPlanWorkerRef.current=worker
+      worker.onmessage=(event:MessageEvent<CpuPlanningWorkerResponse>)=>applyResult(event.data)
+      worker.onerror=event=>{event.preventDefault();runFallback()}
+      worker.onmessageerror=()=>runFallback()
+      worker.postMessage({requestId,action,match:{...source,lastResult:undefined}})
+    }catch{
+      runFallback()
+    }
+  }
+  const nextRound=()=>{
+    if(onlineSession){void sendOnlineAction({type:'next-round'});return}
+    if(cpuAdaptingRound===match.round||cpuPlanError)return
+    setSelectedAssetId(undefined);setInspectedFlightId(undefined);simulationRef.current=undefined;setLiveResult(undefined);setAcknowledgedThreatIds(new Set());setWorldMapOpen(false);setFollowId(undefined);setExecutionBaseId(undefined);setFocusPoint(undefined);setRouteNotice(undefined);setPlanningStep('idle');setReviewedIds(new Set());setPlanningBaseId('p-base');setPlanningRosterMode('closed');closeProcurement()
+    const next=advanceToNextRound(match)
+    if(next===match)return
+    setMatch(next)
+    if(match.cpu)runCpuWork(match,'plan')
+    else setCpuPlanError(undefined)
+  }
+  const resetPlanningUi=()=>{cpuPlanRequestRef.current++;cpuPlanWorkerRef.current?.terminate();cpuPlanWorkerRef.current=undefined;setCpuPlanningRound(undefined);setCpuAdaptingRound(undefined);setCpuPlanError(undefined);cameraMemory.current=undefined;setSelectedAssetId(undefined);setInspectedFlightId(undefined);simulationRef.current=undefined;setLiveResult(undefined);setAcknowledgedThreatIds(new Set());setWorldMapOpen(false);setProgress(0);setPlayback(undefined);setActiveEvent(undefined);setFollowId(undefined);setExecutionBaseId(undefined);setFocusPoint(undefined);setRouteNotice(undefined);setPlanningStep('idle');setPlanningBaseId('p-base');setPlanningRosterMode('closed');setReviewedIds(new Set());closeProcurement()}
   const selectScenario=(scenario:DebugScenario)=>{setHasCampaign(true);resetPlanningUi();setEconomyTarget({kind:'campaign',id:'campaign'});setMatch(createScenario(scenario))}
   const restart=()=>{const seed=freshCampaignSeed();localStorage.removeItem(SAVE_KEY);for(const key of LEGACY_SAVE_KEYS)localStorage.removeItem(key);resetPlanningUi();setEconomyTarget({kind:'campaign',id:'campaign'});setMatch(m=>m.debugScenario&&m.debugScenario!=='campaign'?createScenario(m.debugScenario):createCampaignDraft(seed,m.cpu?.difficulty))}
   const selectFormation=(id:string)=>{setAcknowledgedThreatIds(current=>{const next=new Set(current);for(const alert of executionResult?.threatAlerts??[])if(alert.unitId===id&&alert.time<=inspectionSeconds)next.add(alert.id);return next});setFollowId(current=>current===id?undefined:id);setFocusPoint(undefined);setMatch(m=>({...m,selectedId:id}))}
@@ -617,9 +685,9 @@ export default function App(){
       {visiblePhase==='execute'&&executionBaseId?<ExecutionChitRail squadrons={match.squadrons} bases={replayMatch.playerAssets} result={executionResult} progress={executionProgress} activeBaseId={executionBaseId} selectedId={match.selectedId} followId={followId} threatenedIds={new Set((executionResult?.threatAlerts??[]).filter(alert=>alert.time<=inspectionSeconds&&!acknowledgedThreatIds.has(alert.id)).map(alert=>alert.unitId))} onSelect={selectFormation}/>:null}
       {match.phase==='deploy'&&onlineSession&&onlineView?.locked?<section className="online-wait-panel"><small>DEPLOYMENT LOCKED</small><strong>{onlineView.opponentLocked?'BOTH DEPLOYMENTS LOCKED':'WAITING FOR OPPONENT TO LOCK'}</strong><p>Your opening package is fixed for this match.</p></section>:match.phase==='deploy'&&match.setup?<CampaignSetupPanel match={match} online={Boolean(onlineSession)} placementId={placementId} onSelectPlacement={id=>{if(!onlineView?.locked&&!onlineCommandBusy)setPlacementId(id)}} onContinue={()=>onlineSession?void sendOnlineAction({type:'lock-deploy'}):advanceCampaignSetup()}/>:match.phase==='deploy'?<DeploymentPanel assets={match.playerAssets} selectedId={placementId} onSelect={setPlacementId} locked={Boolean(onlineView?.locked||onlineCommandBusy)} online={Boolean(onlineSession)} onLock={()=>onlineSession?void sendOnlineAction({type:'lock-deploy'}):setMatch(m=>({...m,phase:'plan'}))}/>:null}
       {match.phase==='plan'&&waitingOnPlan?<section className="online-wait-panel" aria-label="Read-only plan"><strong>{onlineView?.locked?'Orders locked':onlineCommandBusy?'Locking orders…':'Checking submitted orders'}</strong><p>{onlineView?.locked?'Tap an aircraft to review its orders.':'Your submitted routes are frozen.'}</p></section>:null}
-      {match.phase==='plan'&&!waitingOnPlan?<CommandShelf squadrons={match.squadrons} bases={match.playerAssets} activeBaseId={activePlanningBaseId} rosterMode={planningRosterMode} squadron={selected} routeNotice={routeNotice} routeBudget={routeBudget} protectSummary={protectSummary} editingReturn={editingReturn} onRouteLegChange={canEditReturn&&!selectingProtectTarget?returnLeg=>{setEditReturn(returnLeg);setRouteNotice(undefined)}:undefined} onSelect={selectPlanningFormation} onBaseSelect={selectPlanningBase} onRosterMode={mode=>{setPlanningRosterMode(mode);if(mode!=='closed'){setPlanningStep('idle');setSelectingProtectTarget(false)}}} onMission={selectMission} onPickProtectTarget={()=>{setSelectingProtectTarget(true);setRouteNotice(undefined)}} onProtectFlight={selectProtectFlight} onReconPosture={setReconPosture} onRecoverHome={selected.role==='fighter'||canEditReturn?()=>routeToAirfield('p-base',true):undefined} onClear={()=>{setRouteNotice(undefined);if(selectingProtectTarget)setSelectingProtectTarget(false);else if(editingReturn)setReturnWaypoints([]);else setRoute([])}} onBack={()=>{setPlanningStep('mission');setSelectingProtectTarget(false);setRouteNotice(undefined)}} onCommit={()=>commit(planningStep==='route')} step={planningStep} onClose={()=>{if(planningStep==='route'&&selected.route.length>=2&&!selectingProtectTarget&&!confirmPlanningOrder(selected))return;setPlanningStep('idle');setSelectingProtectTarget(false)}} reviewedIds={reviewedIds} reviewedCount={reviewedCount} totalCount={viableFormationIds.length} groundTargets={groundTargets} onChangeGroundTarget={changeGroundTarget} onInspectGroundTarget={inspectAsset} strikeUnlocked={groundTargets.length>0} strikeDisabledReason="RECOVER GROUND TARGET INTELLIGENCE FIRST" selectingProtectTarget={selectingProtectTarget} onlineLock={Boolean(onlineSession)} allowEmptyCommit={Boolean(onlineSession)}/>:null}
+      {match.phase==='plan'&&!waitingOnPlan?<CommandShelf squadrons={match.squadrons} bases={match.playerAssets} activeBaseId={activePlanningBaseId} rosterMode={planningRosterMode} squadron={selected} routeNotice={routeNotice} routeBudget={routeBudget} protectSummary={protectSummary} editingReturn={editingReturn} cpuPlanning={cpuPlanningRound===match.round} cpuPlanError={Boolean(cpuPlanError)} onRouteLegChange={canEditReturn&&!selectingProtectTarget?returnLeg=>{setEditReturn(returnLeg);setRouteNotice(undefined)}:undefined} onSelect={selectPlanningFormation} onBaseSelect={selectPlanningBase} onRosterMode={mode=>{setPlanningRosterMode(mode);if(mode!=='closed'){setPlanningStep('idle');setSelectingProtectTarget(false)}}} onMission={selectMission} onPickProtectTarget={()=>{setSelectingProtectTarget(true);setRouteNotice(undefined)}} onProtectFlight={selectProtectFlight} onReconPosture={setReconPosture} onRecoverHome={selected.role==='fighter'||canEditReturn?()=>routeToAirfield('p-base',true):undefined} onClear={()=>{setRouteNotice(undefined);if(selectingProtectTarget)setSelectingProtectTarget(false);else if(editingReturn)setReturnWaypoints([]);else setRoute([])}} onBack={()=>{setPlanningStep('mission');setSelectingProtectTarget(false);setRouteNotice(undefined)}} onCommit={()=>commit(planningStep==='route')} step={planningStep} onClose={()=>{if(planningStep==='route'&&selected.route.length>=2&&!selectingProtectTarget&&!confirmPlanningOrder(selected))return;setPlanningStep('idle');setSelectingProtectTarget(false)}} reviewedIds={reviewedIds} reviewedCount={reviewedCount} totalCount={viableFormationIds.length} groundTargets={groundTargets} onChangeGroundTarget={changeGroundTarget} onInspectGroundTarget={inspectAsset} strikeUnlocked={groundTargets.length>0} strikeDisabledReason="RECOVER GROUND TARGET INTELLIGENCE FIRST" selectingProtectTarget={selectingProtectTarget} onlineLock={Boolean(onlineSession)} allowEmptyCommit={Boolean(onlineSession)}/>:null}
       {match.phase==='debrief'&&match.lastResult&&!replayActive?<Debrief match={match} onFocus={point=>{setFollowId(undefined);setFocusPoint([...point] as Point)}} onResupply={enterResupply} pending={onlineCommandBusy}/>:null}
-      {match.phase==='adapt'?<ResupplyPanel match={match} busy={onlineCommandBusy} selectedTarget={economyTarget} onSelectTarget={selectEconomyTarget} onCloseTarget={()=>selectEconomyTarget({kind:'campaign',id:'campaign'})} onPurchase={purchaseEconomy} onNextRound={nextRound} procurementMode={procurementMode} procurementActionId={procurementActionId} onProcurementMode={changeProcurementMode} onProcurementAction={selectProcurementAction} hasPlacementPreview={Boolean(procurementPlacement)} onConfirmPlacement={confirmProcurementPlacement} onCancelPlacement={()=>setProcurementPlacement(undefined)}/>:null}
+      {match.phase==='adapt'?<ResupplyPanel match={match} busy={onlineCommandBusy} cpuAdapting={cpuAdaptingRound===match.round} nextRoundDisabled={cpuAdaptingRound===match.round} cpuPlanError={Boolean(cpuPlanError)} selectedTarget={economyTarget} onSelectTarget={selectEconomyTarget} onCloseTarget={()=>selectEconomyTarget({kind:'campaign',id:'campaign'})} onPurchase={purchaseEconomy} onNextRound={nextRound} procurementMode={procurementMode} procurementActionId={procurementActionId} onProcurementMode={changeProcurementMode} onProcurementAction={selectProcurementAction} hasPlacementPreview={Boolean(procurementPlacement)} onConfirmPlacement={confirmProcurementPlacement} onCancelPlacement={()=>setProcurementPlacement(undefined)}/>:null}
       {(match.phase==='victory'||match.phase==='defeat'||match.phase==='draw')?<EndState victory={match.phase==='victory'} round={match.round} outcome={campaignOutcome(match)} onRestart={()=>setMenuOpen(true)}/>:null}
     </div>
   </main>

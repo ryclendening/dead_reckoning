@@ -93,7 +93,7 @@ function PlanningFuel({budget,needsLanding}:{budget:RouteBudget;needsLanding:boo
   </div>
 }
 
-export function CommandShelf({squadrons,bases,activeBaseId,rosterMode,squadron,routeNotice,routeBudget,protectSummary,editingReturn=false,onRouteLegChange,onSelect,onBaseSelect,onRosterMode,onMission,onPickProtectTarget,onProtectFlight,onRecoverHome,onReconPosture,onClear,onBack,onCommit,step,onClose,reviewedIds,reviewedCount,totalCount,groundTargets=[],onChangeGroundTarget,onInspectGroundTarget,strikeUnlocked=false,strikeDisabledReason='RECOVER BASE INTELLIGENCE TO UNLOCK',selectingProtectTarget=false,allowEmptyCommit=false,onlineLock=false}:{squadrons:Squadron[];bases:Asset[];activeBaseId:string;rosterMode:PlanningRosterMode;squadron:Squadron;routeNotice?:string;routeBudget?:RouteBudget;protectSummary?:string;editingReturn?:boolean;onRouteLegChange?:(editingReturn:boolean)=>void;onSelect:(id:string)=>void;onBaseSelect:(id:string)=>void;onRosterMode:(mode:PlanningRosterMode)=>void;onMission:(mission:MissionId)=>void;onPickProtectTarget?:()=>void;onProtectFlight?:(id:string)=>void;onRecoverHome?:()=>void;onReconPosture?:(posture:ReconPosture)=>void;onClear:()=>void;onBack?:()=>void;onCommit:()=>void;step:PlanningStep;onClose:()=>void;reviewedIds:Set<string>;reviewedCount:number;totalCount:number;campaign?:boolean;groundTargets?:Asset[];onChangeGroundTarget?:()=>void;onInspectGroundTarget?:(id:string)=>void;strikeUnlocked?:boolean;strikeDisabledReason?:string;selectingProtectTarget?:boolean;allowEmptyCommit?:boolean;onlineLock?:boolean}){
+export function CommandShelf({squadrons,bases,activeBaseId,rosterMode,squadron,routeNotice,routeBudget,protectSummary,editingReturn=false,onRouteLegChange,onSelect,onBaseSelect,onRosterMode,onMission,onPickProtectTarget,onProtectFlight,onRecoverHome,onReconPosture,onClear,onBack,onCommit,step,onClose,reviewedIds,reviewedCount,totalCount,groundTargets=[],onChangeGroundTarget,onInspectGroundTarget,strikeUnlocked=false,strikeDisabledReason='RECOVER BASE INTELLIGENCE TO UNLOCK',selectingProtectTarget=false,allowEmptyCommit=false,onlineLock=false,cpuPlanning=false,cpuPlanError=false}:{squadrons:Squadron[];bases:Asset[];activeBaseId:string;rosterMode:PlanningRosterMode;squadron:Squadron;routeNotice?:string;routeBudget?:RouteBudget;protectSummary?:string;editingReturn?:boolean;onRouteLegChange?:(editingReturn:boolean)=>void;onSelect:(id:string)=>void;onBaseSelect:(id:string)=>void;onRosterMode:(mode:PlanningRosterMode)=>void;onMission:(mission:MissionId)=>void;onPickProtectTarget?:()=>void;onProtectFlight?:(id:string)=>void;onRecoverHome?:()=>void;onReconPosture?:(posture:ReconPosture)=>void;onClear:()=>void;onBack?:()=>void;onCommit:()=>void;step:PlanningStep;onClose:()=>void;reviewedIds:Set<string>;reviewedCount:number;totalCount:number;campaign?:boolean;groundTargets?:Asset[];onChangeGroundTarget?:()=>void;onInspectGroundTarget?:(id:string)=>void;strikeUnlocked?:boolean;strikeDisabledReason?:string;selectingProtectTarget?:boolean;allowEmptyCommit?:boolean;onlineLock?:boolean;cpuPlanning?:boolean;cpuPlanError?:boolean}){
   const force=formationStatus(squadron)
   const swipeStart=useRef<{id:number;x:number;y:number;dragging:boolean}|undefined>(undefined)
   const suppressSwipeClick=useRef(false)
@@ -106,8 +106,8 @@ export function CommandShelf({squadrons,bases,activeBaseId,rosterMode,squadron,r
   const forwardBased=groups.some(group=>group.base.kind==='fob'&&group.formationIds.includes(squadron.id))
   const squadronById=new globalThis.Map(squadrons.map(item=>[item.id,item]))
   const openOrders=(id:string)=>onSelect(id)
-  const primaryLabel=onlineLock?'Lock orders':'Commit round'
-  const primaryDisabled=!ready&&!allowEmptyCommit
+  const primaryLabel=cpuPlanning?'CPU ORDERS…':cpuPlanError?'CPU ERROR':onlineLock?'Lock orders':'Commit round'
+  const primaryDisabled=(!ready&&!allowEmptyCommit)||cpuPlanning||cpuPlanError
   const primaryAction=ready||allowEmptyCommit?onCommit:undefined
   const aircraftIds=viablePlanningFormationIds(squadrons)
   const aircraftIndex=aircraftIds.indexOf(squadron.id)
@@ -149,7 +149,7 @@ export function CommandShelf({squadrons,bases,activeBaseId,rosterMode,squadron,r
     {expanded?<div className={`command-sheet ${step}-step`} role="region" aria-roledescription="carousel" aria-label="Aircraft orders" onPointerDown={handlePointerDown} onPointerMove={handlePointerMove} onPointerUp={handlePointerUp} onPointerCancel={()=>{swipeStart.current=undefined}} onClickCapture={event=>{if(suppressSwipeClick.current){event.preventDefault();event.stopPropagation();suppressSwipeClick.current=false}}}>
       <nav className="planning-aircraft-nav" aria-label="Aircraft navigation">
         <button type="button" className="planning-aircraft-arrow" aria-label="Previous aircraft" disabled={aircraftIds.length<2} onClick={()=>cycleAircraft(-1)}><ChevronLeft/></button>
-        <div className="planning-aircraft-identity" aria-live="polite"><b>{squadron.callsign}</b><small>{squadron.role.toUpperCase()} · {aircraftIndex+1} / {aircraftIds.length}</small></div>
+        <div className="planning-aircraft-identity" aria-live="polite"><b>{squadron.callsign}</b><small>{cpuPlanError?'CPU PLANNING FAILED · RELOAD':cpuPlanning?'CPU PREPARING ORDERS…':`${squadron.role.toUpperCase()} · ${aircraftIndex+1} / ${aircraftIds.length}`}</small></div>
         <button type="button" className="planning-aircraft-arrow" aria-label="Next aircraft" disabled={aircraftIds.length<2} onClick={()=>cycleAircraft(1)}><ChevronRight/></button>
         <button type="button" className="planning-pane-close" onClick={onClose}>Done</button>
       </nav>
@@ -196,7 +196,7 @@ export function CommandShelf({squadrons,bases,activeBaseId,rosterMode,squadron,r
     </div>:null}
     {!expanded ? <div className={`planning-capsule ${commitButton?'has-commit':''} ${onlineLock&&commitButton?'online-commit-first':''}`}>
       {onlineLock?commitButton:null}
-      <button className="planning-base-toggle" aria-expanded={expanded} onClick={()=>activeBase&&onBaseSelect(activeBase.id)}><LocateFixed/><span><b>{activeBase?airfieldLabel(activeBase):'AIRFIELD'}</b><small>{protectSummary&&reviewedIds.has(squadron.id) ? protectSummary : reviewedCount ? `${reviewedCount}/${totalCount} orders ready` : 'Select an aircraft'}</small></span><ChevronUp/></button>
+      <button className="planning-base-toggle" aria-expanded={expanded} onClick={()=>activeBase&&onBaseSelect(activeBase.id)}><LocateFixed/><span><b>{activeBase?airfieldLabel(activeBase):'AIRFIELD'}</b><small aria-live={cpuPlanning||cpuPlanError?'polite':undefined}>{cpuPlanError?'CPU PLANNING FAILED · RELOAD':cpuPlanning?'CPU PREPARING ORDERS…':protectSummary&&reviewedIds.has(squadron.id) ? protectSummary : reviewedCount ? `${reviewedCount}/${totalCount} orders ready` : 'Select an aircraft'}</small></span><ChevronUp/></button>
       <button className={`planning-all-toggle ${rosterMode!=='closed'?'active':''}`} onClick={()=>{if(expanded)onClose();onRosterMode(rosterMode==='closed'?'all':'closed')}}><List/><span>ALL</span></button>
       {!onlineLock?commitButton:null}
     </div> : null}

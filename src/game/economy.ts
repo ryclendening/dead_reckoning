@@ -37,15 +37,20 @@ export function settleLogisticsIncome(state: MatchState, result: RoundResult): M
   return { ...state, logistics: state.logistics + income.total, economy: { lastSettledRound: result.round, statement: entries } }
 }
 
-export const openAdaptPhase = (state: MatchState): MatchState => {
+/** Enter the visible Resupply phase before running the CPU's private adaptation work. */
+export const openAdaptPhaseImmediately = (state: MatchState): MatchState => {
   if (state.phase !== 'debrief') return state
   const outcome = campaignOutcome(state)
   if (outcome) return { ...state, phase: campaignOutcomePhase(outcome) }
-  return maintainCpu({ ...state, phase: 'adapt' })
+  return { ...state, phase: 'adapt' }
 }
-export const beginNextRound = (state: MatchState): MatchState => {
-  if (state.phase !== 'adapt' || campaignOutcome(state)) return state
-  if (isCampaign(state) && !state.squadrons.some(formation => formation.aircraft > 0)) return state
+
+export const openAdaptPhase = (state: MatchState): MatchState => {
+  const adapted = openAdaptPhaseImmediately(state)
+  return adapted.phase === 'adapt' ? maintainCpu(adapted) : adapted
+}
+/** Publish the player's next-round planning state without waiting for CPU planning. */
+const nextRoundState = (state: MatchState): MatchState => {
   const playerAssets = normalizeFormationBasing(state.squadrons, state.playerAssets)
   const squadrons = state.squadrons.map(squadron => {
     const field = formationField(playerAssets, squadron.id)
@@ -54,6 +59,18 @@ export const beginNextRound = (state: MatchState): MatchState => {
     const origin = [...field.position] as [number, number]
     return { ...squadron, recoveryWaypoints: undefined, plannedRecoveryFieldId: undefined, sortieOrdered: undefined, status: trapped ? 'trapped' as const : 'rtb' as const, route: [origin], routeIngress: [origin] }
   })
+  return { ...state, playerAssets, squadrons, round: state.round + 1, phase: 'plan', lastResult: undefined }
+}
+
+export const advanceToNextRound = (state: MatchState): MatchState => {
+  if (state.phase !== 'adapt' || campaignOutcome(state)) return state
+  if (isCampaign(state) && !state.squadrons.some(formation => formation.aircraft > 0)) return state
+  return nextRoundState(state)
+}
+
+export const beginNextRound = (state: MatchState): MatchState => {
+  if (state.phase !== 'adapt' || campaignOutcome(state)) return state
+  if (isCampaign(state) && !state.squadrons.some(formation => formation.aircraft > 0)) return state
   const maintained = maintainCpu(state)
-  return planNextCpuRound({ ...maintained, playerAssets, squadrons, round: state.round + 1, phase: 'plan', lastResult: undefined })
+  return planNextCpuRound(nextRoundState(maintained))
 }
