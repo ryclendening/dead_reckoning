@@ -38,8 +38,33 @@ function commands(view:CpuPlanningView):EconomyCommand[] {
 export function planPurchases(view:CpuPlanningView):ReturnType<typeof choosePackage> {
   const profile=CPU_PROFILES[view.cpu.difficulty],work:RouteWork={expansions:0,rejected:[]},all:TacticalPackage[]=[]
   const original=view, nextRound={...view,round:view.round+1}
-  type Node={ctx:SidePlanningContext;commands:EconomyCommand[];coverage:number;forward:number;reconDenial:number;opponentAttrition:number}
-  let beam:Node[]=[{ctx:view.context,commands:[],coverage:0,forward:0,reconDenial:0,opponentAttrition:0}]
+  type Node={ctx:SidePlanningContext;commands:EconomyCommand[];coverage:number;forward:number;reconDenial:number;opponentAttrition:number;rank:number}
+  // Keep the adaptation search bounded as campaigns accumulate formations,
+  // repairs, and construction options. The previous search carried every
+  // unique successor into the next depth, so branching compounded each round.
+  const beamWidth=Math.max(8,profile.purchases*3)
+  const nodeValue=(node:Node)=>{
+    const aircraftValue=node.ctx.formations.reduce((total,formation)=>{
+      const roleValue=formation.role==='fighter'||formation.role==='bomber' ? .45 : .25
+      const available=formation.aircraft>0&&formation.status!=='trapped'?1:0
+      return total+roleValue*available*(formation.aircraft/Math.max(1,formation.maxAircraft))*(formation.strength??100)/100
+    },0)
+    const spent=view.cpu.logistics-node.ctx.logistics
+    return node.coverage*observedThreat(view)+node.reconDenial+node.opponentAttrition+node.forward*.25+aircraftValue*.08-spent*.0005
+  }
+  const boundBeam=(nodes:Node[])=>{
+    const ordered=nodes.sort((a,b)=>b.rank+nodeValue(b)-a.rank-nodeValue(a)||a.commands.length-b.commands.length||JSON.stringify(a.commands).localeCompare(JSON.stringify(b.commands)))
+    const selected:Node[]=[],groups=new Set<string>()
+    for(const node of ordered){
+      const command=node.commands.at(-1),group=command?`${command.actionId}:${command.target.kind}:${command.target.id}:${command.placement?.join(',')??''}`:'save'
+      if(groups.has(group))continue
+      groups.add(group);selected.push(node)
+      if(selected.length>=beamWidth)return selected
+    }
+    for(const node of ordered)if(!selected.includes(node)){selected.push(node);if(selected.length>=beamWidth)break}
+    return selected
+  }
+  let beam:Node[]=[{ctx:view.context,commands:[],coverage:0,forward:0,reconDenial:0,opponentAttrition:0,rank:0}]
   // Keep complete repair sequences even when minor purchases outrank their
   // prefixes. A destroyed formation is replaced through the purchase catalog.
   const serviceSeeds=new Map<number,Node[]>()
@@ -53,6 +78,7 @@ export function planPurchases(view:CpuPlanningView):ReturnType<typeof choosePack
       const ctx=executeEconomyCommand(node.ctx,command)
       if(ctx===node.ctx)break
       node={...node,ctx,commands:[...node.commands,command]}
+      node.rank=nodeValue(node)
       serviceSeeds.set(count,[...(serviceSeeds.get(count)??[]),node])
     }
   }
@@ -73,17 +99,18 @@ export function planPurchases(view:CpuPlanningView):ReturnType<typeof choosePack
         const command:EconomyCommand={actionId:`build-${kind}`,target:{kind:'campaign',id:'campaign'},placement:p,expectedLogistics:expanded.logistics}
         const ctx=executeEconomyCommand(expanded,command)
         if(ctx===expanded)continue
-        expansions.push({ctx,commands:[fob,command],...effects,forward:0})
+        expansions.push({ctx,commands:[fob,command],...effects,forward:0,rank:0})
       }
     }
     const value=(n:Node)=>n.coverage*observedThreat(view)+n.reconDenial+n.opponentAttrition
     expansions.sort((a,b)=>value(b)-value(a)||b.ctx.logistics-a.ctx.logistics||JSON.stringify(a.commands).localeCompare(JSON.stringify(b.commands)))
-    serviceSeeds.set(2,[...(serviceSeeds.get(2)??[]),...expansions.slice(0,2)])
+      serviceSeeds.set(2,[...(serviceSeeds.get(2)??[]),...expansions.slice(0,2).map(node=>({...node,rank:nodeValue(node)}))])
   }
   const utility=(p:TacticalPackage)=>Object.values(contribution(nextRound,p)).reduce((a,b)=>a+b,0)
   for(let depth=0;depth<=profile.purchases;depth++) {
     const seeds=serviceSeeds.get(depth)??[]
     for(const seed of seeds)if(!beam.some(n=>JSON.stringify(n.commands)===JSON.stringify(seed.commands)))beam.push(seed)
+    beam=boundBeam(beam)
     const scored:Array<{node:Node;score:number}>=[]
     for(const node of beam) {
       const current=withContext(nextRound,node.ctx)
@@ -108,7 +135,9 @@ export function planPurchases(view:CpuPlanningView):ReturnType<typeof choosePack
         const changesDefense=['build-sam','build-aaa','build-radar'].includes(command.actionId)
         const effects=changesDefense?defenseNetworkBenefits(current,next.assets):{coverage:0,reconDenial:0,opponentAttrition:0}
         const forward=command.actionId==='build-fob'&&command.placement?forwardValue(current,command.placement)?.gain??0:0
-        return [{ctx:next,commands:[...node.commands,command],coverage:node.coverage+effects.coverage,forward:Math.max(node.forward,forward),reconDenial:Math.min(1,node.reconDenial+effects.reconDenial),opponentAttrition:Math.min(1,node.opponentAttrition+effects.opponentAttrition)}]
+        const child:Node={ctx:next,commands:[...node.commands,command],coverage:node.coverage+effects.coverage,forward:Math.max(node.forward,forward),reconDenial:Math.min(1,node.reconDenial+effects.reconDenial),opponentAttrition:Math.min(1,node.opponentAttrition+effects.opponentAttrition),rank:scored.find(candidate=>candidate.node===node)?.score??0}
+        child.rank+=nodeValue(child)
+        return [child]
       })
     })
     // Equivalent purchase permutations must not consume all beam slots. Keep
@@ -118,7 +147,7 @@ export function planPurchases(view:CpuPlanningView):ReturnType<typeof choosePack
       const key=JSON.stringify([node.ctx.logistics,node.ctx.reserves,node.ctx.formations.map(f=>[f.id,f.aircraft,f.strength,f.status]),node.ctx.assets.map(a=>[a.kind,a.position,a.health,a.operational,a.upgrades]).sort((a,b)=>JSON.stringify(a).localeCompare(JSON.stringify(b)))])
       if(!unique.has(key))unique.set(key,node)
     }
-    beam=[...unique.values()]
+    beam=boundBeam([...unique.values()])
   }
   // Preserve an explicit save alternative even when all useful aircraft are grounded.
   const save=all.find(p=>p.purchases.length===0&&p.orders.every(o=>o.sortieOrdered===false))!
