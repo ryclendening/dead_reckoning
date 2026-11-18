@@ -1,6 +1,6 @@
 import type { ConstructibleAssetKind, EconomyActionId, EconomyActionQuote, EconomyCommand, EconomyTarget, MatchState, Point, RoundResult, LogisticsIncome, LogisticsStatementEntry } from './types'
 import { normalizeFormationBasing, formationField } from './forwardBasing'
-import { campaignOutcome, campaignOutcomePhase, isCampaign } from './campaign'
+import { campaignOutcome, campaignOutcomePhase } from './campaign'
 import { maintainCpu, planNextCpuRound } from './cpu/settlement'
 import { modifiedStat } from './upgrades'
 import { LOGISTICS_EFFECTS } from './economyRules'
@@ -64,13 +64,11 @@ const nextRoundState = (state: MatchState): MatchState => {
 
 export const advanceToNextRound = (state: MatchState): MatchState => {
   if (state.phase !== 'adapt' || campaignOutcome(state)) return state
-  if (isCampaign(state) && !state.squadrons.some(formation => formation.aircraft > 0)) return state
   return nextRoundState(state)
 }
 
 export const beginNextRound = (state: MatchState): MatchState => {
   if (state.phase !== 'adapt' || campaignOutcome(state)) return state
-  if (isCampaign(state) && !state.squadrons.some(formation => formation.aircraft > 0)) return state
   const maintained = maintainCpu(state)
   return planNextCpuRound(nextRoundState(maintained))
 }

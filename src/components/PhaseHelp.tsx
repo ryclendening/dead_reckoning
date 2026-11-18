@@ -16,7 +16,7 @@ const help: Record<PlayPhase, { title: string; tips: [string, string][]; online?
   plan: {
     title: 'Planning',
     tips: [
-      ['Choose a task', 'Tap an aircraft. Protect defends a site, point, or flight. Ground Strike requires recovered intelligence on the target.'],
+      ['Choose a task', 'Tap an aircraft to choose a task. Recon flies the waypoints you plot. Ground Strike requires recovered intelligence on the target.'],
       ['Budget fuel', 'You can add up to five waypoints per leg. Outbound travel, the mission pattern, and the return all use fuel. Shorten a leg if a waypoint exceeds the budget.'],
       ['Choose where to land', 'Tap a friendly airfield on Return, or tap it on Outbound during Transit. Tapping a FOB while planning Protect makes it the defended site.'],
     ],
@@ -42,8 +42,8 @@ const help: Record<PlayPhase, { title: string; tips: [string, string][]; online?
     title: 'Resupply',
     tips: [
       ['Spend your cash', 'Use Buy to add aircraft or build sites. Select the main airfield to see its upgrade options.'],
-      ['Check repairs', 'Use Repairs or select a damaged unit to see what can be restored. SAM damage is permanent, but its missiles replenish each round.'],
-      ['Prepare to launch', 'A forward base can hold two formations. A flight needs to land there before it can launch from that base next round.'],
+      ['Check repairs', 'Use Repairs or select a damaged formation to restore strength. Ground site damage persists. SAM missiles replenish each round.'],
+      ['Prepare to launch', 'You can plan the next round even with no aircraft. A forward base holds up to two formations.'],
     ],
   },
 }

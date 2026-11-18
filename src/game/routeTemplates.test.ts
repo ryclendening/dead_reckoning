@@ -12,7 +12,7 @@ const missionDistanceFrom=(route:Point[],home:Point)=>route.slice(1).reduce((sum
 describe('route templates',()=>{
   it('only exposes role-appropriate movement templates',()=>{
     expect(templatesForRole('fighter').map(template=>template.id)).toEqual(['base-strike','transit','defensive-cap','forward-patrol'])
-    expect(templatesForRole('recon').map(template=>template.id)).toEqual(['search-area'])
+    expect(templatesForRole('recon').map(template=>template.id)).toEqual(['transit','search-area'])
   })
 
   it('is deterministic for identical inputs',()=>{
@@ -36,9 +36,11 @@ describe('route templates',()=>{
     expect(Math.max(...defensive.route.map(point=>distance(point,base)))).toBeGreaterThan(Math.max(...forward.route.map(point=>distance(point,base))))
   })
 
-  it('creates a multi-pass recon search',()=>{
+  it('puts only the CPU on a generated search sweep',()=>{
     const ingress:[Point,Point,Point]=[base,[-2,5],[2,-4]]
-    const search=generateRouteTemplate({template:'search-area',ingress,maxDistance:48,bounds:CAMPAIGN_WORLD_BOUNDS})
+    const options={template:'search-area' as const,ingress,maxDistance:48,bounds:CAMPAIGN_WORLD_BOUNDS}
+    expect(generateRouteTemplate(options).route).toEqual(ingress)
+    const search=generateRouteTemplate({...options,cpuSearchSweep:true})
     expect(search.route.length).toBe(13)
     expect(search.route.slice(0,ingress.length)).toEqual(ingress)
     expect(new Set(search.route.slice(1).map(point=>point[0].toFixed(2))).size).toBeGreaterThan(3)

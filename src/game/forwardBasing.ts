@@ -37,6 +37,16 @@ export function formationField(assets: Asset[], formationId: string): Asset | un
   return assets.filter(isAirfield).find(asset => asset.basedFormationIds?.includes(formationId)) ?? assets.find(asset => asset.kind === 'base')
 }
 
+const FOB_SELECTION_RADIUS = 1.05
+
+/** Snap nearby clicks to a FOB only when the player is choosing a landing field. */
+export function nearbyRecoveryFob(assets: Asset[], point: Point): Asset | undefined {
+  return assets.filter(asset => asset.kind === 'fob' && isOperationalAirfield(asset))
+    .map(asset => ({ asset, distance: distanceBetween(point, asset.position) }))
+    .filter(candidate => candidate.distance <= FOB_SELECTION_RADIUS)
+    .sort((a,b) => a.distance - b.distance || a.asset.id.localeCompare(b.asset.id))[0]?.asset
+}
+
 export function transitDestination(squadron: Pick<Squadron, 'mission'>, route: Point[], field: Asset): boolean {
   const end = route.at(-1)
   return squadron.mission === 'transit' && !!end && route.length >= 2 && distanceBetween(end, field.position) <= .001

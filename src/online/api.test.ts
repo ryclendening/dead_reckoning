@@ -78,8 +78,12 @@ describe('invite-only online campaign API', () => {
     const route=[home.position,fob.position]
     const transit:OnlineOrder={id:fighter.id,mission:'transit',route,routeIngress:route,plannedRecoveryFieldId:home.id}
     expect(()=>applyOnlineAction(game,0,{type:'lock-plan',orders:[transit]})).toThrow('TRANSIT MUST END AT THE SELECTED AIRFIELD')
-    applyOnlineAction(game,0,{type:'lock-plan',orders:[{...transit,plannedRecoveryFieldId:fob.id}]})
-    expect(game.seats[0].match.squadrons.find(formation=>formation.id===fighter.id)?.plannedRecoveryFieldId).toBe(fob.id)
+    const recon=match.squadrons.find(formation=>formation.role==='recon')!
+    const transitOrders=[{...transit,plannedRecoveryFieldId:fob.id},{...transit,id:recon.id,plannedRecoveryFieldId:fob.id}]
+    applyOnlineAction(game,0,{type:'lock-plan',orders:transitOrders})
+    for(const id of [fighter.id,recon.id]) {
+      expect(game.seats[0].match.squadrons.find(formation=>formation.id===id)).toMatchObject({mission:'transit',plannedRecoveryFieldId:fob.id})
+    }
   })
 
   it('allocates exactly one guest seat and lets each device recover a lost entry response', async () => {
@@ -164,7 +168,7 @@ describe('invite-only online campaign API', () => {
       }] } : hold
       if (round === 1) {
         const altered = structuredClone(plan)
-        altered.orders[0].route[1] = center
+        altered.orders[0].route = [center, center]
         expect((await next(a, altered, hostToken)).status).toBe(400)
         expect((await next(a, { type: 'lock-plan', orders: [{ ...plan.orders[0], mission: 'base-strike' }] }, hostToken)).status).toBe(400)
         expect((await next(a, { type: 'lock-plan', orders: [{ ...plan.orders[0], recoveryWaypoints: Array(6).fill(returnPoint) }] }, hostToken)).status).toBe(400)

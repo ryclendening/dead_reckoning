@@ -56,7 +56,7 @@ export interface EnemyFlight {
   aircraftTypeId?: string; upgrades?: UpgradeId[]
 }
 export type AssetKind = 'base' | 'fob' | 'decoy' | 'radar' | 'sam' | 'aaa'
-export type ConstructibleAssetKind = 'fob' | 'decoy' | 'sam' | 'aaa'
+export type ConstructibleAssetKind = 'fob' | 'decoy' | 'sam' | 'aaa' | 'radar'
 export interface Asset {
   id: string; kind: AssetKind; position: Point
   intel: IntelLevel; confidence: number; health: number; maxHealth: number; hidden: boolean; struck: boolean
@@ -66,7 +66,7 @@ export interface Asset {
 export type UpgradeId = string
 /** @deprecated Use UpgradeId; retained for save and import compatibility. */
 export type AssetUpgradeId = UpgradeId
-export type EconomyActionId = 'repair-formation' | 'replace-aircraft' | 'repair-defense' | 'repair-fob' | `install-${string}` | 'buy-fighter' | 'buy-recon' | 'build-fob' | 'build-decoy' | 'build-sam' | 'build-aaa'
+export type EconomyActionId = 'repair-formation' | 'replace-aircraft' | 'repair-defense' | 'repair-fob' | `install-${string}` | 'buy-fighter' | 'buy-recon' | 'build-fob' | 'build-decoy' | 'build-sam' | 'build-aaa' | 'build-radar'
 export type EconomyTarget = { kind: 'campaign'; id: 'campaign' } | { kind: 'squadron' | 'asset'; id: string }
 export type CampaignSetupStage = 'allocate' | 'place' | 'review'
 export interface CampaignSetupState {
@@ -78,8 +78,6 @@ export interface CampaignSetupState {
 export type EconomyEffect =
   | { kind: 'formation-strength'; before: number; after: number }
   | { kind: 'formation-purchase'; role: Role }
-  | { kind: 'asset-health'; before: number; after: number }
-  | { kind: 'asset-operational'; before: boolean; after: boolean }
   | { kind: 'upgrade-installation'; upgradeId: UpgradeId }
   | { kind: 'asset-construction'; assetKind: ConstructibleAssetKind; name: string; capacity?: number }
 export interface EconomyProjection { logistics: number; reserveAircraft: number }
@@ -180,6 +178,7 @@ export interface ActiveDogfightPresentation {
 export interface WeaponEffect {
   id: string; kind: WeaponKind; sourceId: string; targetId: string; start: number; end: number
   from: Point; to: Point; hit: boolean; damage: number
+  launchOnly?: true
 }
 export interface ContactObservation {
   id: string; observerId: string; targetId: string; start: number; end: number

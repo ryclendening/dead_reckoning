@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest'
 import { createCampaignDraft } from '../data'
 import { confirmCampaignSetup } from '../campaignSetup'
-import { CAMPAIGN_ROUND_LIMIT, campaignOutcome, campaignOutcomePhase } from '../campaign'
+import { CAMPAIGN_ROUND_LIMIT, campaignOutcome } from '../campaign'
 import { applyRound, resolveRound } from '../engine'
 import { normalizeMatch } from '../persistence'
 import { openAdaptPhase } from '../economy'
@@ -160,13 +160,13 @@ describe('symmetric campaign rules',()=>{
     const broken=structuredClone(s);broken.cpu!.formations.push({...broken.cpu!.formations[0]})
     expect(normalizeMatch(broken).phase).toBe('deploy')
   })
-  it('draws deadline and simultaneous base or force destruction, and recognizes elimination for either side',()=>{
+  it('draws the deadline and mutual base destruction while retaining historical save outcomes',()=>{
     const s=campaign()
     expect(campaignOutcome({...s,playerBaseHealth:0,enemyBaseHealth:0})).toBe('mutual-destruction')
     const cpuLost={...s,cpu:{...s.cpu!,logistics:0,reserves:0,formations:s.cpu!.formations.map(f=>({...f,aircraft:0,strength:0}))}}
-    expect(campaignOutcome(cpuLost)).toBe('enemy-forces-lost')
-    expect(campaignOutcomePhase(campaignOutcome(cpuLost)!)).toBe('victory')
-    expect(campaignOutcome({...cpuLost,logistics:0,replacements:0,squadrons:s.squadrons.map(f=>({...f,aircraft:0,strength:0}))})).toBe('mutual-forces-lost')
+    expect(campaignOutcome(cpuLost)).toBeUndefined()
+    expect(campaignOutcome({ ...cpuLost, phase: 'victory' })).toBe('enemy-forces-lost')
+    expect(campaignOutcome({...cpuLost,logistics:0,replacements:0,squadrons:s.squadrons.map(f=>({...f,aircraft:0,strength:0}))})).toBeUndefined()
     const result=resolveRound({...s,squadrons:s.squadrons.map(f=>({...f,sortieOrdered:false}))})
     const deadline={...applyRound(s,result),round:CAMPAIGN_ROUND_LIMIT,lastResult:{...result,round:CAMPAIGN_ROUND_LIMIT}}
     expect(openAdaptPhase(deadline).phase).toBe('draw')

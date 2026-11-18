@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest'
 import { samStatusAt, samStatusForPhase } from './airDefense'
 import { createRoundSimulation, resolveRound } from './engine'
 import { createMatch, enemyAssetsFor } from './data'
-import { effectiveDefenseProfile, inCoverageCircle } from './equipmentRules'
+import { effectiveDefenseProfile, inCoverageCircle, SAM_DEPLOYMENT_LIMIT } from './equipmentRules'
 import { projectGroundAssetAt } from './executionProjection'
 import { createScenario } from './scenarios'
 import { generateCampaignWorld } from './world'
@@ -18,6 +18,18 @@ function defenseFixture(twoFlights=false):MatchState{
 }
 
 describe('finite SAM salvos',()=>{
+  it('throttles overlapping SAM volleys in saves with older battery stacks', () => {
+    const state = defenseFixture()
+    const battery = state.enemyAssets.find(asset => asset.id === 'e-sam')!
+    state.enemyAssets.push(...Array.from({ length: 7 }, (_, index) => ({ ...battery, id: `e-sam-extra-${index}` })))
+    const launches = resolveRound(state).weaponEffects.filter(effect => effect.kind === 'sam' && effect.targetId === 'raven')
+    expect(launches.filter(shot => shot.start === launches[0].start)).toHaveLength(SAM_DEPLOYMENT_LIMIT)
+    for (const launch of launches) {
+      const incoming = launches.filter(shot => shot.start <= launch.start && launch.start < shot.end)
+      expect(incoming.length).toBeLessThanOrEqual(SAM_DEPLOYMENT_LIMIT)
+    }
+  })
+
   it('can repeatedly shoot the same formation, spends misses, and waits three seconds between all launches',()=>{
     const state=defenseFixture(),result=resolveRound(state),shots=result.weaponEffects.filter(effect=>effect.kind==='sam'&&effect.sourceId==='e-sam')
     expect(shots).toHaveLength(3)

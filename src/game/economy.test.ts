@@ -67,23 +67,18 @@ describe('logistics economy', () => {
     expect(economyAttentionTargets(state)).not.toContainEqual({ kind: 'squadron', id: 'viper' })
   })
 
-  it('repairs valid defense assets and rejects invalid asset targets', () => {
-    const state = { ...createMatch(), phase: 'adapt' as const, logistics: 2, playerAssets: createMatch().playerAssets.map(asset => asset.id === 'p-radar' ? { ...asset, health: 60 } : asset) }
-    const repaired = purchaseEconomyAction(state, 'repair-defense', { kind: 'asset', id: 'p-radar' })
-    expect(repaired.playerAssets.find(asset => asset.id === 'p-radar')?.health).toBe(85)
-    expect(economyQuotesFor(state, { kind: 'asset', id: 'p-decoy' })).toEqual([])
-
-    const nearlyHealthy = { ...state, playerAssets: state.playerAssets.map(asset => asset.id === 'p-radar' ? { ...asset, health: 90 } : asset) }
-    expect(purchaseEconomyAction(nearlyHealthy, 'repair-defense', { kind: 'asset', id: 'p-radar' }).playerAssets.find(asset => asset.id === 'p-radar')?.health).toBe(100)
-  })
-
-  it('repairs an unusable FOB for four Logistics and releases trapped formations', () => {
+  it('leaves damaged ground equipment and disabled FOBs out of the repair catalog', () => {
     const base = createMatch()
-    const state = { ...base, phase: 'adapt' as const, logistics: 6, playerAssets: [...base.playerAssets, { id: 'p-fob-1', kind: 'fob' as const, name: 'FOB ALPHA', position: [0, 0] as Point, intel: 'confirmed' as const, confidence: 100, health: 0, maxHealth: 100, hidden: false, struck: false, operational: false, capacity: 1, basedFormationIds: ['viper'] }], squadrons: base.squadrons.map(squadron => squadron.id === 'viper' ? { ...squadron, status: 'trapped' as const } : squadron) }
-    const repaired = purchaseEconomyAction(state, 'repair-fob', { kind: 'asset', id: 'p-fob-1' })
-    expect(repaired.logistics).toBe(2)
-    expect(repaired.playerAssets.find(asset => asset.id === 'p-fob-1')).toMatchObject({ operational: true, health: 100 })
-    expect(repaired.squadrons.find(squadron => squadron.id === 'viper')?.status).toBe('rtb')
+    const fob = { ...base.playerAssets[0], id: 'p-fob-1', kind: 'fob' as const, health: 0, operational: false, basedFormationIds: ['viper'] }
+    const state = { ...base, phase: 'adapt' as const, logistics: 20,
+      playerAssets: [...base.playerAssets.map(asset => asset.kind === 'base' ? asset : { ...asset, health: 50 }), fob] }
+    for (const asset of state.playerAssets.filter(asset => asset.kind !== 'base')) {
+      const target = { kind: 'asset' as const, id: asset.id }
+      expect(economyQuotesFor(state, target)).toEqual([])
+      expect(purchaseEconomyAction(state, 'repair-defense', target)).toBe(state)
+      expect(purchaseEconomyAction(state, 'repair-fob', target)).toBe(state)
+    }
+    expect(economyAttentionTargets(state)).toEqual([])
   })
 
   it('persists one mutually exclusive airfield upgrade and applies its effect only to later rounds', () => {
@@ -110,26 +105,29 @@ describe('logistics economy', () => {
     expect(economyQuotesFor(healthy, { kind: 'squadron', id: 'viper' })).toEqual([])
     expect(economyQuotesFor(healthy, { kind: 'asset', id: 'p-radar' })).toEqual([])
 
-    const damaged = { ...healthy, logistics: 7, playerAssets: healthy.playerAssets.map(asset => asset.id === 'p-radar' ? { ...asset, health: 88 } : asset) }
-    expect(economyQuotesFor(damaged, { kind: 'asset', id: 'p-radar' })[0]).toMatchObject({
-      detail: '88 → 100 HP (+12).',
-      effect: { kind: 'asset-health', before: 88, after: 100 },
+    const damaged = { ...healthy, logistics: 7, squadrons: healthy.squadrons.map(formation =>
+      formation.id === 'viper' ? { ...formation, strength: 88 } : formation) }
+    expect(economyQuotesFor(damaged, { kind: 'squadron', id: 'viper' })[0]).toMatchObject({
+      detail: 'Strength 88 → 100 (+12).',
+      effect: { kind: 'formation-strength', before: 88, after: 100 },
       projected: { logistics: 5, reserveAircraft: 3 },
     })
   })
 
   it('rejects insufficient, stale, and retargeted commands without mutation', () => {
-    const state = { ...createMatch(), phase: 'adapt' as const, logistics: 1, playerAssets: createMatch().playerAssets.map(asset => asset.kind === 'radar' || asset.kind === 'sam' ? { ...asset, health: 50 } : asset) }
-    expect(purchaseEconomyAction(state, 'repair-defense', { kind: 'asset', id: 'p-radar' })).toBe(state)
+    const initial = createMatch()
+    const damaged = { ...initial, phase: 'adapt' as const, logistics: 1, squadrons: initial.squadrons.map(formation =>
+      formation.id === 'viper' ? { ...formation, strength: 88 } : formation) }
+    const target = { kind: 'squadron' as const, id: 'viper' }
+    expect(purchaseEconomyAction(damaged, 'repair-formation', target)).toBe(damaged)
 
-    const affordable = { ...state, logistics: 4 }
-    const radarQuote = economyQuotesFor(affordable, { kind: 'asset', id: 'p-radar' })[0]
-    const staleCommand = economyCommandForQuote(affordable, radarQuote)
+    const affordable = { ...damaged, logistics: 4 }
+    const quote = economyQuotesFor(affordable, target)[0]
+    const staleCommand = economyCommandForQuote(affordable, quote)
     const changed = { ...affordable, logistics: 3 }
     expect(executeEconomyCommand(changed, staleCommand)).toBe(changed)
-
-    const samQuotes = economyQuotesFor(affordable, { kind: 'asset', id: 'p-sam' })
-    expect(findMatchingEconomyQuote(samQuotes, { actionId: radarQuote.id, target: radarQuote.target })).toBeUndefined()
+    const assetQuotes = economyQuotesFor(affordable, { kind: 'asset', id: 'p-base' })
+    expect(findMatchingEconomyQuote(assetQuotes, staleCommand)).toBeUndefined()
   })
 
   it('enforces Debrief to Adapt to next-round Plan as the only transition sequence', () => {
@@ -170,6 +168,7 @@ describe('logistics economy', () => {
     ['build-decoy', 'decoy', LOGISTICS_COSTS.decoyConstruction, 60],
     ['build-aaa', 'aaa', LOGISTICS_COSTS.aaaConstruction, 100],
     ['build-sam', 'sam', LOGISTICS_COSTS.samConstruction, 100],
+    ['build-radar', 'radar', LOGISTICS_COSTS.radarConstruction, 100],
   ] as const)('constructs %s atomically through the shared procurement registry', (actionId, kind, cost, maxHealth) => {
     const state = { ...createMatch(), phase: 'adapt' as const, logistics: 20 }
     const center = state.world.friendlyTerritory.center
@@ -183,6 +182,25 @@ describe('logistics economy', () => {
     expect(built.playerAssets.at(-1)).toMatchObject({ id: `p-${kind}-2`, kind, position: placement, health: maxHealth, maxHealth })
     expect(built.economy.statement.at(-1)).toMatchObject({ amount: cost, source: actionId })
     expect(executeEconomyCommand({ ...state, phase: 'plan' }, { actionId: actionId as EconomyActionId, target: { kind: 'campaign', id: 'campaign' }, placement })).toEqual({ ...state, phase: 'plan' })
+  })
+
+  it.each([['radar', 2], ['sam', 3]] as const)('limits each side to %s deployments with replacements after losses', (kind, limit) => {
+    const initial = createMatch()
+    const target = { kind: 'campaign', id: 'campaign' } as const
+    const opening = initial.playerAssets.find(asset => asset.kind === kind)!
+    const extras = Array.from({ length: limit - 1 }, (_, index) => ({
+      ...opening, id: `p-${kind}-${index + 2}`, position: [99 + index, 99] as Point,
+    }))
+    const state = { ...initial, phase: 'adapt' as const, logistics: 100, playerAssets: [...initial.playerAssets, ...extras] }
+    const actionId = `build-${kind}` as const
+    expect(economyQuotesFor(state, target).find(quote => quote.id === actionId)?.eligible).toBe(false)
+    const afterLoss = { ...state, playerAssets: state.playerAssets.map(asset => asset.id === opening.id ? { ...asset, health: 0 } : asset) }
+    const [x,z] = state.world.friendlyTerritory.center
+    const placement: Point = [x, z - 4]
+    expect(executeEconomyCommand(state, { actionId, target, placement })).toBe(state)
+    const replaced = executeEconomyCommand(afterLoss, { actionId, target, placement })
+    expect(replaced.playerAssets.at(-1)).toMatchObject({ id: `p-${kind}-${limit + 1}`, position: placement })
+    expect(economyQuotesFor(replaced, target).find(quote => quote.id === actionId)?.eligible).toBe(false)
   })
 
   it('blocks overlapping enemy territory without consulting unrelated enemy infrastructure', () => {

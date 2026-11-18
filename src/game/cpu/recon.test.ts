@@ -60,6 +60,36 @@ describe('shared committed recon posture',()=>{
     expect(launches[0]).toBe(launches[1])
   })
 
+  it.each(['player', 'cpu'] as const)('fires one timed AAA burst and applies damage to %s recon', side => {
+    const { state, id } = scenario(side, 'aggressive', 'aaa')
+    const sites = side === 'cpu' ? state.playerAssets : state.enemyAssets
+    const battery = sites.find(asset => asset.kind === 'aaa')!
+    const result = resolveRound(state)
+    const shots = result.weaponEffects.filter(effect => effect.sourceId === battery.id)
+    const impacts = result.combatSequences.flatMap(sequence => sequence.exchanges)
+      .filter(exchange => exchange.attackerId === battery.id)
+    const track = result.unitTracks.find(unit => unit.unitId === id)!.frames
+
+    // The route crosses the gun's range on both the outbound and return legs.
+    expect(shots).toHaveLength(5)
+    expect(impacts).toHaveLength(5)
+    for (const [index, shot] of shots.entries()) {
+      expect(shot).toMatchObject({ kind: 'aaa', targetId: id })
+      expect(shot.start - shots[0].start).toBeCloseTo(index * .14, 6)
+      expect(shot.end - shot.start).toBeCloseTo(.5, 6)
+      expect(impacts[index].time).toBeGreaterThanOrEqual(shot.end - .001)
+      expect(impacts[index].time).toBeLessThan(shot.end + result.tickSeconds + .001)
+      expect(impacts[index].damage).toBe(shot.damage)
+    }
+    const damage = impacts.reduce((total, impact) => total + impact.damage, 0)
+    expect(damage).toBeGreaterThan(0)
+    expect(track.filter(frame => frame.time < impacts[0].time).at(-1)?.strength).toBe(100)
+    expect(track.at(-1)?.strength).toBe(100 - damage)
+
+    battery.operational = false
+    expect(resolveRound(state).weaponEffects.filter(effect => effect.sourceId === battery.id)).toEqual([])
+  })
+
   it.each(['sam','aaa','fighter'] as const)('applies the same conservative %s trigger on both sides',threat=>{
     const retreats=[]
     for(const side of ['player','cpu'] as const) {

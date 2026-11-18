@@ -81,6 +81,19 @@ describe('mission planning shelf', () => {
     expect(markup).toMatch(/online-commit-first"><button[^>]*>.*Lock orders.*planning-base-toggle/s)
   })
 
+  it('offers Commit round when no formation can launch', () => {
+    const match = createMatch()
+    const squadrons = match.squadrons.map(formation => ({ ...formation, aircraft: 0 }))
+    const markup = renderToStaticMarkup(<CommandShelf
+      squadrons={squadrons} bases={match.playerAssets} activeBaseId="p-base" rosterMode="closed"
+      squadron={squadrons[0]} onSelect={noop} onBaseSelect={noop}
+      onRosterMode={noop} onMission={noop} onClear={noop} onCommit={noop}
+      step="idle" onClose={noop} reviewedIds={new Set()} reviewedCount={0} totalCount={0} allowEmptyCommit
+    />)
+    expect(markup).toContain('No aircraft available')
+    expect(markup).toContain('class="shelf-primary">Commit round')
+  })
+
   it('shows the strike target and return controls together', () => {
     const match = createMatch()
     const target = { ...match.enemyAssets[0], name: 'TARGET RADAR' }

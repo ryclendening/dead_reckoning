@@ -11,10 +11,10 @@ export interface RouteGenerationResult { route:Point[]; ingress:Point[]; request
 
 export const ROUTE_TEMPLATES:RouteTemplateDefinition[]=[
   {id:'base-strike',label:'Ground Strike',shortLabel:'GROUND STRIKE',description:'Choose a confirmed ground target, then edit the ingress and place the strike point inside its six-unit release circle. Avoid voluntary air combat.',roles:['fighter'],requiresTarget:true},
-  {id:'transit',label:'Transit',shortLabel:'TRANSIT',description:'Fly to a friendly airfield without diverting to intercept contacts.',roles:['fighter'],requiresTarget:true},
+  {id:'transit',label:'Transit',shortLabel:'TRANSIT',description:'Fly to a friendly airfield without diverting to intercept contacts.',roles:['fighter','recon'],requiresTarget:true},
   {id:'defensive-cap',label:'Protect',shortLabel:'PROTECT',description:'Choose a friendly site, flight, or map point. Intercept threats inside the moving or fixed cover circle; break off at its marked edge.',roles:['fighter'],requiresTarget:true},
   {id:'forward-patrol',label:'Forward Patrol',shortLabel:'FORWARD PATROL',description:'Hunt inside the corridor around the patrol route, then break pursuit at its marked edge. Shots +10 points; incoming hits +6 points.',roles:['fighter'],requiresTarget:true},
-  {id:'search-area',label:'Search Area',shortLabel:'SEARCH AREA',description:'Fixed search pattern appended at the chosen location.',roles:['recon'],requiresTarget:true},
+  {id:'search-area',label:'Recon',shortLabel:'RECON',description:'Plot a route to observe enemy sites and map terrain.',roles:['recon'],requiresTarget:true},
 ]
 
 export const templatesForRole=(role:Role)=>ROUTE_TEMPLATES.filter(template=>template.roles.includes(role))
@@ -89,8 +89,8 @@ function searchSweep(center:Point,forward:Point,side:Point,sideRadius:number,for
   return passes
 }
 
-function build(template:MissionId,ingress:Point[],patternScale:number):Point[]{
-  if(template==='base-strike'||template==='transit')return ingress
+function build(template:MissionId,ingress:Point[],patternScale:number,cpuSearchSweep:boolean):Point[]{
+  if(template==='base-strike'||template==='transit'||(template==='search-area'&&!cpuSearchSweep))return ingress
   const base=ingress[0]
   const target=ingress.at(-1)!
   const {forward,side}=basis(base,target)
@@ -118,30 +118,30 @@ function prefixAtRatio(route:Point[],ratio:number):Point[]{
   return prefix
 }
 
-export function generateRouteTemplate({template,ingress,maxDistance,bounds}:{template:MissionId;ingress:Point[];maxDistance:number;bounds:RouteBounds}):RouteGenerationResult{
+export function generateRouteTemplate({template,ingress,maxDistance,bounds,cpuSearchSweep=false}:{template:MissionId;ingress:Point[];maxDistance:number;bounds:RouteBounds;cpuSearchSweep?:boolean}):RouteGenerationResult{
   const safeIngress=ingress.map(point=>clampPoint(point,bounds))
   const clampedIngress=safeIngress.some((point,index)=>point[0]!==ingress[index]?.[0]||point[1]!==ingress[index]?.[1])
   const base=safeIngress[0]??[0,0] as Point
   if(safeIngress.length<2)return {route:safeIngress,ingress:safeIngress,requestedIngress:ingress,adjustment:clampedIngress?'ingress-clamped':'none'}
-  const initial=build(template,safeIngress,1)
+  const initial=build(template,safeIngress,1,cpuSearchSweep)
   if(valid(initial,base,maxDistance,bounds))return {route:initial,ingress:safeIngress,requestedIngress:ingress,adjustment:clampedIngress?'ingress-clamped':'none'}
 
   let low=.25,high=1
   for(let index=0;index<24;index++){
     const midpoint=(low+high)/2
-    if(valid(build(template,safeIngress,midpoint),base,maxDistance,bounds))low=midpoint
+    if(valid(build(template,safeIngress,midpoint,cpuSearchSweep),base,maxDistance,bounds))low=midpoint
     else high=midpoint
   }
   if(low>.25+.0001){
-    return {route:build(template,safeIngress,low),ingress:safeIngress,requestedIngress:ingress,adjustment:clampedIngress?'ingress-clamped':'pattern-shrunk'}
+    return {route:build(template,safeIngress,low,cpuSearchSweep),ingress:safeIngress,requestedIngress:ingress,adjustment:clampedIngress?'ingress-clamped':'pattern-shrunk'}
   }
   low=0;high=1
   for(let index=0;index<24;index++){
     const midpoint=(low+high)/2
     const shortened=prefixAtRatio(safeIngress,midpoint)
-    if(valid(build(template,shortened,.25),base,maxDistance,bounds))low=midpoint
+    if(valid(build(template,shortened,.25,cpuSearchSweep),base,maxDistance,bounds))low=midpoint
     else high=midpoint
   }
   const shortened=prefixAtRatio(safeIngress,low)
-  return {route:build(template,shortened,.25),ingress:shortened,requestedIngress:ingress,adjustment:clampedIngress?'ingress-clamped':'ingress-shortened'}
+  return {route:build(template,shortened,.25,cpuSearchSweep),ingress:shortened,requestedIngress:ingress,adjustment:clampedIngress?'ingress-clamped':'ingress-shortened'}
 }

@@ -166,14 +166,36 @@ describe('authoritative online round adapter', () => {
     expect(fight?.engagement?.sides.friendly).toEqual(expect.arrayContaining(['viper','falcon']))
   })
 
-  it('credits the round payout before testing both seats for force elimination', () => {
+  it('shows own AAA muzzle flashes without disclosing an untracked target', () => {
+    const a = seat(137)
+    const b = seat(841)
+    a.enemyAssets = []
+    b.enemyAssets = []
+    a.playerAssets = a.playerAssets.flatMap(asset => asset.kind === 'base' || asset.kind === 'aaa'
+      ? [{ ...asset, position: [0, 0] as Point }] : [])
+    b.playerAssets = b.playerAssets.filter(asset => asset.kind === 'base').map(asset => ({ ...asset, position: [7, 0] }))
+    const route: Point[] = [[7, 0], [0, 0]]
+    b.squadrons = b.squadrons.map(formation => formation.id === 'raven'
+      ? { ...formation, mission: 'search-area', route, routeIngress: route, sortieOrdered: true, plannedRecoveryFieldId: 'p-base' }
+      : formation)
+    const [resolved] = resolveOnlineRound([a,b],991)
+    const result = resolved.lastResult!
+    expect(result.enemyFlights).toEqual([])
+    const launches = result.weaponEffects.filter(effect => effect.kind === 'aaa')
+    expect(launches).toHaveLength(5)
+    for (const launch of launches) expect(launch).toMatchObject({
+      sourceId: 'p-aaa', targetId: 'untracked-aircraft', from: [0,0], to: [0,0], launchOnly: true, hit: false, damage: 0,
+    })
+  })
+
+  it('continues and pays ground-only sides through the deadline', () => {
     const a = seat(137), b = seat(841, 8)
     const lost = { ...a, logistics: FORMATION_PRICES.recon - LOGISTICS_EFFECTS.baseIncome, squadrons:a.squadrons.map(formation => ({ ...formation, aircraft:0, strength:0 })) }
     const eligible = resolveOnlineRound([lost,b], 991)
     expect(eligible[0].logistics).toBe(FORMATION_PRICES.recon)
     expect(eligible.every(state => state.onlineOutcome === undefined)).toBe(true)
-    const eliminated = resolveOnlineRound([{...lost, logistics:lost.logistics-1},b], 991)
-    expect(eliminated.map(state => state.onlineOutcome)).toEqual(['forces-lost','enemy-forces-lost'])
+    const broke = resolveOnlineRound([{...lost, logistics:lost.logistics-1},b], 991)
+    expect(broke.every(state => state.onlineOutcome === undefined)).toBe(true)
     const final = resolveOnlineRound([{...lost,round:CAMPAIGN_ROUND_LIMIT},{...b,round:CAMPAIGN_ROUND_LIMIT}], 991)
     expect(final.map(state => state.onlineOutcome)).toEqual(['deadline','deadline'])
   })

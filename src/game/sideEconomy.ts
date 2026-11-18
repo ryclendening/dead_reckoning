@@ -4,6 +4,7 @@ import { MAPPED_RADIUS } from './fog'
 import { FOB_MIN_CAPACITY, isOperationalAirfield } from './forwardBasing'
 import { friendlyTerritoryForAssets, territoryContains, territoryRegions } from './territory'
 import { FORMATION_PRICES, LOGISTICS_COSTS, LOGISTICS_EFFECTS } from './economyRules'
+import { isOperationalSite, SAM_DEPLOYMENT_LIMIT } from './equipmentRules'
 export { LOGISTICS_COSTS, LOGISTICS_EFFECTS } from './economyRules'
 
 import { OPENING_CONDITION } from './openingForces'
@@ -34,19 +35,29 @@ interface ProcurementDefinition {
   maxHealth: number
   detail: string
   capacity?: number
+  limit?: number
 }
 
 export const PROCUREMENT_CATALOG: readonly ProcurementDefinition[] = [
   { actionId: 'build-fob', kind: 'fob', cost: LOGISTICS_COSTS.fobConstruction, maxHealth: 100, capacity: FOB_INITIAL_CAPACITY, detail: `Operational forward field with capacity for ${FOB_INITIAL_CAPACITY} formations. Place within ${FOB_PLACEMENT_MAX_TERRITORY_GAP} units of the current territory edge.` },
   { actionId: 'build-decoy', kind: 'decoy', cost: LOGISTICS_COSTS.decoyConstruction, maxHealth: 60, detail: 'Creates a false airfield target that can draw hostile attacks.' },
   { actionId: 'build-aaa', kind: 'aaa', cost: LOGISTICS_COSTS.aaaConstruction, maxHealth: 100, detail: 'Gun defense: 1.9 locally, 2.85 with radar support.' },
-  { actionId: 'build-sam', kind: 'sam', cost: LOGISTICS_COSTS.samConstruction, maxHealth: 100, detail: 'Fires within 3.2 map units and anywhere inside a linked radar’s detection zone.' },
+  { actionId: 'build-sam', kind: 'sam', cost: LOGISTICS_COSTS.samConstruction, maxHealth: 100, detail: 'Fires within 3.2 map units and anywhere inside a linked radar’s detection zone.', limit: SAM_DEPLOYMENT_LIMIT },
+  { actionId: 'build-radar', kind: 'radar', cost: LOGISTICS_COSTS.radarConstruction, maxHealth: 100, detail: 'Detects aircraft within 6.4 map units and guides nearby air defenses.', limit: 2 },
 ]
 
 export const AIRFIELD_UPGRADE_CATALOG = UPGRADE_CATALOG.filter(upgrade=>upgrade.targets.includes('base'))
 
+function constructionLimitReason(state: SidePlanningContext, kind: ConstructibleAssetKind): string | undefined {
+  const limit = PROCUREMENT_CATALOG.find(definition => definition.kind === kind)?.limit
+  const active = state.assets.filter(asset => asset.kind === kind && isOperationalSite(asset)).length
+  return limit !== undefined && active >= limit ? `LIMIT OF ${limit} OPERATIONAL ${kind.toUpperCase()} SITES PER SIDE` : undefined
+}
+
 export interface FobPlacementValidation { valid: boolean; reason?: string }
 export function validateAssetPlacement(state: SidePlanningContext, kind: ConstructibleAssetKind, placement: [number, number] | undefined): FobPlacementValidation {
+  const limitReason = constructionLimitReason(state, kind)
+  if (limitReason) return { valid: false, reason: limitReason }
   if (!placement || !Number.isFinite(placement[0]) || !Number.isFinite(placement[1])) return { valid: false, reason: 'SELECT A MAP LOCATION' }
   if (state.opposingTerritory && territoryContains(placement,state.opposingTerritory)) return { valid: false, reason: 'SITE MUST BE OUTSIDE ENEMY TERRITORY' }
   const territory = friendlyTerritoryForAssets(state.territory,state.assets)
@@ -135,34 +146,6 @@ const ACTIONS: readonly EconomyActionDefinition[] = [
     apply: (state, target) => target.kind === 'squadron' ? { ...state, formations: state.formations.map(squadron => squadron.id !== target.id ? squadron : { ...squadron, strength: Math.min(formationCapacity(squadron), strengthOf(squadron) + LOGISTICS_EFFECTS.formationRepair) }) } : undefined,
   },
   ...(['fighter', 'recon'] as const).map(formationPurchase),
-  {
-    id: 'repair-defense',
-    quote: (state, target) => {
-      if (target.kind !== 'asset') return undefined
-      const asset = state.assets.find(item => item.id === target.id)
-      if (!asset || !['radar', 'aaa'].includes(asset.kind)) return undefined
-      const before = asset.health; const after = Math.min(asset.maxHealth, before + LOGISTICS_EFFECTS.defenseRepair)
-      if (after <= before + .01) return undefined
-      return createQuote(state, 'repair-defense', target, `REPAIR ${asset.kind.toUpperCase()}`, `${Math.round(before)} → ${Math.round(after)} HP (+${Math.round(after - before)}).`, LOGISTICS_COSTS.defenseRepair, { kind: 'asset-health', before, after })
-    },
-    apply: (state, target) => target.kind === 'asset' ? { ...state, assets: state.assets.map(asset => asset.id !== target.id ? asset : { ...asset, health: Math.min(asset.maxHealth, asset.health + LOGISTICS_EFFECTS.defenseRepair) }) } : undefined,
-  },
-  {
-    id: 'repair-fob',
-    quote: (state, target) => {
-      if (target.kind !== 'asset') return undefined
-      const asset = state.assets.find(item => item.id === target.id)
-      if (!asset || asset.kind !== 'fob' || asset.operational !== false) return undefined
-      return createQuote(state, 'repair-fob', target, 'REPAIR AIRFIELD', `${Math.round(asset.health)} → ${asset.maxHealth} HP. Reopens the field for based flights.`, LOGISTICS_COSTS.fobRepair, { kind: 'asset-operational', before: false, after: true })
-    },
-    apply: (state, target) => {
-      if (target.kind !== 'asset') return undefined
-      const fob = state.assets.find(asset => asset.id === target.id && asset.kind === 'fob')
-      if (!fob) return undefined
-      const based = new Set(fob.basedFormationIds ?? [])
-      return { ...state, assets: state.assets.map(asset => asset.id === fob.id ? { ...asset, operational: true, health: asset.maxHealth } : asset), formations: state.formations.map(squadron => based.has(squadron.id) && squadron.status === 'trapped' ? { ...squadron, status: 'rtb' } : squadron) }
-    },
-  },
   ...UPGRADE_CATALOG.map<EconomyActionDefinition>(definition => {
     return {
       id: `install-${definition.id}`,
@@ -191,8 +174,10 @@ const ACTIONS: readonly EconomyActionDefinition[] = [
       const name = constructionName(state, definition.kind)
       const effect: EconomyEffect = { kind: 'asset-construction', assetKind: definition.kind, name, ...(definition.capacity ? { capacity: definition.capacity } : {}) }
       const base = createQuote(state, definition.actionId, target, `BUILD ${name}`, definition.detail, definition.cost, effect)
+      const limitReason = constructionLimitReason(state, definition.kind)
       const placement = command?.placement ? validateAssetPlacement(state, definition.kind, command.placement) : undefined
-      return placement && !placement.valid ? { ...base, eligible: false, reason: placement.reason } : base
+      const reason = limitReason ?? placement?.reason
+      return reason ? { ...base, eligible: false, reason } : base
     },
     apply: (state, target, command) => {
       if (target.kind !== 'campaign' || !command.placement || !validateAssetPlacement(state, definition.kind, command.placement).valid) return undefined
@@ -211,11 +196,8 @@ export function economyQuotesFor(state: SidePlanningContext, target: EconomyTarg
 }
 
 export function economyAttentionTargets(state: SidePlanningContext): EconomyTarget[] {
-  const targets: EconomyTarget[] = [
-    ...state.formations.map(squadron => ({ kind: 'squadron' as const, id: squadron.id })),
-    ...state.assets.filter(asset => ['radar', 'aaa'].includes(asset.kind) || asset.kind === 'fob' && asset.operational === false).map(asset => ({ kind: 'asset' as const, id: asset.id })),
-  ]
-  return targets.filter(target => economyQuotesFor(state, target).some(quote => quote.id === 'repair-formation' || quote.id === 'repair-defense' || quote.id === 'repair-fob'))
+  return state.formations.map(squadron => ({ kind: 'squadron' as const, id: squadron.id }))
+    .filter(target => economyQuotesFor(state, target).some(quote => quote.id === 'repair-formation'))
 }
 
 export function findMatchingEconomyQuote(quotes: EconomyActionQuote[], pending: Pick<EconomyCommand, 'actionId' | 'target' | 'upgradeId'> | undefined) {
