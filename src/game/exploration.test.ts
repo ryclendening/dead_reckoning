@@ -1,13 +1,88 @@
 import {describe,expect,it} from 'vitest'
 import {createMatch} from './data'
-import {applyRound,FLIGHT_SPEED,MAX_FLIGHT_DISTANCE,resolveRound} from './engine'
-import {deriveRecoveryPlanningView} from './forwardBasing'
+import {applyRound,createRoundSimulation,FLIGHT_SPEED,MAX_FLIGHT_DISTANCE,resolveRound} from './engine'
+import {beginNextRound,openAdaptPhase} from './economy'
+import {deriveRecoveryPlanningView,formationField,routeToRecoveryField,validateRecoveryPackage} from './forwardBasing'
+import {flightRangeFor} from './flightRules'
+import {generateRouteTemplate} from './routeTemplates'
 import type {Asset,Point} from './types'
 
 const edgeRoute=(match:ReturnType<typeof createMatch>):Point[]=>{const base=match.world.friendlyTerritory.center;return [base,[base[0],base[1]>=0?match.world.bounds.minZ-8:match.world.bounds.maxZ+8]]}
 const onlyRaven=(match:ReturnType<typeof createMatch>)=>({...match,squadrons:match.squadrons.map(squadron=>squadron.id==='raven'?{...squadron,mission:'search-area' as const,route:edgeRoute(match),routeIngress:edgeRoute(match)}:{...squadron,aircraft:0,strength:0})})
 
 describe('reconnaissance exploration recovery',()=>{
+  it('stages recon at a FOB, then launches from it and recovers outbound and return observations at home', () => {
+    const state = createMatch(7301)
+    const home: Asset = { ...state.playerAssets.find(asset => asset.kind === 'base')!, position: [0,0] }
+    const fob: Asset = { ...home, id: 'p-fob-1', kind: 'fob', position: [6,0], operational: true, capacity: 2, basedFormationIds: [] }
+    const enemyBase: Asset = { ...state.enemyAssets.find(asset => asset.kind === 'base')!, position: [15,12] }
+    const outboundSite: Asset = { ...enemyBase, id: 'e-outbound-radar', kind: 'radar', position: [6,7] }
+    const returnSite: Asset = { ...outboundSite, id: 'e-return-radar', position: [1,8] }
+    const detour: Point = [2,-2]
+    state.playerAssets = [home,fob]
+    state.enemyAssets = [enemyBase,outboundSite,returnSite]
+    state.squadrons = state.squadrons.map(formation => formation.id === 'raven'
+      ? { ...formation, mission: 'transit', routeIngress: [home.position,detour], plannedRecoveryFieldId: fob.id, sortieOrdered: true }
+      : { ...formation, sortieOrdered: false })
+    const raven = state.squadrons.find(formation => formation.id === 'raven')!
+    const ordered = new Set([raven.id])
+    raven.route = routeToRecoveryField(state,raven.id,fob.id)!
+    raven.routeIngress = raven.route
+    expect(validateRecoveryPackage(state,flightRangeFor,ordered)).toEqual({ valid: true })
+    const holdCpu = (match: typeof state) => {
+      match.cpu!.plan = { round: match.round, objective: 'defend', reason: 'Isolate player recon.', candidates: [],
+        orders: match.cpu!.formations.map(formation => ({ ...formation, sortieOrdered: false })) }
+    }
+    holdCpu(state)
+
+    const transit = resolveRound(state)
+    expect(transit.executionRoutes[raven.id][0]).toEqual(home.position)
+    expect(transit.executionRoutes[raven.id]).toContainEqual(detour)
+    expect(transit.recoveryOutcomes).toContainEqual(expect.objectContaining({
+      formationId: raven.id, launchFieldId: home.id, actualFieldId: fob.id, outcome: 'recovered',
+    }))
+    expect(transit.intelReports).toEqual([])
+
+    const next = beginNextRound(openAdaptPhase(applyRound(state,transit)))
+    expect(formationField(next.playerAssets,raven.id)?.id).toBe(fob.id)
+    const basedRecon = next.squadrons.find(formation => formation.id === raven.id)!
+    expect(basedRecon.routeIngress).toEqual([fob.position])
+    const ingress: Point[] = [fob.position,outboundSite.position,[9,7]]
+    const route = generateRouteTemplate({ template: 'search-area', ingress,
+      maxDistance: flightRangeFor(basedRecon), bounds: next.world.presentationBounds }).route
+    expect(route).toEqual(ingress)
+    Object.assign(basedRecon,{ mission: 'search-area', route, routeIngress: ingress,
+      plannedRecoveryFieldId: home.id, recoveryWaypoints: [returnSite.position], sortieOrdered: true })
+    next.squadrons = next.squadrons.map(formation => formation.id === raven.id ? formation : { ...formation, sortieOrdered: false })
+    expect(validateRecoveryPackage(next,flightRangeFor,ordered)).toEqual({ valid: true })
+    holdCpu(next)
+
+    const simulation = createRoundSimulation(next)
+    while (!simulation.complete && !simulation.result.executionRoutes[raven.id].some(point => point[0] === outboundSite.position[0] && point[1] === outboundSite.position[1])) {
+      simulation.advance()
+    }
+    expect(simulation.complete).toBe(false)
+    expect(simulation.result.assets.find(asset => asset.id === outboundSite.id)).toMatchObject({ intel: 'unknown', hidden: true })
+    expect(simulation.result.intelReports).toEqual([])
+    while (!simulation.complete) simulation.advance()
+    const result = simulation.result
+    const track = result.unitTracks.find(unit => unit.unitId === raven.id)!.frames
+    expect(track[0].position).toEqual(fob.position)
+    expect(track).toContainEqual(expect.objectContaining({ position: returnSite.position, mode: 'recovering' }))
+    expect(track.at(-1)).toMatchObject({ position: home.position, mode: 'recovered' })
+    expect(result.recoveryOutcomes).toContainEqual(expect.objectContaining({
+      formationId: raven.id, launchFieldId: fob.id, plannedFieldId: home.id, actualFieldId: home.id, outcome: 'recovered',
+    }))
+
+    const settled = applyRound(next,result)
+    expect(formationField(settled.playerAssets,raven.id)?.id).toBe(home.id)
+    for (const site of [outboundSite,returnSite]) {
+      expect(result.intelReports).toContainEqual(expect.objectContaining({ observerId: raven.id, assetId: site.id, recovered: true }))
+      expect(settled.enemyAssets.find(asset => asset.id === site.id)).toMatchObject({ intel: 'confirmed', hidden: false })
+      expect(result.mappedAreas.some(point => Math.hypot(point[0] - site.position[0], point[1] - site.position[1]) < 1)).toBe(true)
+    }
+  })
+
   it('lets recon fly beyond the fighter allowance without flying faster',()=>{
     const initial=createMatch(7301),home=initial.world.friendlyTerritory.center
     const route:Point[]=[home,[home[0]+9,home[1]],[home[0]-9,home[1]],[home[0]+9,home[1]],home]
