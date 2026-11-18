@@ -1,5 +1,6 @@
-import { BASE_STRIKE_DAMAGE, CAMPAIGN_ROUND_LIMIT } from '../campaign'
+import { CAMPAIGN_ROUND_LIMIT } from '../campaign'
 import { formationField, isOperationalAirfield } from '../forwardBasing'
+import { groundAttackDamage } from '../strikeRules'
 import type { CpuPlanningView } from './planningView'
 import type { CpuDecisionTrace, CpuIntent, TacticalPackage } from './types'
 
@@ -27,8 +28,8 @@ export function baseAttackValue(view:CpuPlanningView,p:TacticalPackage):number {
  * could enable next round. Public opening geography is within fighter reach;
  * a subsequently recovered outlying target still needs real routes/staging. */
 export function discoveryAttackValue(view:CpuPlanningView):number {
-  const payload=view.cpu.formations.filter(f=>f.role==='fighter'&&f.aircraft>0&&f.status!=='trapped'&&view.assets.some(a=>a.id===formationField(view.assets,f.id)?.id&&isOperationalAirfield(a)))
-    .reduce((n,f)=>n+Math.round(BASE_STRIKE_DAMAGE*(f.strength??100)/100),0)
+  const payload=view.cpu.formations.filter(f=>(f.role==='fighter'||f.role==='bomber')&&f.aircraft>0&&f.status!=='trapped'&&view.assets.some(a=>a.id===formationField(view.assets,f.id)?.id&&isOperationalAirfield(a)))
+    .reduce((n,f)=>n+groundAttackDamage(f,'base'),0)
   let health=100,value=0
   for(let offset=1;offset<(CAMPAIGN_ROUND_LIMIT + 1 - view.round);offset++) {
     const damage=Math.min(health,payload)
@@ -68,7 +69,7 @@ export function contribution(view:CpuPlanningView,p:TacticalPackage):Record<stri
     // A late hit cannot stop this payload. Its value is a reduced future
     // attack or an unreturned report, and expires at the campaign deadline.
     denial:(e.reconDenial??0)*.72*future,
-    enemyAttrition:(e.opponentAttrition??0)*.72*future,
+    enemyAttrition:(e.opponentAttrition??0)*.8*future,
     discovery:finishesNow?0:e.informationGain*(view.cpu.sites.some(s=>s.kind==='base'&&s.health>0)?.85:(p.discoveryPayoff??discoveryAttackValue(view)))*horizon,
     // A concrete base operation already includes the follow-through. Do not
     // count suppression's risk reduction again as an independent reward.

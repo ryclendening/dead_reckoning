@@ -21,6 +21,44 @@ function seat(seed: number, offset = 0): MatchState {
 }
 
 describe('authoritative online round adapter', () => {
+  it('remaps confirmed bomber targets for both seats and limits incoming impact replay to the owned site', () => {
+    const a=seat(310),b=seat(311,8)
+    const prepare=(state:MatchState,homePosition:Point,targetPosition:Point,enemyTargets:MatchState['playerAssets'])=>{
+      const home=state.playerAssets.find(asset=>asset.kind==='base')!
+      const sam=state.playerAssets.find(asset=>asset.kind==='sam')!
+      state.playerAssets=[{...home,position:homePosition},{...sam,position:targetPosition}]
+      state.enemyAssets=enemyTargets.map(asset=>({...asset,id:`opponent:${asset.id}`,intel:'confirmed' as const,confidence:100,hidden:false}))
+      const source=state.squadrons[0]
+      const targetId='opponent:p-sam'
+      const target=state.enemyAssets.find(asset=>asset.id===targetId)!
+      const route:Point[]=[homePosition,target.position,homePosition]
+      const bomber={...source,id:`${homePosition[0]<0?'a':'b'}-bomber`,callsign:'BOMBER',
+        role:'bomber' as const,aircraftTypeId:'bomber',mission:'bomb' as const,route,routeIngress:route,sortieOrdered:true,plannedRecoveryFieldId:'p-base',
+        bombingTargets:[{targetId,routeIndex:1}]}
+      const bomberTwo={...bomber,id:`${homePosition[0]<0?'a':'b'}-bomber-2`,callsign:'BOMBER 2'}
+      state.squadrons=[bomber,bomberTwo,...state.squadrons.slice(1).map(formation=>({...formation,sortieOrdered:false}))]
+      return state
+    }
+    const aTargets=b.playerAssets.map(asset=>({...asset,position:asset.kind==='base'?[6,0] as Point:asset.kind==='sam'?[3,0] as Point:asset.position}))
+    const bTargets=a.playerAssets.map(asset=>({...asset,position:asset.kind==='base'?[-6,0] as Point:asset.kind==='sam'?[-3,0] as Point:asset.position}))
+    const [resolvedA,resolvedB]=resolveOnlineRound([
+      prepare(a,[-6,0],[ -3,0],aTargets),prepare(b,[6,0],[3,0],bTargets),
+    ],77)
+    for(const resolved of [resolvedA,resolvedB]){
+      const impacts=resolved.lastResult!.weaponEffects.filter(effect=>effect.kind==='bomb')
+      expect(impacts.some(effect=>effect.targetId==='opponent:p-sam'&&effect.sourceId.endsWith('-bomber'))).toBe(true)
+      expect(impacts.some(effect=>effect.targetId==='p-sam')).toBe(true)
+      expect(impacts.every(effect=>effect.targetId==='p-sam'||effect.targetId==='opponent:p-sam')).toBe(true)
+      expect(impacts.every(effect=>!effect.sourceId.startsWith('red-'))).toBe(true)
+    }
+    const incoming=resolvedA.lastResult!.weaponEffects.find(effect=>effect.kind==='bomb'&&effect.targetId==='p-sam'&&effect.sourceId==='hostile-aircraft')
+    if(incoming)expect(incoming.from).toEqual(incoming.to)
+    const hiddenImpactIds=resolvedA.lastResult!.weaponEffects.filter(effect=>effect.kind==='bomb'&&effect.targetId==='p-sam'&&effect.sourceId==='hostile-aircraft').map(effect=>effect.id)
+    expect(hiddenImpactIds).toHaveLength(2)
+    expect(new Set(hiddenImpactIds).size).toBe(2)
+    expect(resolvedA.enemyAssets.find(asset=>asset.id==='opponent:p-sam')?.health).toBeLessThan(100)
+  })
+
   it('shows observed ground sites and their HP to both seats only when their own recon sees them', () => {
     const prepare = (state: MatchState, x: number) => {
       const home: Point = [x, 0]

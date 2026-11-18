@@ -56,6 +56,10 @@ export function weaponPath(effect:WeaponEffect,local:number,target:Point=effect.
   const isAir=effect.kind==='air-to-air-missile'||effect.kind==='gun'
   const endpoint:Point=effect.hit?target:[target[0]-dz/length*.48,target[1]+dx/length*.48]
   const position=lerpPoint(effect.from,endpoint,clamp01(local))
+  if(effect.kind==='bomb'){
+    const t=clamp01(local)
+    return {endpoint,position,height:lerp(.96,.08,t)+Math.sin(t*Math.PI)*.35,isAir:false}
+  }
   const fromHeight=effect.kind==='sam'||effect.kind==='aaa'?.12:.76
   const toHeight=effect.kind==='sam'||effect.kind==='aaa'?.76:.1
   return {endpoint,position,height:isAir?.76:lerp(fromHeight,toHeight,clamp01(local)),isAir}

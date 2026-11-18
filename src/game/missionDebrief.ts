@@ -14,6 +14,10 @@ export function missionOrderDebrief(match:MatchState,result:RoundResult):Mission
     if(squadron.mission==='defensive-cap')purpose=`PROTECT ${protectedFlight?.callsign??protectedAsset?.name??protectedAsset?.kind.toUpperCase()??'MAP POINT'}`
     else if(squadron.mission==='forward-patrol')purpose='PATROL ASSIGNED CORRIDOR'
     else if(squadron.mission==='base-strike')purpose=`STRIKE ${match.enemyAssets.find(asset=>asset.id===squadron.strikeTargetId)?.name??match.enemyAssets.find(asset=>asset.id===squadron.strikeTargetId)?.kind.toUpperCase()??'UNSELECTED GROUND TARGET'}`
+    else if(squadron.mission==='bomb'){
+      const targets=(squadron.bombingTargets??[]).map(entry=>match.enemyAssets.find(asset=>asset.id===entry.targetId)).filter(Boolean)
+      purpose=`BOMB ${targets.map(asset=>asset!.name??asset!.kind.toUpperCase()).join(' → ')||'NO ASSIGNED TARGETS'}`
+    }
     else if(squadron.mission==='transit')purpose=`TRANSIT TO ${field?.name??(field?.kind==='base'?'HOME BASE':field?.kind.toUpperCase()??'RECOVERY FIELD')}`
     else purpose='SEARCH ASSIGNED ROUTE'
 
@@ -23,6 +27,12 @@ export function missionOrderDebrief(match:MatchState,result:RoundResult):Mission
       const launch=related('GROUND STRIKE LAUNCHED'),failure=related('GROUND STRIKE FAILED')
       const strike=result.combatSequences.find(sequence=>sequence.kind==='strike'&&sequence.participantIds.includes(squadron.id))
       outcome=launch?`LAUNCHED · ${strike?.exchanges.reduce((total,exchange)=>total+exchange.damage,0)??0} DAMAGE`:failure?.detail.replace(`${squadron.callsign}: `,'').replace(/\.$/,'')??'RELEASE WINDOW NOT REACHED'
+    }else if(squadron.mission==='bomb'){
+      const exchanges=result.combatSequences.filter(sequence=>sequence.kind==='strike').flatMap(sequence=>sequence.exchanges).filter(exchange=>exchange.attackerId===squadron.id&&exchange.weapon==='bomb')
+      const missed=result.events.filter(event=>event.title==='BOMB RELEASE MISSED'&&event.detail.includes(squadron.callsign)).length
+      const destroyed=result.events.filter(event=>event.title==='BOMB TARGET DESTROYED'&&event.detail.includes(squadron.callsign)).length
+      const delivered=exchanges.reduce((total,exchange)=>total+exchange.damage,0)
+      outcome=exchanges.length?`${exchanges.length} BOMB${exchanges.length===1?'':'S'} RELEASED · ${delivered} DAMAGE`:missed||destroyed?`${missed} RELEASE WINDOW${missed===1?'':'S'} MISSED · ${destroyed} TARGET${destroyed===1?'':'S'} DESTROYED BEFORE RELEASE`:'NO BOMB RELEASES'
     }else if(squadron.mission==='defensive-cap'||squadron.mission==='forward-patrol'){
       const interceptions=result.events.filter(event=>event.title==='FIGHTER INTERCEPT'&&event.detail.includes(squadron.callsign)).length
       const contactSummary=interceptions?`${interceptions} INTERCEPT${interceptions===1?'':'S'}`:'NO THREAT ENGAGED'

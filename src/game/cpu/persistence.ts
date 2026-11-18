@@ -12,7 +12,7 @@ const site = (v: unknown) => record(v) && text(v.id) && ['base', 'fob', 'sam', '
   && (v.operational === undefined || typeof v.operational === 'boolean')
   && (v.upgrades === undefined || Array.isArray(v.upgrades) && v.upgrades.every(isKnownUpgradeId))
   && (v.observedAt === undefined || number(v.observedAt)) && (v.estimatedDamage === undefined || number(v.estimatedDamage) && v.estimatedDamage <= v.health)
-const traffic = (v: unknown) => record(v) && point(v.position) && ['fighter', 'recon', 'unknown'].includes(String(v.role)) && integer(v.observedRound) && (v.trackId===undefined||text(v.trackId))
+const traffic = (v: unknown) => record(v) && point(v.position) && ['fighter', 'recon', 'bomber', 'unknown'].includes(String(v.role)) && integer(v.observedRound) && (v.trackId===undefined||text(v.trackId))
   && (v.observedAt === undefined || number(v.observedAt))
   && (v.identity === undefined || v.source==='visual'&&text(v.identity))
   && (v.strength === undefined || v.source==='visual'&&number(v.strength)&&v.strength<=100)
@@ -22,7 +22,7 @@ const traffic = (v: unknown) => record(v) && point(v.position) && ['fighter', 'r
   && (v.sector === undefined || integer(v.sector) && v.sector < 8)
 
 const intent = (v: unknown) => ['discover','protect-base','expand-defense','forward-position','suppress-defenses','strike-base','contest-air'].includes(String(v))
-const baseAttack = (v: unknown) => record(v) && number(v.damageNow) && v.damageNow<=120 && number(v.followupDamage) && v.followupDamage<=120 && integer(v.preparationRounds) && number(v.releaseSeconds) && (v.confidence===undefined||number(v.confidence)&&v.confidence<=1)
+const baseAttack = (v: unknown) => record(v) && number(v.damageNow) && v.damageNow<=300 && number(v.followupDamage) && v.followupDamage<=300 && integer(v.preparationRounds) && number(v.releaseSeconds) && (v.confidence===undefined||number(v.confidence)&&v.confidence<=1)
 const trace = (v: unknown) => record(v) && integer(v.round) && intent(v.selected) && text(v.chosenPackageSummary)
   && Array.isArray(v.observedEvidenceIds) && v.observedEvidenceIds.every(text) && Array.isArray(v.rejected) && v.rejected.every(text)
   && Array.isArray(v.alternatives) && v.alternatives.every(a=>record(a)&&intent(a.intent)&&typeof a.bestPackageScore==='number'&&Number.isFinite(a.bestPackageScore)&&text(a.reason)&&record(a.components)&&Object.values(a.components).every(n=>typeof n==='number'&&Number.isFinite(n))&&(a.baseAttack===undefined||baseAttack(a.baseAttack)))
@@ -30,13 +30,25 @@ const trace = (v: unknown) => record(v) && integer(v.round) && intent(v.selected
   && (v.chosenReconPosture===undefined||['aggressive','conservative'].includes(String(v.chosenReconPosture)))
   && record(v.work) && integer(v.work.packages) && integer(v.work.routeExpansions)
   && (v.work.routeSearches===undefined||integer(v.work.routeSearches)) && (v.work.optimalRouteSearches===undefined||integer(v.work.optimalRouteSearches))
+function validBombingAssignments(order:Squadron,sites:unknown[]):boolean {
+  const targets=order.bombingTargets
+  if(!Array.isArray(targets)||targets.length<1||targets.length>3)return false
+  const ids=new Set<string>();let previous=0
+  for(const target of targets){
+    if(!record(target)||!text(target.targetId)||!integer(target.routeIndex)||target.routeIndex<=previous||target.routeIndex>=order.route.length||
+      !sites.some(site=>record(site)&&site.id===target.targetId&&number(site.health)&&site.health>0))return false
+    if(ids.has(target.targetId))return false
+    ids.add(target.targetId);previous=target.routeIndex
+  }
+  return true
+}
 export function validCpuReport(v: unknown): v is CpuRoundReport {
   return record(v) && Array.isArray(v.sites) && v.sites.every(site) && Array.isArray(v.traffic) && v.traffic.every(traffic)
-    && Array.isArray(v.recoveredIds) && v.recoveredIds.every(id => ['red-fighter','red-fighter-2','red-recon'].includes(String(id)) || /^red-reinforcement-(fighter|recon)-[1-9][0-9]*$/.test(String(id)))
+    && Array.isArray(v.recoveredIds) && v.recoveredIds.every(id => ['red-fighter','red-fighter-2','red-recon'].includes(String(id)) || /^red-reinforcement-(fighter|recon|bomber)-[1-9][0-9]*$/.test(String(id)))
     && (v.mappedAreas === undefined || Array.isArray(v.mappedAreas) && v.mappedAreas.every(point))
     && (v.confirmedKills === undefined || integer(v.confirmedKills))
     && (v.recoveryOutcomes === undefined || Array.isArray(v.recoveryOutcomes) && v.recoveryOutcomes.every(o=>record(o)&&text(o.formationId)&&text(o.launchFieldId)&&text(o.plannedFieldId)&&['recovered','diverted','lost','destroyed','trapped'].includes(String(o.outcome))))
-    && (v.strikes === undefined || Array.isArray(v.strikes) && v.strikes.every(s=>record(s)&&text(s.sourceId)&&text(s.targetId)&&number(s.damage)&&s.damage<=60&&number(s.releasedAt)))
+    && (v.strikes === undefined || Array.isArray(v.strikes) && v.strikes.every(s=>record(s)&&text(s.sourceId)&&text(s.targetId)&&number(s.damage)&&s.damage<=300&&number(s.releasedAt)))
 }
 
 export function validCpuState(v: unknown, validFormation: (v: unknown) => v is Squadron, round: number): v is CpuState {
@@ -51,11 +63,11 @@ export function validCpuState(v: unknown, validFormation: (v: unknown) => v is S
       && (f.maxAircraft !== 4 || !new RegExp(`^red-reinforcement-${f.role}-[1-9][0-9]*$`).test(f.id)))
     || !Array.isArray(v.sites) || !v.sites.every(s => site(s) && (s as { observedRound: number }).observedRound <= round)
     || !Array.isArray(v.traffic) || !v.traffic.every(t => traffic(t) && (t as { observedRound: number }).observedRound <= round)
-    || !Array.isArray(v.spending) || !v.spending.every(s => record(s) && integer(s.round) && s.round <= round && text(s.targetId) && number(s.cost) && ['repair', 'replace', 'repair-defense', 'repair-formation', 'replace-aircraft', 'buy-fighter', 'buy-recon', 'repair-fob', 'build-sam', 'build-aaa', 'build-radar', 'build-fob', 'install-maintenance-wing', 'install-supply-depot'].includes(String(s.action)))
+    || !Array.isArray(v.spending) || !v.spending.every(s => record(s) && integer(s.round) && s.round <= round && text(s.targetId) && number(s.cost) && ['repair', 'replace', 'repair-defense', 'repair-formation', 'replace-aircraft', 'buy-fighter', 'buy-recon', 'buy-bomber', 'repair-fob', 'build-sam', 'build-aaa', 'build-radar', 'build-fob', 'install-maintenance-wing', 'install-supply-depot'].includes(String(s.action)))
     || [v.lastSettledRound, v.lastAdaptedRound].some(n => n !== undefined && (!integer(n) || n > round))) return false
   if (v.mappedAreas !== undefined && (!Array.isArray(v.mappedAreas) || !v.mappedAreas.every(point))) return false
   if (v.intent !== undefined && !intent(v.intent) || v.adaptTrace !== undefined && !trace(v.adaptTrace)) return false
-  if (v.outcomes !== undefined && (!Array.isArray(v.outcomes) || !v.outcomes.every(o=>record(o)&&integer(o.round)&&o.round<=round&&text(o.formationId)&&['search-area','defensive-cap','base-strike','forward-patrol','transit'].includes(String(o.mission))&&typeof o.recovered==='boolean'&&(o.damage===undefined||number(o.damage)&&o.damage<=100)))) return false
+  if (v.outcomes !== undefined && (!Array.isArray(v.outcomes) || !v.outcomes.every(o=>record(o)&&integer(o.round)&&o.round<=round&&text(o.formationId)&&['search-area','defensive-cap','base-strike','forward-patrol','transit','bomb'].includes(String(o.mission))&&typeof o.recovered==='boolean'&&(o.damage===undefined||number(o.damage)&&o.damage<=300)))) return false
   const formations = v.formations, sites = v.sites
   if (v.plan === undefined) return true
   const p = v.plan
@@ -69,6 +81,7 @@ export function validCpuState(v: unknown, validFormation: (v: unknown) => v is S
     || v.lastAdaptedRound === p.round && f.id.startsWith('red-reinforcement-') && f.sortieOrdered === false)) return false
   return p.orders.every(order => formations.some(f => f.id === order.id && f.role === order.role && f.maxAircraft === order.maxAircraft)
     && order.route.length > 0 && order.routeIngress.length > 0
-    && (order.protectedTargetId === undefined || order.role === 'fighter' && formations.some(f => f.id === order.protectedTargetId && f.role === 'recon'))
-    && (order.mission !== 'base-strike' || sites.some(s => record(s) && s.id === order.strikeTargetId)))
+    && (order.protectedTargetId === undefined || order.role === 'fighter' && formations.some(f => f.id === order.protectedTargetId && (f.role === 'recon' || f.role === 'bomber')))
+    && (order.mission !== 'base-strike' || sites.some(s => record(s) && s.id === order.strikeTargetId))
+    && (order.mission !== 'bomb' || order.role === 'bomber' && (order.sortieOrdered === false || validBombingAssignments(order,sites))))
 }

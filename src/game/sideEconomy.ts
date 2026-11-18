@@ -100,8 +100,8 @@ function formationPurchase(role: Role): EconomyActionDefinition {
     id,
     quote: (state, target) => {
       if (target.kind !== 'campaign') return undefined
-      const label = role === 'fighter' ? 'Buy fighter formation' : 'Buy recon formation'
-      const quote = createQuote(state, id, target, label, '4 aircraft · Available at home base next round', FORMATION_PRICES[role], { kind: 'formation-purchase', role })
+      const label = role === 'fighter' ? 'Buy fighter formation' : role === 'recon' ? 'Buy recon formation' : 'Buy bomber formation'
+      const quote = createQuote(state, id, target, label, `4 aircraft · Available at home base next round · $${FORMATION_PRICES[role] * 10}M`, FORMATION_PRICES[role], { kind: 'formation-purchase', role })
       const home = baseAsset(state)
       return home && isOperationalAirfield(home) ? quote : { ...quote, eligible: false, reason: 'HOME BASE UNAVAILABLE' }
     },
@@ -115,10 +115,10 @@ function formationPurchase(role: Role): EconomyActionDefinition {
       while (existingIds.has(`${idPrefix}${serial}`)) serial++
       const formation: Squadron = {
         id: `${idPrefix}${serial}`,
-        callsign: `${role === 'fighter' ? 'HAWK' : 'SCOUT'} ${serial}`,
-        role, mission: role === 'fighter' ? 'defensive-cap' : 'search-area',
+        callsign: `${role === 'fighter' ? 'HAWK' : role === 'recon' ? 'SCOUT' : 'BISON'} ${serial}`,
+        role, mission: role === 'fighter' ? 'defensive-cap' : role === 'recon' ? 'search-area' : 'bomb',
         ...OPENING_CONDITION[role], status: 'rtb', sortieOrdered: false,
-        route: [[...home.position]], routeIngress: [[...home.position]],
+        route: [[...home.position]], routeIngress: [[...home.position]], aircraftTypeId: role === 'fighter' ? 'f16' : role === 'recon' ? 'recon' : 'bomber', upgrades: [],
       }
       return {
         ...state,
@@ -145,7 +145,7 @@ const ACTIONS: readonly EconomyActionDefinition[] = [
     },
     apply: (state, target) => target.kind === 'squadron' ? { ...state, formations: state.formations.map(squadron => squadron.id !== target.id ? squadron : { ...squadron, strength: Math.min(formationCapacity(squadron), strengthOf(squadron) + LOGISTICS_EFFECTS.formationRepair) }) } : undefined,
   },
-  ...(['fighter', 'recon'] as const).map(formationPurchase),
+  ...(['fighter', 'recon', 'bomber'] as const).map(formationPurchase),
   ...UPGRADE_CATALOG.map<EconomyActionDefinition>(definition => {
     return {
       id: `install-${definition.id}`,

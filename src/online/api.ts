@@ -18,8 +18,8 @@ const invitePattern = new RegExp(`^[${inviteAlphabet}]{${inviteLength}}$`, 'i')
 const legacyInvitePattern = /^[a-f0-9]{32}$/i
 const matchPattern = /^\/api\/online\/matches\/([a-f0-9]{32})(\/commands)?$/
 const commandIdPattern = /^[a-zA-Z0-9-]{16,64}$/
-const missionPattern = /^(defensive-cap|forward-patrol|transit|search-area|base-strike)$/
-const actionIdPattern = /^(repair-formation|buy-(fighter|recon)|install-[a-z0-9-]+|build-(fob|decoy|sam|aaa|radar))$/
+const missionPattern = /^(defensive-cap|forward-patrol|transit|search-area|base-strike|bomb)$/
+const actionIdPattern = /^(repair-formation|buy-(fighter|recon|bomber)|install-[a-z0-9-]+|build-(fob|decoy|sam|aaa|radar))$/
 const resolutionLeaseMs = 30_000
 const bodyLimit = 48 * 1024
 
@@ -51,19 +51,31 @@ function parseOrder(value: unknown): OnlineOrder {
   if (typeof mission !== 'string' || !missionPattern.test(mission)) invalid()
   if (reconPosture !== undefined && reconPosture !== 'aggressive' && reconPosture !== 'conservative') invalid()
   const protectedTargetId = optionalId(item.protectedTargetId)
+  const bombingTargets = item.bombingTargets
+  if (bombingTargets !== undefined && (!Array.isArray(bombingTargets) || bombingTargets.length > 3 ||
+    !bombingTargets.every(target => {
+      if (!target || typeof target !== 'object' || Array.isArray(target)) return false
+      const entry = target as Record<string, unknown>
+      return typeof entry.targetId === 'string' && /^[a-zA-Z0-9:_-]{1,120}$/.test(entry.targetId) &&
+        typeof entry.routeIndex === 'number' && Number.isSafeInteger(entry.routeIndex) && entry.routeIndex > 0 && entry.routeIndex < 12
+    }))) invalid()
   const recovery = item.recoveryWaypoints
   if (recovery !== undefined && (!Array.isArray(recovery) || recovery.length > MAX_RECOVERY_WAYPOINTS)) invalid()
   return {
     id: identifier(item.id),
     mission: mission as OnlineOrder['mission'],
     route: route(item.route, 80),
-    routeIngress: route(item.routeIngress, protectedTargetId ? 80 : 7),
+    routeIngress: route(item.routeIngress, protectedTargetId || mission === 'bomb' ? 80 : 7),
     recoveryWaypoints: recovery?.map(point),
     plannedRecoveryFieldId: identifier(item.plannedRecoveryFieldId),
     reconPosture,
     protectedTargetId,
     protectedPoint: item.protectedPoint === undefined ? undefined : point(item.protectedPoint),
     strikeTargetId: optionalId(item.strikeTargetId),
+    bombingTargets: (bombingTargets as unknown[] | undefined)?.map(target => {
+      const entry = target as Record<string, unknown>
+      return { targetId: identifier(entry.targetId), routeIndex: entry.routeIndex as number }
+    }),
   }
 }
 

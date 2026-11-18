@@ -63,7 +63,7 @@ describe('territory-aware defensive capabilities',()=>{
     const missile=result.weaponEffects.find(e=>e.kind==='air-to-ground-missile')!
     const shot=result.weaponEffects.find(e=>e.kind==='sam')!
     expect(shot.end).toBeGreaterThan(missile.start)
-    expect(result.enemyBaseDamage).toBe(60)
+    expect(result.enemyBaseDamage).toBe(40)
     expect(result.weaponEffects.some(e=>e.kind==='sam'&&e.damage>0)).toBe(true)
   })
 

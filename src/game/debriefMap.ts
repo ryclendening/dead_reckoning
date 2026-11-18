@@ -32,9 +32,10 @@ export function debriefMapEvents(result: RoundResult): DebriefMapEvent[] {
       for (const exchange of sequence.exchanges) {
         const target = [...result.playerAssets, ...result.assets].find(asset => asset.id === exchange.defenderId)
         if (!target || (!friendlyIds.has(exchange.attackerId) && !result.playerAssets.some(asset => asset.id === target.id))) continue
+        const bomb=exchange.weapon==='bomb'
         events.push({ id: exchange.id, kind: 'strike', time: exchange.time, position: exchange.position,
-          title: exchange.targetStrength <= 0 ? 'SITE DESTROYED' : 'GROUND STRIKE',
-          detail: `${target.name ?? target.kind.toUpperCase()} · ${exchange.damage} DAMAGE`, side: friendlyIds.has(exchange.attackerId) ? 'hostile' : 'friendly' })
+          title: exchange.targetStrength <= 0 ? 'SITE DESTROYED' : bomb ? 'BOMB IMPACT' : 'GROUND STRIKE',
+          detail: `${target.name ?? target.kind.toUpperCase()} · ${exchange.damage}${bomb?' BOMB':''} DAMAGE`, side: friendlyIds.has(exchange.attackerId) ? 'hostile' : 'friendly' })
       }
       continue
     }

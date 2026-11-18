@@ -129,6 +129,27 @@ describe('mission planning shelf', () => {
     expect(markup).not.toMatch(/CONSERVATIVE|NEUTRAL|AGGRESSIVE|POSTURE/)
   })
 
+  it('offers Bomb and Transit and lists removable assigned payload targets',()=>{
+    const match=createMatch(),target={...match.enemyAssets[0],name:'RADAR ONE'}
+    const bomber={...match.squadrons[0],role:'bomber' as const,mission:'bomb' as const,aircraftTypeId:'bomber',bombingTargets:[{targetId:target.id,routeIndex:1}]}
+    const missionMarkup=renderToStaticMarkup(<CommandShelf
+      squadrons={[bomber]} bases={match.playerAssets} activeBaseId="p-base" rosterMode="closed"
+      squadron={bomber} onSelect={noop} onBaseSelect={noop} onRosterMode={noop} onMission={noop}
+      onClear={noop} onCommit={noop} step="mission" onClose={noop} reviewedIds={new Set()} reviewedCount={0} totalCount={1}
+    />)
+    const routeMarkup=renderToStaticMarkup(<CommandShelf
+      squadrons={[bomber]} bases={match.playerAssets} activeBaseId="p-base" rosterMode="closed"
+      squadron={bomber} onSelect={noop} onBaseSelect={noop} onRosterMode={noop} onMission={noop}
+      onClear={noop} onCommit={noop} step="route" onClose={noop} reviewedIds={new Set()} reviewedCount={0} totalCount={1}
+      groundTargets={[target]} onAddBombTarget={noop} onRemoveBombTarget={noop}
+    />)
+    expect(missionMarkup).toContain('BOMB')
+    expect(missionMarkup).toContain('TRANSIT')
+    expect(routeMarkup).toContain('RADAR ONE')
+    expect(routeMarkup).toContain('ADD TARGET')
+    expect(routeMarkup).toContain('REMOVE')
+  })
+
   it('explains site and escort selection while building a Protect route',()=>{
     const match=createMatch()
     const fighter=match.squadrons.find(squadron=>squadron.role==='fighter')!

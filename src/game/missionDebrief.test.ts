@@ -26,6 +26,18 @@ describe('mission order debrief',()=>{
     }])
   })
 
+  it('summarizes each bomber payload and its resolved damage',()=>{
+    const match=createMatch(),target=match.enemyAssets.find(asset=>asset.kind==='sam')??match.enemyAssets[0]
+    const bomber={...match.squadrons[0],role:'bomber' as const,mission:'bomb' as const,sortieOrdered:true,bombingTargets:[{targetId:target.id,routeIndex:1}]}
+    match.squadrons=[bomber]
+    const result=blankResult([bomber])
+    result.combatSequences=[{id:'bomb-sequence',kind:'strike',start:2,end:2.6,location:target.position,participantIds:[bomber.id,target.id],finalDisposition:{},exchanges:[{id:'bomb-impact',time:2.6,attackerId:bomber.id,defenderId:target.id,weapon:'bomb',damage:100,moraleDamage:0,hit:true,position:target.position,targetStrength:0,targetMorale:0}]}]
+
+    expect(missionOrderDebrief(match,result)[0]).toMatchObject({
+      purpose:`BOMB ${target.name??target.kind.toUpperCase()}`,result:'1 BOMB RELEASED · 100 DAMAGE',
+    })
+  })
+
   it('reports the protected flight recovery separately from intercepts',()=>{
     const match=createMatch(),[fighter,recon]=match.squadrons
     const escort={...fighter,mission:'defensive-cap' as const,protectedTargetId:recon.id,sortieOrdered:true}

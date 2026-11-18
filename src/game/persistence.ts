@@ -11,8 +11,8 @@ import { normalizeAircraftType } from './aircraftTypes'
 import { isKnownUpgradeId } from './upgrades'
 
 const phases = new Set(['deploy', 'plan', 'execute', 'debrief', 'adapt', 'victory', 'defeat', 'draw'])
-const roles = new Set(['fighter', 'recon'])
-const missions = new Set(['defensive-cap', 'forward-patrol', 'transit', 'search-area', 'base-strike'])
+const roles = new Set(['fighter', 'recon', 'bomber'])
+const missions = new Set(['defensive-cap', 'forward-patrol', 'transit', 'search-area', 'base-strike', 'bomb'])
 const assetKinds = new Set(['base', 'fob', 'decoy', 'radar', 'sam', 'aaa'])
 const intelLevels = new Set(['unknown', 'suspected', 'probable', 'confirmed'])
 const setupStages = new Set(['allocate', 'place', 'review'])
@@ -68,11 +68,25 @@ function validSquadron(value: unknown): value is Squadron {
   if (value.recoveryWaypoints !== undefined
     && (!points(value.recoveryWaypoints) || value.recoveryWaypoints.length > MAX_RECOVERY_WAYPOINTS)) return false
   if (value.strikeTargetId !== undefined && !text(value.strikeTargetId)) return false
+  if (value.bombingTargets !== undefined) {
+    if (!Array.isArray(value.bombingTargets) || value.bombingTargets.length > 3) return false
+    let previous = 0
+    const targets = new Set<string>()
+    for (const entry of value.bombingTargets) {
+      if (!record(entry) || !text(entry.targetId) || !Number.isInteger(entry.routeIndex)) return false
+      const routeIndex = entry.routeIndex as number
+      if (routeIndex <= previous || routeIndex >= (value.route as unknown[]).length || targets.has(entry.targetId)) return false
+      previous = routeIndex
+      targets.add(entry.targetId)
+    }
+  }
   if (value.sortieOrdered !== undefined && typeof value.sortieOrdered !== 'boolean') return false
   if (value.reconPosture !== undefined && value.reconPosture !== 'aggressive' && value.reconPosture !== 'conservative') return false
   if (value.aircraftTypeId !== undefined && !text(value.aircraftTypeId)) return false
   if (!validUpgrades(value.upgrades)) return false
-  return value.role === 'fighter' ? value.mission !== 'search-area' : value.mission === 'search-area' || value.mission === 'transit'
+  return value.role === 'fighter' ? value.mission !== 'search-area' && value.mission !== 'bomb'
+    : value.role === 'recon' ? value.mission === 'search-area' || value.mission === 'transit'
+      : value.mission === 'bomb' || value.mission === 'transit'
 }
 
 function validAsset(value: unknown): value is Asset {
@@ -148,7 +162,7 @@ function validResult(value: unknown): value is RoundResult {
       && Array.isArray(sequence.exchanges) && sequence.exchanges.every(exchange =>
         record(exchange) && text(exchange.id) && finite(exchange.time)
         && text(exchange.attackerId) && text(exchange.defenderId)
-        && ['air-to-air-missile', 'air-to-ground-missile', 'sam', 'aaa', 'gun'].includes(String(exchange.weapon))
+        && ['air-to-air-missile', 'air-to-ground-missile', 'bomb', 'sam', 'aaa', 'gun'].includes(String(exchange.weapon))
         && finite(exchange.damage) && finite(exchange.moraleDamage)
         && typeof exchange.hit === 'boolean' && point(exchange.position)
         && finite(exchange.targetStrength) && finite(exchange.targetMorale))

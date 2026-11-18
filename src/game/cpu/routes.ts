@@ -100,7 +100,7 @@ export function recoveryView(view: CpuPlanningView, order: Squadron, orders = vi
 }
 export function hold(view: CpuPlanningView, formation: Squadron): Squadron {
   const field=formationField(view.assets,formation.id)
-  return { ...formation, sortieOrdered:false, route:[[...(field?.position??view.home)]], routeIngress:[[...(field?.position??view.home)]], plannedRecoveryFieldId:undefined, protectedTargetId:undefined, strikeTargetId:undefined }
+  return { ...formation, sortieOrdered:false, route:[[...(field?.position??view.home)]], routeIngress:[[...(field?.position??view.home)]], plannedRecoveryFieldId:undefined, protectedTargetId:undefined, strikeTargetId:undefined, bombingTargets:undefined }
 }
 function alternatives(from: Point, to: Point, offsets: number[]): Point[][] {
   const d=Math.max(.001,distance(from,to)), side:Point=[-(to[1]-from[1])/d,(to[0]-from[0])/d]

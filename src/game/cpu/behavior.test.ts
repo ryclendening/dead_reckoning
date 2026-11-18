@@ -43,7 +43,7 @@ describe('CPU v2 behavioral acceptance',()=>{
     expect(plan.orders[0].strikeTargetId).toBe('p-base')
     const ready=prepareCpuRound({...s,phase:'plan'})
     legal(ready)
-    expect(resolveRound(ready).baseDamage).toBe(60)
+    expect(resolveRound(ready).baseDamage).toBe(40)
     expect(plan.trace!.observedEvidenceIds).toContain('site:p-base:r1')
   })
   it('finishes a reachable base despite defensive pressure and preserves the attack estimate on reload',()=>{
@@ -58,7 +58,7 @@ describe('CPU v2 behavioral acceptance',()=>{
     expect(loaded.cpu!.plan).toEqual(ready.cpu!.plan)
     expect(campaignOutcome(applyRound(loaded,resolveRound(loaded)))).toBe('home-base-destroyed')
   })
-  it('spends scarce cash restoring a two-sortie base kill instead of delaying it for a SAM',()=>{
+  it('spends scarce cash restoring a two-sortie base strike instead of delaying it for a SAM',()=>{
     let s=setup();s.round=4;s.cpu!.logistics=8
     s.cpu!.formations[0]={...s.cpu!.formations[0],strength:75,aircraft:4}
     s.cpu!.mappedAreas=[[8,0],[10,0]]
@@ -70,11 +70,11 @@ describe('CPU v2 behavioral acceptance',()=>{
     s=beginNextRound(s)
     expect(s.cpu!.plan!.orders[0].strikeTargetId).toBe('p-base')
     s=applyRound(s,resolveRound(s))
-    expect(s.playerBaseHealth).toBe(40)
+    expect(s.playerBaseHealth).toBe(60)
     s=beginNextRound(openAdaptPhase(s))
     s=applyRound(s,resolveRound(s))
     expect(s.round).toBe(6)
-    expect(campaignOutcome(s)).toBe('home-base-destroyed')
+    expect(s.playerBaseHealth).toBe(20)
   })
   it('retains feasible collection opportunities on both sides of a dense search prior',()=>{
     const s=setup([0,-12],[0,8]);s.phase='plan';s.round=1;s.baseExposure=6;s.cpu!.sites=[]
@@ -97,7 +97,7 @@ describe('CPU v2 behavioral acceptance',()=>{
     const release=ready.cpu!.plan!.orders[0].route.at(-1)!
     expect(Math.hypot(release[0]-20,release[1])).toBeLessThan(1e-6)
     const result=resolveRound(ready)
-    expect(result.baseDamage).toBe(60)
+    expect(result.baseDamage).toBe(40)
     expect(result.cpuReport!.recoveredIds).toContain('red-fighter')
   })
 
@@ -154,7 +154,7 @@ describe('CPU v2 behavioral acceptance',()=>{
     const plan=planCpu(v)
     expect(plan.orders[0].strikeTargetId).toBe('p-base')
     expect(orderRisk(v,plan.orders[0])).toBe(0)
-    expect(resolveRound(prepareCpuRound({...s,phase:'plan'})).baseDamage).toBe(60)
+    expect(resolveRound(prepareCpuRound({...s,phase:'plan'})).baseDamage).toBe(40)
   })
   it('retains the A* strike candidate, validates fuel/release, and reuses its bounded search',()=>{
     const s=setup(),sam:Asset={...s.playerAssets[0],id:'p-sam-1',kind:'sam',position:[5,2]}
@@ -177,7 +177,7 @@ describe('CPU v2 behavioral acceptance',()=>{
     legal(ready)
     const result=resolveRound(ready)
     expect(result.weaponEffects.some(e=>e.kind==='air-to-ground-missile'&&e.targetId==='p-base')).toBe(true)
-    expect(result.baseDamage).toBe(60)
+    expect(result.baseDamage).toBe(40)
   })
   it('does not optimize or issue strikes for destroyed or trapped aircraft',()=>{
     const s=setup(),sam:Asset={...s.playerAssets[0],id:'p-sam',kind:'sam',position:[8,0]}
@@ -188,7 +188,7 @@ describe('CPU v2 behavioral acceptance',()=>{
   })
   it('suppresses a confirmed SAM when doing so measurably improves the following base strike',()=>{
     let s=setup([0,0],[25,0])
-    const sam:Asset={...s.playerAssets[0],id:'p-sam',kind:'sam',position:[8,0],health:60,maxHealth:100}
+    const sam:Asset={...s.playerAssets[0],id:'p-sam',kind:'sam',position:[8,0],health:40,maxHealth:100}
     s.playerAssets.push(sam,...[-5,5].map(y=>({...sam,id:`p-flank-${y}`,position:[8,y] as Point,health:100})));s.cpu!.sites=s.playerAssets.map(a=>cpuReportAt(a,1))
     s=prepareCpuRound({...s,phase:'plan'})
     const plan=s.cpu!.plan!,v=cpuPlanningView(s)!
@@ -201,7 +201,7 @@ describe('CPU v2 behavioral acceptance',()=>{
     expect(result.baseDamage).toBe(0)
     s=beginNextRound(openAdaptPhase(applyRound(s,result)))
     expect(s.cpu!.plan!.orders[0].strikeTargetId).toBe('p-base')
-    expect(resolveRound(s).baseDamage).toBe(60)
+    expect(resolveRound(s).baseDamage).toBe(40)
   })
   it('buys a home-based striker for a recovered target without waiting for pressure',()=>{
     const initial=setup();initial.round=1;initial.baseExposure=46;initial.cpu!.reserves=0
@@ -220,13 +220,13 @@ describe('CPU v2 behavioral acceptance',()=>{
     for(let round=2;round<=CAMPAIGN_ROUND_LIMIT;round++) {
       legal(s)
       const result=resolveRound(s)
-      if(round===2)expect(result.baseDamage).toBe(60)
+      if(round===2)expect(result.baseDamage).toBe(40)
       s=applyRound(s,result)
       if(campaignOutcome(s))break
       s=beginNextRound(openAdaptPhase(s))
     }
     expect(campaignOutcome(s)).toBe('home-base-destroyed')
-    expect(s.round).toBeLessThanOrEqual(5)
+    expect(s.round).toBeLessThanOrEqual(7)
   })
   it('compares a full paid fighter against competing SAM purchases',()=>{
     const s=setup();s.round=1;s.baseExposure=46;s.cpu!.reserves=0;s.cpu!.logistics=24
@@ -281,7 +281,7 @@ describe('CPU v2 behavioral acceptance',()=>{
     s=beginNextRound(openAdaptPhase(s));legal(s)
     expect(s.cpu!.plan!.orders.find(o=>o.id===fighterId)!.route[0]).toEqual(fob!.position)
     expect(s.cpu!.plan!.orders.find(o=>o.id===fighterId)!.strikeTargetId).toBe('p-base')
-    expect(resolveRound(s).baseDamage).toBe(60)
+    expect(resolveRound(s).baseDamage).toBe(40)
   })
 })
 

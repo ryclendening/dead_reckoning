@@ -2,7 +2,7 @@ import type { Asset, AssetKind, Squadron, UpgradeId } from './types'
 import { formatCash, LOGISTICS_EFFECTS, LOGISTICS_COSTS } from './economyRules'
 
 export type UpgradeStat =
-  | 'aircraft.speed' | 'aircraft.range' | 'aircraft.sensorRange'
+  | 'aircraft.speed' | 'aircraft.range' | 'aircraft.sensorRange' | 'aircraft.strikeRange'
   | 'ground.sam.range' | 'ground.sam.hitChance' | 'ground.sam.damage' | 'ground.sam.missiles' | 'ground.sam.cooldown'
   | 'ground.aaa.range' | 'ground.aaa.hitChance' | 'ground.aaa.damage' | 'ground.aaa.shots'
   | 'ground.radar.range'

@@ -3,6 +3,7 @@ import { missionDistance } from './flightRules'
 import { flightRangeFor } from './flightRules'
 import { BASE_STRIKE_RANGE, selectedStrikeTarget } from './campaign'
 import { formationField, recoveryPath, routeDistanceForBasing } from './forwardBasing'
+import { groundAttackProfile, MAX_BOMBING_TARGETS } from './strikeRules'
 
 export interface RouteBounds { minX:number; maxX:number; minZ:number; maxZ:number }
 export interface RouteTemplateDefinition { id:MissionId; label:string; shortLabel:string; description:string; roles:Role[]; requiresTarget:boolean }
@@ -11,7 +12,8 @@ export interface RouteGenerationResult { route:Point[]; ingress:Point[]; request
 
 export const ROUTE_TEMPLATES:RouteTemplateDefinition[]=[
   {id:'base-strike',label:'Ground Strike',shortLabel:'GROUND STRIKE',description:'Choose a confirmed ground target, then edit the ingress and place the strike point inside its six-unit release circle. Avoid voluntary air combat.',roles:['fighter'],requiresTarget:true},
-  {id:'transit',label:'Transit',shortLabel:'TRANSIT',description:'Fly to a friendly airfield without diverting to intercept contacts.',roles:['fighter','recon'],requiresTarget:true},
+  {id:'bomb',label:'Bomb',shortLabel:'BOMB',description:'Select up to three confirmed ground sites in route order. Pass within two units to release each payload.',roles:['bomber'],requiresTarget:true},
+  {id:'transit',label:'Transit',shortLabel:'TRANSIT',description:'Fly to a friendly airfield without diverting to intercept contacts.',roles:['fighter','recon','bomber'],requiresTarget:true},
   {id:'defensive-cap',label:'Protect',shortLabel:'PROTECT',description:'Choose a friendly site, flight, or map point. Intercept threats inside the moving or fixed cover circle; break off at its marked edge.',roles:['fighter'],requiresTarget:true},
   {id:'forward-patrol',label:'Forward Patrol',shortLabel:'FORWARD PATROL',description:'Hunt inside the corridor around the patrol route, then break pursuit at its marked edge. Shots +10 points; incoming hits +6 points.',roles:['fighter'],requiresTarget:true},
   {id:'search-area',label:'Recon',shortLabel:'RECON',description:'Plot a route to observe enemy sites and map terrain.',roles:['recon'],requiresTarget:true},
@@ -25,8 +27,8 @@ export function buildGroundStrikeRoute(state:MatchState,squadronId:string,target
   if(!squadron||squadron.role!=='fighter'||squadron.aircraft<=0||!target)return undefined
   const launch=formationField(state.playerAssets,squadron.id)
   if(!launch||launch.health<=0||launch.operational===false)return undefined
-  const origin=launch.position,d=distance(origin,target.position)
-  const travel=d<=BASE_STRIKE_RANGE?Math.min(.25,d):d-(BASE_STRIKE_RANGE-.1)
+  const origin=launch.position,d=distance(origin,target.position),releaseRange=groundAttackProfile(squadron).releaseRange
+  const travel=d<=releaseRange?Math.min(.25,d):d-(releaseRange-.1)
   const release:Point=d>.001?[origin[0]+(target.position[0]-origin[0])*travel/d,origin[1]+(target.position[1]-origin[1])*travel/d]:[origin[0]+.05,origin[1]]
   const route:Point[]=[[...origin],release]
   return missionDistance(route,origin)<=flightRangeFor(squadron)+.001?route:undefined
@@ -45,13 +47,39 @@ export function validateStrikeGeometry(squadron:Squadron,launch:Asset|undefined,
   if(!launch||launch.health<=0||launch.operational===false||squadron.aircraft<=0)return 'NO LEGAL STRIKE INGRESS FROM THIS FIELD'
   const route=squadron.route
   if(route.length<2||route.length>7||distance(route[0],launch.position)>.001)return 'KEEP THE FIXED TAKEOFF POINT'
-  if(distance(route.at(-1)!,target.position)>BASE_STRIKE_RANGE+.001)return 'KEEP THE STRIKE POINT INSIDE THE 6-UNIT RELEASE CIRCLE'
+  const releaseRange=groundAttackProfile(squadron).releaseRange
+  if(distance(route.at(-1)!,target.position)>releaseRange+.001)return `KEEP THE STRIKE POINT INSIDE THE ${releaseRange}-UNIT RELEASE CIRCLE`
   const recovery = recoveryPath(route.at(-1)!, recoveryField?.position??launch.position, squadron.recoveryWaypoints)
   if(routeDistanceForBasing(route)+routeDistanceForBasing(recovery)>flightRangeFor(squadron)+.001)return 'GROUND STRIKE ROUTE EXCEEDS AVAILABLE RANGE'
   return undefined
 }
 export function validateGroundStrikeOrder(state:MatchState,squadron:Squadron):string|undefined {
   return validateStrikeGeometry(squadron,formationField(state.playerAssets,squadron.id),selectedStrikeTarget(state,squadron.strikeTargetId),state.playerAssets.find(asset=>asset.id===squadron.plannedRecoveryFieldId&&(asset.kind==='base'||asset.kind==='fob')))
+}
+
+export function validateBomberOrder(squadron:Squadron,launch:Asset|undefined,targets:readonly Asset[],recoveryField=launch):string|undefined {
+  if(squadron.mission!=='bomb')return undefined
+  if(squadron.role!=='bomber')return 'BOMBING REQUIRES A BOMBER'
+  if(!launch||launch.health<=0||launch.operational===false||squadron.aircraft<=0)return 'NO LEGAL BOMBING INGRESS FROM THIS FIELD'
+  const assignments=squadron.bombingTargets??[]
+  if(assignments.length<1)return 'SELECT AT LEAST ONE CONFIRMED GROUND TARGET'
+  if(assignments.length>MAX_BOMBING_TARGETS)return 'A BOMBER CARRIES ONLY THREE PAYLOADS'
+  if(squadron.route.length<2||squadron.route.length>12||distance(squadron.route[0],launch.position)>.001)return 'KEEP THE FIXED TAKEOFF POINT'
+  const seen=new Set<string>();let previous=0
+  for(const assignment of assignments){
+    if(!assignment||typeof assignment.targetId!=='string'||!Number.isInteger(assignment.routeIndex)||assignment.routeIndex<=previous||assignment.routeIndex>=squadron.route.length)return 'BOMB RELEASES MUST FOLLOW ROUTE ORDER'
+    if(seen.has(assignment.targetId))return 'SELECT EACH GROUND TARGET ONLY ONCE'
+    seen.add(assignment.targetId);previous=assignment.routeIndex
+    const target=targets.find(asset=>asset.id===assignment.targetId&&asset.health>0&&asset.intel==='confirmed'&&!asset.hidden)
+    if(!target)return 'BOMBING TARGET MUST BE ALIVE AND CONFIRMED'
+    if(distance(squadron.route[assignment.routeIndex],target.position)>groundAttackProfile(squadron).releaseRange+.001)return 'KEEP EACH BOMB RELEASE INSIDE THE TWO-UNIT DELIVERY RANGE'
+  }
+  const recovery=recoveryPath(squadron.route.at(-1)!,recoveryField?.position??launch.position,squadron.recoveryWaypoints)
+  if(routeDistanceForBasing(squadron.route)+routeDistanceForBasing(recovery)>flightRangeFor(squadron)+.001)return 'BOMBING ROUTE EXCEEDS AVAILABLE RANGE'
+  return undefined
+}
+export function validateBomberOrderForPlayer(state:MatchState,squadron:Squadron):string|undefined {
+  return validateBomberOrder(squadron,formationField(state.playerAssets,squadron.id),state.enemyAssets,state.playerAssets.find(asset=>asset.id===squadron.plannedRecoveryFieldId&&(asset.kind==='base'||asset.kind==='fob')))
 }
 
 const distance=(a:Point,b:Point)=>Math.hypot(a[0]-b[0],a[1]-b[1])
@@ -90,7 +118,7 @@ function searchSweep(center:Point,forward:Point,side:Point,sideRadius:number,for
 }
 
 function build(template:MissionId,ingress:Point[],patternScale:number,cpuSearchSweep:boolean):Point[]{
-  if(template==='base-strike'||template==='transit'||(template==='search-area'&&!cpuSearchSweep))return ingress
+  if(template==='base-strike'||template==='bomb'||template==='transit'||(template==='search-area'&&!cpuSearchSweep))return ingress
   const base=ingress[0]
   const target=ingress.at(-1)!
   const {forward,side}=basis(base,target)

@@ -16,9 +16,10 @@ export interface AircraftTypeDefinition {
 export const AIRCRAFT_TYPES: readonly AircraftTypeDefinition[] = [
   { id: 'f16', name: 'F-16 Fighting Falcon', role: 'fighter', model: 'f16', maxAircraft: 4, speed: 40 / 22, range: 40, sensorRange: 4.2 },
   { id: 'recon', name: 'Reconnaissance Flight', role: 'recon', model: 'atlas', maxAircraft: 4, speed: 48 / 22, range: 64, sensorRange: 4.9 },
+  { id: 'bomber', name: 'B-52 Stratofortress', role: 'bomber', model: 'atlas', maxAircraft: 4, speed: 32 / 22, range: 36, sensorRange: 3.4 },
 ]
 
-export const DEFAULT_AIRCRAFT_TYPE: Record<Role, string> = { fighter: 'f16', recon: 'recon' }
+export const DEFAULT_AIRCRAFT_TYPE: Record<Role, string> = { fighter: 'f16', recon: 'recon', bomber: 'bomber' }
 export const aircraftType = (id: string | undefined, role: Role): AircraftTypeDefinition =>
   AIRCRAFT_TYPES.find(type => type.id === id && type.role === role)
   ?? AIRCRAFT_TYPES.find(type => type.id === DEFAULT_AIRCRAFT_TYPE[role])!
@@ -27,6 +28,8 @@ export interface AircraftConfiguration { aircraftTypeId?: string; role: Role; up
 export const aircraftSpeed = (aircraft: AircraftConfiguration) => modifiedStat(aircraft, 'aircraft.speed', aircraftType(aircraft.aircraftTypeId, aircraft.role).speed)
 export const aircraftRange = (aircraft: AircraftConfiguration) => modifiedStat(aircraft, 'aircraft.range', aircraftType(aircraft.aircraftTypeId, aircraft.role).range)
 export const aircraftSensorRange = (aircraft: AircraftConfiguration) => modifiedStat(aircraft, 'aircraft.sensorRange', aircraftType(aircraft.aircraftTypeId, aircraft.role).sensorRange)
+/** Strike standoff is formation-specific so future range upgrades can modify it independently of flight range. */
+export const aircraftStrikeRange = (aircraft: AircraftConfiguration) => modifiedStat(aircraft, 'aircraft.strikeRange', aircraft.role === 'bomber' ? 2 : 6)
 
 export function normalizeAircraftType<T extends AircraftConfiguration>(aircraft: T): T & { aircraftTypeId: string; upgrades: UpgradeId[] } {
   const definition = aircraftType(aircraft.aircraftTypeId, aircraft.role)

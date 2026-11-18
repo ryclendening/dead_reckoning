@@ -35,21 +35,24 @@ describe('frame-rate graphics math',()=>{
   })
 
   it('gives ground launches and strike launches opposite altitude profiles with misses offset',()=>{
-    const sam=effect('sam'),strike=effect('air-to-ground-missile')
+    const sam=effect('sam'),strike=effect('air-to-ground-missile'),bomb=effect('bomb')
     expect(weaponPath(sam,0).height).toBeCloseTo(.12)
     expect(weaponPath(sam,1).height).toBeCloseTo(.76)
     expect(weaponPath(strike,0).height).toBeCloseTo(.76)
     expect(weaponPath(strike,1).height).toBeCloseTo(.1)
+    expect(weaponPath(bomb,0).height).toBeCloseTo(.96)
+    expect(weaponPath(bomb,1).height).toBeCloseTo(.08)
     expect(weaponPath(sam,1,[1,9]).position).toEqual([1,9])
-    for(const kind of ['gun','air-to-air-missile','air-to-ground-missile','sam','aaa'] as const){
+    for(const kind of ['gun','air-to-air-missile','air-to-ground-missile','bomb','sam','aaa'] as const){
       const miss=weaponPath(effect(kind,false),1)
       expect(miss.position).not.toEqual([0,10])
       expect(weaponPath(effect(kind,true),1).position).toEqual([0,10])
     }
-    for(const kind of ['gun','air-to-air-missile','air-to-ground-missile','sam','aaa'] as const){
-      const tangent=weaponTangent(effect(kind),.5)[1],trailDeltaY=weaponTrail(effect(kind),.8)[0][1]
+    for(const kind of ['gun','air-to-air-missile','air-to-ground-missile','bomb','sam','aaa'] as const){
+      const tangent=weaponTangent(effect(kind),kind==='bomb'?.8:.5)[1],trailDeltaY=weaponTrail(effect(kind),.8)[0][1]
       if(kind==='sam'||kind==='aaa'){expect(tangent).toBeGreaterThan(0);expect(trailDeltaY).toBeLessThan(0)}
       else if(kind==='air-to-ground-missile'){expect(tangent).toBeLessThan(0);expect(trailDeltaY).toBeGreaterThan(0)}
+      else if(kind==='bomb'){expect(tangent).toBeLessThan(0);expect(trailDeltaY).toBeGreaterThan(0)}
       else {expect(tangent).toBeCloseTo(0);expect(trailDeltaY).toBeCloseTo(0)}
     }
     expect(weaponVisibleAt(effect('gun'),1.5)).toBe(true)
@@ -62,7 +65,7 @@ describe('frame-rate graphics math',()=>{
     expect(weaponVisualLifecycle(strike,2).impactFlashVisible).toBe(true)
     expect(weaponVisualLifecycle(strike,2.1).impactFlashVisible).toBe(true)
     expect(weaponVisualLifecycle(strike,2.25).impactFlashVisible).toBe(false)
-    for(const kind of ['gun','air-to-air-missile','air-to-ground-missile','sam','aaa'] as const){
+    for(const kind of ['gun','air-to-air-missile','air-to-ground-missile','bomb','sam','aaa'] as const){
       expect(weaponVisualLifecycle(effect(kind,false),2).impactFlashVisible).toBe(false)
     }
     const gun={...effect('gun'),start:2,end:2}

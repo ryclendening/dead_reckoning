@@ -3,7 +3,7 @@ import { canAffordFormation } from './economyRules'
 
 export const CAMPAIGN_ROUND_LIMIT = 10
 export const BASE_STRIKE_RANGE = 6
-export const BASE_STRIKE_DAMAGE = 60
+export const BASE_STRIKE_DAMAGE = 40
 export const ENEMY_TARGETING_THRESHOLD = 60
 
 export const isCampaign = (state: Pick<MatchState, 'debugScenario'>): boolean =>

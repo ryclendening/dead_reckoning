@@ -1,7 +1,7 @@
 import type { CpuRoundReport, CpuState } from './cpu/types'
 export type Phase = 'deploy' | 'plan' | 'execute' | 'debrief' | 'adapt' | 'victory' | 'defeat' | 'draw'
-export type Role = 'fighter' | 'recon'
-export type MissionId = 'defensive-cap' | 'forward-patrol' | 'transit' | 'search-area' | 'base-strike'
+export type Role = 'fighter' | 'recon' | 'bomber'
+export type MissionId = 'defensive-cap' | 'forward-patrol' | 'transit' | 'search-area' | 'base-strike' | 'bomb'
 export type ReconPosture = 'aggressive' | 'conservative'
 export type IntelLevel = 'unknown' | 'suspected' | 'probable' | 'confirmed'
 export type Point = [number, number]
@@ -32,6 +32,8 @@ export interface Squadron {
   protectedTargetId?: string; protectedPoint?: Point
   /** Explicit recovered enemy ground target; base-strike is the legacy Ground Strike mission ID. */
   strikeTargetId?: string
+  /** Ordered ground targets and route waypoint indices for bomber releases. */
+  bombingTargets?: Array<{ targetId: string; routeIndex: number }>
   /** Planned response to direct threats during a recon sortie. Older saves default to aggressive. */
   reconPosture?: ReconPosture
   /** Optional catalog key; older saves resolve to the role's default airframe. */
@@ -52,6 +54,7 @@ export interface EnemyFlight {
   route: Point[]; detectionWindows: DetectionWindow[]; identityLearnedAt?: number; target: 'base' | 'decoy'
   mission?: MissionId; routeIngress?: Point[]; maxAircraft?: number; sortieOrdered?: boolean
   plannedRecoveryFieldId?: string; strikeTargetId?: string; protectedPoint?: Point; protectedTargetId?: string
+  bombingTargets?: Array<{ targetId: string; routeIndex: number }>
   recoveryWaypoints?: Point[]
   aircraftTypeId?: string; upgrades?: UpgradeId[]
 }
@@ -66,7 +69,7 @@ export interface Asset {
 export type UpgradeId = string
 /** @deprecated Use UpgradeId; retained for save and import compatibility. */
 export type AssetUpgradeId = UpgradeId
-export type EconomyActionId = 'repair-formation' | 'replace-aircraft' | 'repair-defense' | 'repair-fob' | `install-${string}` | 'buy-fighter' | 'buy-recon' | 'build-fob' | 'build-decoy' | 'build-sam' | 'build-aaa' | 'build-radar'
+export type EconomyActionId = 'repair-formation' | 'replace-aircraft' | 'repair-defense' | 'repair-fob' | `install-${string}` | 'buy-fighter' | 'buy-recon' | 'buy-bomber' | 'build-fob' | 'build-decoy' | 'build-sam' | 'build-aaa' | 'build-radar'
 export type EconomyTarget = { kind: 'campaign'; id: 'campaign' } | { kind: 'squadron' | 'asset'; id: string }
 export type CampaignSetupStage = 'allocate' | 'place' | 'review'
 export interface CampaignSetupState {
@@ -107,7 +110,7 @@ export interface UnitFrame { time: number; position: Point; facing: Point; mode:
 export interface UnitTrack { unitId: string; frames: UnitFrame[] }
 export interface ContactInterval { id: string; observerId: string; targetId: string; source: 'radar' | 'visual'; start: number; end: number; position: Point }
 export interface BehaviorInterval { id: string; unitId: string; mode: FlightMode; start: number; end: number; targetId?: string; source?: 'radar' | 'visual'; reason: string }
-export type WeaponKind = 'gun' | 'air-to-air-missile' | 'air-to-ground-missile' | 'sam' | 'aaa'
+export type WeaponKind = 'gun' | 'air-to-air-missile' | 'air-to-ground-missile' | 'bomb' | 'sam' | 'aaa'
 export type FighterEngagementSide = 'friendly' | 'hostile'
 export type FighterEngagementPhaseKind = 'approach' | 'opening-fire' | 'merged' | 'resolved'
 export type FighterPositionalAdvantage = 'dominant' | 'favorable' | 'neutral' | 'disadvantaged'

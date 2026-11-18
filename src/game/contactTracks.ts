@@ -2,7 +2,7 @@ import {contactProjectionAt,contactTrackIdAt,sampleUnitTrack,unitTrackFor} from 
 import type {EnemyFlight,Point,RoundResult} from './types'
 
 export function identifiedAircraftType(flight:Pick<EnemyFlight,'role'>){
-  return flight.role==='fighter'?'MiG-23 · FIGHTER':'RECON AIRCRAFT'
+  return flight.role==='fighter'?'MiG-23 · FIGHTER':flight.role==='bomber'?'B-52 · BOMBER':'RECON AIRCRAFT'
 }
 
 export interface ContactTrack {

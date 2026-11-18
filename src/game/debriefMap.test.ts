@@ -15,6 +15,11 @@ describe('after-action event map',()=>{
     expect(debriefMapEvents({...result,events:[],executionRoutes:{},enemyFlights:result.enemyFlights.map(f=>({...f,route:[[999,999]]}))})).toEqual(events)
     expect(events.every(event=>event.position.every(Number.isFinite))).toBe(true)
   })
+  it('labels resolved bomber damage as a bomb impact',()=>{
+    const result=quiet(),source=result.squadrons[0],target=result.assets[0]
+    result.combatSequences=[{id:'bombing-run',kind:'strike',start:1,end:1.6,location:target.position,participantIds:[source.id,target.id],finalDisposition:{},exchanges:[{id:'bomb-impact',time:1.6,attackerId:source.id,defenderId:target.id,weapon:'bomb',hit:true,damage:100,moraleDamage:0,position:target.position,targetStrength:0,targetMorale:0}]}]
+    expect(debriefMapEvents(result).find(event=>event.id==='bomb-impact')).toMatchObject({title:'SITE DESTROYED',detail:`${target.name??target.kind.toUpperCase()} · 100 BOMB DAMAGE`})
+  })
   it('anchors reconciled dogfight losses to the last resolved hit, not the recovery position',()=>{
     const result=quiet(),id=result.squadrons[0].id
     result.friendlyAttrition=[{id,callsign:'VIPER',role:'fighter',startAircraft:4,endAircraft:2,aircraftLost:2,endStrength:50,finalStatus:'damaged',destroyed:false,confirmed:true}]

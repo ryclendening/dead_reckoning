@@ -23,10 +23,10 @@ import { snapToHex } from './game/hex'
 import { deriveKnownWorldModel } from './game/knownWorld'
 import { formationBaseGroups, formationBaseId } from './game/formationBasing'
 import { deriveRecoveryPlanningView, deriveRouteBudget, formationField, isOperationalAirfield, MAX_RECOVERY_WAYPOINTS, routeDistanceForBasing, routeToRecoveryField, transitDestination, validateRecoveryPackage } from './game/forwardBasing'
-import { buildGroundStrikeRoute, groundStrikeRoute, generateRouteTemplate, validateGroundStrikeOrder } from './game/routeTemplates'
+import { buildGroundStrikeRoute, groundStrikeRoute, generateRouteTemplate, validateBomberOrderForPlayer, validateGroundStrikeOrder } from './game/routeTemplates'
 import { normalizeMatch } from './game/persistence'
 import { protectTargetSelectionFor } from './game/missionResponsibility'
-import { isGroundStrikeTargeting, planGroundStrike } from './game/groundStrikePlanning'
+import { isBomberTargeting, isGroundStrikeTargeting, planBombingTarget, planGroundStrike, removeBombingTarget } from './game/groundStrikePlanning'
 import { aircraftInspectionAt } from './game/unitCards'
 import { debriefMapSites, primaryDebriefEvent } from './game/debriefMap'
 import { DebriefLegend, DebriefSymbol } from './components/DebriefSymbols'
@@ -250,7 +250,7 @@ export default function App(){
   const executionEvent=replayActive?activeEvent??onlineRound?.events.find(event=>event.time===0):activeEvent
   const campaign=isCampaign(match)
   const groundTargets=groundStrikeTargets(match)
-  const pickingGroundTarget=!waitingOnPlan&&isGroundStrikeTargeting(match.phase,selected,planningStep)
+  const pickingGroundTarget=!waitingOnPlan&&(isGroundStrikeTargeting(match.phase,selected,planningStep)||planningStep==='target'&&isBomberTargeting(match.phase,selected,planningStep))
   const inspectionResult=executionResult??(match.phase==='debrief'?match.lastResult:undefined)
   const inspectionSeconds=replayActive?replaySeconds:inspectionResult?.duration??0
   const observedAssetIds=new Set(match.phase==='execute'?(liveResult?.contactObservations??[]).filter(observation=>observation.start<=liveResult!.duration&&observation.end>=liveResult!.duration).map(observation=>observation.targetId):[])
@@ -301,6 +301,16 @@ export default function App(){
       setSelectingProtectTarget(false)
       setReviewedIds(ids=>{const next=new Set(ids);next.delete(squadron.id);return next})
       setMatch(m=>({...m,squadrons:m.squadrons.map(s=>s.id===squadron.id?{...s,protectedPoint:[...protectedPoint] as Point,protectedTargetId:undefined,route:generated.route,routeIngress:generated.ingress,recoveryWaypoints:undefined,plannedRecoveryFieldId:undefined}:s)}))
+      return true
+    }
+    if(squadron.mission==='bomb'){
+      const bombingRoute=ingress.length?withOrigin:[withOrigin[0],...(squadron.bombingTargets??[]).map(entry=>squadron.route[entry.routeIndex]).filter((point):point is Point=>Boolean(point))]
+      const candidate={...squadron,route:bombingRoute,routeIngress:bombingRoute}
+      const error=validateBomberOrderForPlayer(match,candidate)
+      if(error){setRouteNotice(error);return false}
+      setReviewedIds(ids=>{const next=new Set(ids);next.delete(squadron.id);return next})
+      setRouteNotice(undefined)
+      setMatch(m=>({...m,squadrons:m.squadrons.map(s=>s.id===squadron.id?candidate:s)}))
       return true
     }
     if(squadron.mission==='base-strike'){
@@ -372,7 +382,7 @@ export default function App(){
     const transit=changingReturn?undefined:routeToRecoveryField(match,selected.id,fieldId,direct)
     if(!changingReturn&&!transit)return
     const candidate:Squadron=transit
-      ? {...selected,mission:'transit',route:transit,routeIngress:transit,recoveryWaypoints:undefined,protectedPoint:undefined,protectedTargetId:undefined,strikeTargetId:undefined,plannedRecoveryFieldId:fieldId}
+      ? {...selected,mission:'transit',route:transit,routeIngress:transit,recoveryWaypoints:undefined,protectedPoint:undefined,protectedTargetId:undefined,strikeTargetId:undefined,bombingTargets:undefined,plannedRecoveryFieldId:fieldId}
       : {...selected,plannedRecoveryFieldId:fieldId}
     const next={...match,squadrons:match.squadrons.map(item=>item.id===candidate.id?candidate:item)}
     const view=deriveRecoveryPlanningView(next,candidate.id,candidate.route,flightRangeFor(candidate))
@@ -395,6 +405,15 @@ export default function App(){
       setPlanningStep('target')
       return
     }
+    if(mission==='bomb'){
+      const base=formationField(match.playerAssets,squadron.id)?.position??playerBase
+      setSelectingProtectTarget(false)
+      setRouteNotice(undefined)
+      setReviewedIds(ids=>{const next=new Set(ids);next.delete(squadron.id);return next})
+      setMatch(m=>({...m,squadrons:m.squadrons.map(s=>s.id===squadron.id?{...s,mission,bombingTargets:undefined,strikeTargetId:undefined,route:[base],routeIngress:[base],recoveryWaypoints:undefined,plannedRecoveryFieldId:undefined}:s)}))
+      setPlanningStep('target')
+      return
+    }
     const base=formationField(match.playerAssets,squadron.id)?.position??playerBase
     const existing=mission==='transit'||squadron.mission==='transit'?[base]:squadron.routeIngress.length>=2?squadron.routeIngress:squadron.route.length>=2?squadron.route:[base]
     const ingress:[[number,number],...Point[]]=[[...base],...existing.slice(1)]
@@ -404,11 +423,21 @@ export default function App(){
     setSelectingProtectTarget(false)
     setRouteNotice(routeAdjustmentNotice(generated.adjustment))
     setReviewedIds(ids=>{const next=new Set(ids);next.delete(squadron.id);return next})
-    setMatch(m=>({...m,squadrons:m.squadrons.map(s=>s.id===squadron.id?{...s,mission,strikeTargetId:undefined,protectedPoint:protect&&generated.ingress.length>1?[...generated.ingress.at(-1)!] as Point:undefined,protectedTargetId:undefined,route:generated.route,routeIngress:generated.ingress,recoveryWaypoints:undefined,plannedRecoveryFieldId:undefined}:s)}))
+    setMatch(m=>({...m,squadrons:m.squadrons.map(s=>s.id===squadron.id?{...s,mission,strikeTargetId:undefined,bombingTargets:undefined,protectedPoint:protect&&generated.ingress.length>1?[...generated.ingress.at(-1)!] as Point:undefined,protectedTargetId:undefined,route:generated.route,routeIngress:generated.ingress,recoveryWaypoints:undefined,plannedRecoveryFieldId:undefined}:s)}))
     setPlanningStep('route')
   },[match,playerBase,isPlanReadOnly])
   const selectGroundTarget=(targetId:string)=>{
     if(isPlanReadOnly()||!pickingGroundTarget)return
+    if(selected.mission==='bomb'){
+      const order=planBombingTarget(match,selected.id,targetId)
+      setSelectedAssetId(undefined)
+      if(!order){setRouteNotice('TARGET CANNOT BE ADDED TO THIS BOMBING RUN');return}
+      setReviewedIds(ids=>{const next=new Set(ids);next.delete(selected.id);return next})
+      setMatch(m=>({...m,squadrons:m.squadrons.map(s=>s.id===selected.id?order:s)}))
+      setRouteNotice(undefined)
+      setPlanningStep('route')
+      return
+    }
     const order=planGroundStrike(match,selected.id,targetId)
     setSelectedAssetId(undefined)
     if(!order){setRouteNotice('NO LEGAL STRIKE INGRESS FROM THIS FIELD');return}
@@ -420,6 +449,7 @@ export default function App(){
     setPlanningStep('route')
   }
   const changeGroundTarget=()=>{if(isPlanReadOnly())return;setSelectedAssetId(undefined);setReviewedIds(ids=>{const next=new Set(ids);next.delete(selected.id);return next});setPlanningStep('target');setRouteNotice(undefined)}
+  const removeBombTarget=(targetId:string)=>{if(isPlanReadOnly())return;setReviewedIds(ids=>{const next=new Set(ids);next.delete(selected.id);return next});setMatch(m=>({...m,squadrons:m.squadrons.map(s=>s.id===selected.id?removeBombingTarget(s,targetId):s)}))}
   const placeAsset=useCallback((id:string,position:Point)=>{
     if(onlineRef.current?.view){if(!onlineRef.current.view.locked)void sendOnlineAction({type:'place',assetId:id,position});return}
     setMatch(m=>{
@@ -452,7 +482,8 @@ export default function App(){
       if(selected.aircraft<=0||selected.status==='trapped'||!view?.valid){setRouteNotice(view?.reason??'FORMATION CANNOT LAUNCH');return}
       const candidate={...selected,route:view.normalizedRoute,plannedRecoveryFieldId:view.intendedField.id}
       const strikeError=validateGroundStrikeOrder(match,candidate)
-      if(strikeError){setRouteNotice(strikeError);return}
+      const bomberError=validateBomberOrderForPlayer(match,candidate)
+      if(strikeError||bomberError){setRouteNotice(strikeError??bomberError);return}
       if(candidate.mission==='defensive-cap'&&candidate.protectedTargetId&&!reviewedIds.has(candidate.protectedTargetId)){setRouteNotice('ESCORT TARGET MUST HAVE A CONFIRMED ORDER FIRST');return}
       source={...match,squadrons:match.squadrons.map(item=>item.id===candidate.id?candidate:item)}
       orderedIds.add(candidate.id)
@@ -460,9 +491,10 @@ export default function App(){
     const orderedMatch={...source,squadrons:source.squadrons.map(s=>({...s,sortieOrdered:orderedIds.has(s.id),plannedRecoveryFieldId:orderedIds.has(s.id)?s.plannedRecoveryFieldId:undefined}))}
     const validation=validateRecoveryPackage(orderedMatch,s=>flightRangeFor(s),orderedIds)
     const strikeError=orderedMatch.squadrons.filter(s=>orderedIds.has(s.id)).map(s=>validateGroundStrikeOrder(orderedMatch,s)).find(Boolean)
+    const bomberError=orderedMatch.squadrons.filter(s=>orderedIds.has(s.id)).map(s=>validateBomberOrderForPlayer(orderedMatch,s)).find(Boolean)
     const escortError=orderedMatch.squadrons.filter(s=>orderedIds.has(s.id)&&s.mission==='defensive-cap'&&s.protectedTargetId).map(s=>{const target=orderedMatch.squadrons.find(item=>item.id===s.protectedTargetId);return !target||!orderedIds.has(target.id)?'ESCORT TARGET MUST HAVE A CONFIRMED ORDER':undefined}).find(Boolean)
-    if(!validation.valid||strikeError||escortError){setRouteNotice(strikeError??escortError??validation.reason??'INVALID ORDER PACKAGE');return}
-    if(onlineSession){const orders=orderedMatch.squadrons.filter(squadron=>orderedIds.has(squadron.id)).map(squadron=>({id:squadron.id,mission:squadron.mission,route:squadron.route,routeIngress:squadron.routeIngress,recoveryWaypoints:squadron.recoveryWaypoints,strikeTargetId:squadron.strikeTargetId,reconPosture:squadron.reconPosture,protectedPoint:squadron.protectedPoint,protectedTargetId:squadron.protectedTargetId,plannedRecoveryFieldId:squadron.plannedRecoveryFieldId}));setSubmittingPlan(orderedMatch);setSelectedAssetId(undefined);setInspectedFlightId(undefined);void sendOnlineAction({type:'lock-plan',orders});return}
+    if(!validation.valid||strikeError||bomberError||escortError){setRouteNotice(strikeError??bomberError??escortError??validation.reason??'INVALID ORDER PACKAGE');return}
+    if(onlineSession){const orders=orderedMatch.squadrons.filter(squadron=>orderedIds.has(squadron.id)).map(squadron=>({id:squadron.id,mission:squadron.mission,route:squadron.route,routeIngress:squadron.routeIngress,recoveryWaypoints:squadron.recoveryWaypoints,strikeTargetId:squadron.strikeTargetId,bombingTargets:squadron.bombingTargets,reconPosture:squadron.reconPosture,protectedPoint:squadron.protectedPoint,protectedTargetId:squadron.protectedTargetId,plannedRecoveryFieldId:squadron.plannedRecoveryFieldId}));setSubmittingPlan(orderedMatch);setSelectedAssetId(undefined);setInspectedFlightId(undefined);void sendOnlineAction({type:'lock-plan',orders});return}
     const simulation=createRoundSimulation(orderedMatch);simulationRef.current=simulation;resultRef.current=simulation.result;completingRef.current=false;setLiveResult(simulation.result);setAcknowledgedThreatIds(new Set());setProgress(1);setActiveEvent(undefined);setFollowId(match.selectedId);setExecutionBaseId(formationBaseId(planningBaseGroups,match.selectedId)??activePlanningBaseId);setFocusPoint(undefined);setMatch({...orderedMatch,phase:'execute'})
   }
   useEffect(()=>{
@@ -572,7 +604,8 @@ export default function App(){
     const reviewedSquadron={...squadron,route:view.normalizedRoute}
     if(reviewedSquadron.mission==='defensive-cap'&&reviewedSquadron.protectedTargetId){const target=state.squadrons.find(item=>item.id===reviewedSquadron.protectedTargetId);if(!target||!reviewedIds.has(target.id)){setRouteNotice('ESCORT TARGET MUST HAVE A CONFIRMED ORDER FIRST');return false}}
     const strikeError=validateGroundStrikeOrder(state,reviewedSquadron)
-    if(strikeError){setRouteNotice(strikeError);return false}
+    const bomberError=validateBomberOrderForPlayer(state,reviewedSquadron)
+    if(strikeError||bomberError){setRouteNotice(strikeError??bomberError);return false}
     setMatch(current=>({...current,squadrons:current.squadrons.map(item=>item.id===squadron.id?{...reviewedSquadron,route:view.normalizedRoute,plannedRecoveryFieldId:view.intendedField.id}:item)}))
     setReviewedIds(current=>new Set(current).add(squadron.id))
     setRouteNotice(undefined)
@@ -685,7 +718,7 @@ export default function App(){
       {visiblePhase==='execute'&&executionBaseId?<ExecutionChitRail squadrons={match.squadrons} bases={replayMatch.playerAssets} result={executionResult} progress={executionProgress} activeBaseId={executionBaseId} selectedId={match.selectedId} followId={followId} threatenedIds={new Set((executionResult?.threatAlerts??[]).filter(alert=>alert.time<=inspectionSeconds&&!acknowledgedThreatIds.has(alert.id)).map(alert=>alert.unitId))} onSelect={selectFormation}/>:null}
       {match.phase==='deploy'&&onlineSession&&onlineView?.locked?<section className="online-wait-panel"><small>DEPLOYMENT LOCKED</small><strong>{onlineView.opponentLocked?'BOTH DEPLOYMENTS LOCKED':'WAITING FOR OPPONENT TO LOCK'}</strong><p>Your opening package is fixed for this match.</p></section>:match.phase==='deploy'&&match.setup?<CampaignSetupPanel match={match} online={Boolean(onlineSession)} placementId={placementId} onSelectPlacement={id=>{if(!onlineView?.locked&&!onlineCommandBusy)setPlacementId(id)}} onContinue={()=>onlineSession?void sendOnlineAction({type:'lock-deploy'}):advanceCampaignSetup()}/>:match.phase==='deploy'?<DeploymentPanel assets={match.playerAssets} selectedId={placementId} onSelect={setPlacementId} locked={Boolean(onlineView?.locked||onlineCommandBusy)} online={Boolean(onlineSession)} onLock={()=>onlineSession?void sendOnlineAction({type:'lock-deploy'}):setMatch(m=>({...m,phase:'plan'}))}/>:null}
       {match.phase==='plan'&&waitingOnPlan?<section className="online-wait-panel" aria-label="Read-only plan"><strong>{onlineView?.locked?'Orders locked':onlineCommandBusy?'Locking orders…':'Checking submitted orders'}</strong><p>{onlineView?.locked?'Tap an aircraft to review its orders.':'Your submitted routes are frozen.'}</p></section>:null}
-      {match.phase==='plan'&&!waitingOnPlan?<CommandShelf squadrons={match.squadrons} bases={match.playerAssets} activeBaseId={activePlanningBaseId} rosterMode={planningRosterMode} squadron={selected} routeNotice={routeNotice} routeBudget={routeBudget} protectSummary={protectSummary} editingReturn={editingReturn} cpuPlanning={cpuPlanningRound===match.round} cpuPlanError={Boolean(cpuPlanError)} onRouteLegChange={canEditReturn&&!selectingProtectTarget?returnLeg=>{setEditReturn(returnLeg);setRouteNotice(undefined)}:undefined} onSelect={selectPlanningFormation} onBaseSelect={selectPlanningBase} onRosterMode={mode=>{setPlanningRosterMode(mode);if(mode!=='closed'){setPlanningStep('idle');setSelectingProtectTarget(false)}}} onMission={selectMission} onPickProtectTarget={()=>{setSelectingProtectTarget(true);setRouteNotice(undefined)}} onProtectFlight={selectProtectFlight} onReconPosture={setReconPosture} onRecoverHome={()=>routeToAirfield('p-base',true)} onClear={()=>{setRouteNotice(undefined);if(selectingProtectTarget)setSelectingProtectTarget(false);else if(editingReturn)setReturnWaypoints([]);else setRoute([])}} onBack={()=>{setPlanningStep('mission');setSelectingProtectTarget(false);setRouteNotice(undefined)}} onCommit={()=>commit(planningStep==='route')} step={planningStep} onClose={()=>{if(planningStep==='route'&&selected.route.length>=2&&!selectingProtectTarget&&!confirmPlanningOrder(selected))return;setPlanningStep('idle');setSelectingProtectTarget(false)}} reviewedIds={reviewedIds} reviewedCount={reviewedCount} totalCount={viableFormationIds.length} groundTargets={groundTargets} onChangeGroundTarget={changeGroundTarget} onInspectGroundTarget={inspectAsset} strikeUnlocked={groundTargets.length>0} strikeDisabledReason="RECOVER GROUND TARGET INTELLIGENCE FIRST" selectingProtectTarget={selectingProtectTarget} onlineLock={Boolean(onlineSession)} allowEmptyCommit/>:null}
+      {match.phase==='plan'&&!waitingOnPlan?<CommandShelf squadrons={match.squadrons} bases={match.playerAssets} activeBaseId={activePlanningBaseId} rosterMode={planningRosterMode} squadron={selected} routeNotice={routeNotice} routeBudget={routeBudget} protectSummary={protectSummary} editingReturn={editingReturn} cpuPlanning={cpuPlanningRound===match.round} cpuPlanError={Boolean(cpuPlanError)} onRouteLegChange={canEditReturn&&!selectingProtectTarget?returnLeg=>{setEditReturn(returnLeg);setRouteNotice(undefined)}:undefined} onSelect={selectPlanningFormation} onBaseSelect={selectPlanningBase} onRosterMode={mode=>{setPlanningRosterMode(mode);if(mode!=='closed'){setPlanningStep('idle');setSelectingProtectTarget(false)}}} onMission={selectMission} onPickProtectTarget={()=>{setSelectingProtectTarget(true);setRouteNotice(undefined)}} onProtectFlight={selectProtectFlight} onReconPosture={setReconPosture} onRecoverHome={()=>routeToAirfield('p-base',true)} onClear={()=>{setRouteNotice(undefined);if(selectingProtectTarget)setSelectingProtectTarget(false);else if(editingReturn)setReturnWaypoints([]);else setRoute([])}} onBack={()=>{setPlanningStep('mission');setSelectingProtectTarget(false);setRouteNotice(undefined)}} onCommit={()=>commit(planningStep==='route')} step={planningStep} onClose={()=>{if(planningStep==='route'&&selected.route.length>=2&&!selectingProtectTarget&&!confirmPlanningOrder(selected))return;setPlanningStep('idle');setSelectingProtectTarget(false)}} reviewedIds={reviewedIds} reviewedCount={reviewedCount} totalCount={viableFormationIds.length} groundTargets={groundTargets} onChangeGroundTarget={changeGroundTarget} onInspectGroundTarget={inspectAsset} onAddBombTarget={()=>{setPlanningStep('target');setRouteNotice(undefined)}} onRemoveBombTarget={removeBombTarget} onBombTargetDone={()=>setPlanningStep('route')} strikeUnlocked={groundTargets.length>0} strikeDisabledReason="RECOVER GROUND TARGET INTELLIGENCE FIRST" selectingProtectTarget={selectingProtectTarget} onlineLock={Boolean(onlineSession)} allowEmptyCommit/>:null}
       {match.phase==='debrief'&&match.lastResult&&!replayActive?<Debrief match={match} onFocus={point=>{setFollowId(undefined);setFocusPoint([...point] as Point)}} onResupply={enterResupply} pending={onlineCommandBusy}/>:null}
       {match.phase==='adapt'?<ResupplyPanel match={match} busy={onlineCommandBusy} cpuAdapting={cpuAdaptingRound===match.round} nextRoundDisabled={cpuAdaptingRound===match.round} cpuPlanError={Boolean(cpuPlanError)} selectedTarget={economyTarget} onSelectTarget={selectEconomyTarget} onCloseTarget={()=>selectEconomyTarget({kind:'campaign',id:'campaign'})} onPurchase={purchaseEconomy} onNextRound={nextRound} procurementMode={procurementMode} procurementActionId={procurementActionId} onProcurementMode={changeProcurementMode} onProcurementAction={selectProcurementAction} hasPlacementPreview={Boolean(procurementPlacement)} onConfirmPlacement={confirmProcurementPlacement} onCancelPlacement={()=>setProcurementPlacement(undefined)}/>:null}
       {(match.phase==='victory'||match.phase==='defeat'||match.phase==='draw')?<EndState victory={match.phase==='victory'} round={match.round} outcome={campaignOutcome(match)} onRestart={()=>setMenuOpen(true)}/>:null}

@@ -26,10 +26,11 @@ describe('explicit ground strike orders',()=>{
     expect(shots).toHaveLength(1)
     expect(shots[0].targetId).toBe('e-sam')
     expect(shots[0].from).toEqual(state.squadrons.find(squadron=>squadron.id==='viper')!.route.at(-1))
-    expect(result.assets.find(asset=>asset.id==='e-sam')).toMatchObject({health:0,struck:true})
+    expect(shots[0].damage).toBe(40)
+    expect(result.assets.find(asset=>asset.id==='e-sam')).toMatchObject({health:10,struck:true})
     expect(result.enemyBaseDamage).toBe(0)
     expect(result.baseDamage).toBe(0)
-    expect(applyRound(state,result).enemyAssets.find(asset=>asset.id==='e-sam')?.health).toBe(0)
+    expect(applyRound(state,result).enemyAssets.find(asset=>asset.id==='e-sam')?.health).toBe(10)
     expect(result.events.find(event=>event.title==='GROUND TARGET STRUCK')?.detail).not.toContain('Home base')
   })
 

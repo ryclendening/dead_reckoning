@@ -105,7 +105,7 @@ describe('radar-assisted ground defense',()=>{
   it('drops extended range on the radar-destroying impact and resolves an already-launched missile',()=>{
     const state=createMatch(7301)
     const [home,enemyHome,radarPosition,samPosition]:Point[]=[[0,0],[15,0],[3,0],[7,0]]
-    const initialRadar={...state.enemyAssets.find(a=>a.kind==='radar')!,position:radarPosition,health:60,intel:'confirmed' as const,hidden:false}
+    const initialRadar={...state.enemyAssets.find(a=>a.kind==='radar')!,position:radarPosition,health:40,intel:'confirmed' as const,hidden:false}
     const sampleRoute:Point[]=[home,...Array.from({length:13},(_,i)=>[i%2?.8:2,i%3*.1] as Point),home]
     state.playerAssets=state.playerAssets.filter(a=>a.kind==='base').map(a=>({...a,position:home}))
     state.enemyAssets=[...state.enemyAssets.filter(a=>a.kind==='base').map(a=>({...a,position:enemyHome})),
@@ -126,7 +126,7 @@ describe('radar-assisted ground defense',()=>{
     expect(shots[0].start).toBeLessThan(impact)
     expect(shots[0].end).toBeGreaterThan(impact)
     expect(result.combatSequences.some(s=>s.kind==='defense'&&s.exchanges.some(e=>e.weapon==='sam'&&e.time>impact))).toBe(true)
-    expect(projectGroundAssetAt(initialRadar,result,impact-.05).health).toBe(60)
+    expect(projectGroundAssetAt(initialRadar,result,impact-.05).health).toBe(40)
     expect(projectGroundAssetAt(initialRadar,result,impact).health).toBe(0)
 
     const survives={...state,enemyAssets:state.enemyAssets.map(a=>a.kind==='radar'?{...a,health:100}:a)}

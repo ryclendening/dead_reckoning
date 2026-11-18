@@ -21,7 +21,12 @@ function mapOrder(order: Squadron, knownTargets: Map<string, string>): Squadron 
     route: clone(order.route), routeIngress: clone(order.routeIngress),
     plannedRecoveryFieldId: order.plannedRecoveryFieldId ? opponentId(order.plannedRecoveryFieldId) : undefined,
     protectedTargetId: order.protectedTargetId ? opponentId(order.protectedTargetId) : undefined,
-    strikeTargetId: order.strikeTargetId ? knownTargets.get(localId(order.strikeTargetId)) ?? localId(order.strikeTargetId) : undefined,
+    strikeTargetId: order.strikeTargetId ? knownTargets.get(localId(order.strikeTargetId)) : undefined,
+    bombingTargets: order.bombingTargets?.map(target => ({
+      // Unknown opponent targets are never promoted into canonical combat IDs.
+      targetId: knownTargets.get(localId(target.targetId)) ?? '',
+      routeIndex: target.routeIndex,
+    })),
   }
 }
 
@@ -113,6 +118,10 @@ function projectResult(result: RoundResult, ownIds: Set<string>, opponentIds: Se
   const strikes = result.combatSequences.filter(sequence=>sequence.kind==='strike').flatMap(sequence=>sequence.exchanges)
   const opponentStrikeHealth = new Map(strikes.filter(shot=>hasOwn(shot.attackerId)&&hasOpponent(shot.defenderId)&&shot.hit)
     .map(shot=>[localId(shot.defenderId),shot.targetStrength]))
+  for(const effect of result.weaponEffects.filter(effect=>(effect.kind==='bomb'||effect.kind==='air-to-ground-missile')&&effect.hit&&hasOwn(effect.sourceId)&&hasOpponent(effect.targetId))){
+    const target=result.assets.find(asset=>localId(asset.id)===localId(effect.targetId))
+    if(target)opponentStrikeHealth.set(localId(effect.targetId),target.health)
+  }
   const knownAssets = observedEnemyAssets(input.enemyAssets,result.assets,refreshed,opponentStrikeHealth)
   const groundReplay = {
     friendlyAtStart: clone(input.playerAssets),
@@ -145,10 +154,12 @@ function projectResult(result: RoundResult, ownIds: Set<string>, opponentIds: Se
     const asset = knownAssets.find(item => item.id === report.assetId)
     if (asset) events.push({ id: report.id, time: result.duration, tone: 'friendly', title: 'INTEL RECOVERED', detail: report.detail, position: asset.position })
   }
-  for (const effect of result.weaponEffects.filter(item => item.kind === 'air-to-ground-missile' && hasOwn(item.sourceId))) {
+  for (const effect of result.weaponEffects.filter(item => (item.kind === 'air-to-ground-missile' || item.kind === 'bomb') && hasOwn(item.sourceId) && knownAssetIds.has(item.targetId))) {
     const squadron = ownResultSquadrons.find(item => item.id === ownId(effect.sourceId))
-    if (squadron) events.push({ id: 'strike-' + effect.sourceId, time: effect.start, tone: 'friendly', title: 'GROUND STRIKE LAUNCHED',
-      detail: `${squadron.callsign} releases an air-to-ground missile.`, position: effect.from })
+    const target = knownAssets.find(asset => asset.id === effect.targetId)
+    if (squadron) events.push({ id: `strike-${effect.sourceId}-${Math.round(effect.start * 20)}`, time: effect.start, tone: 'friendly',
+      title: effect.kind === 'bomb' ? 'BOMB RELEASED' : 'GROUND STRIKE LAUNCHED',
+      detail: effect.kind === 'bomb' ? `${squadron.callsign} releases a bomb on confirmed ${target?.kind ?? 'ground'} coordinates.` : `${squadron.callsign} releases an air-to-ground missile.`, position: effect.from })
   }
   events.sort((a, b) => a.time - b.time)
   const authorizedParticipant = (id: string, time: number) =>
@@ -186,16 +197,21 @@ function projectResult(result: RoundResult, ownIds: Set<string>, opponentIds: Se
     } } : {}),
   })) as RoundResult['combatSequences']
   const effects = result.weaponEffects.filter(effect => (hasOwn(effect.targetId) && (hasOwn(effect.sourceId) || knownAssetIds.has(effect.sourceId) ||
-      authorizedFrame(effect.sourceId, effect.start))) ||
+      authorizedFrame(effect.sourceId, effect.start) || effect.kind === 'bomb' || effect.kind === 'air-to-ground-missile')) ||
     (hasOwn(effect.sourceId) && (knownAssetIds.has(effect.targetId) || authorizedFrame(effect.targetId, effect.start))))
-    .map(effect => {
+    .map((effect, index) => {
+      const authorizedSource=hasOwn(effect.sourceId)||knownAssetIds.has(effect.sourceId)||authorizedFrame(effect.sourceId,effect.start)
       let to = clone(effect.to)
       if (hasOpponent(effect.targetId)) {
         const lastVisible = contactTracks.find(track => track.unitId === ownId(effect.targetId))?.frames.filter(frame => frame.time <= effect.end).at(-1)
         if (lastVisible) to = clone(lastVisible.position)
       }
-      return { ...clone(effect), id: `replay-effect-${Math.round(effect.start * 20)}-${ownId(effect.sourceId)}-${ownId(effect.targetId)}`,
-        sourceId: ownId(effect.sourceId), targetId: ownId(effect.targetId), to }
+      // A bomb or ground missile striking an owned site may be shown as an
+      // impact without exposing an undetected launch point or aircraft ID.
+      const from=authorizedSource?clone(effect.from):to
+      const sourceId=authorizedSource?ownId(effect.sourceId):'hostile-aircraft'
+      return { ...clone(effect), id: `replay-effect-${Math.round(effect.start * 20)}-${sourceId}-${ownId(effect.targetId)}-${index}`,
+        sourceId, targetId: ownId(effect.targetId), from, to }
     })
   // An own battery's flash is public to its operator even when the target has
   // no authorized track. Strip the target identity, trajectory and outcome.
@@ -272,7 +288,7 @@ export function resolveOnlineRound(seats: [MatchState, MatchState], seed: number
       hidden: !report || report.intel === 'unknown' || report.hidden }
   })
   const bKnownTargets = new Map<string, string>()
-  for (const report of b.enemyAssets) {
+  for (const report of b.enemyAssets.filter(asset=>asset.intel==='confirmed'&&!asset.hidden&&asset.health>0)) {
     const id = localId(report.id)
     if (aAssetsByLocalId.has(id)) bKnownTargets.set(id, id)
   }

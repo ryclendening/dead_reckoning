@@ -8,7 +8,7 @@ import { flightRangeFor } from '../game/flightRules'
 import { deriveRecoveryPlanningView, distanceBetween, formationField, isOperationalAirfield, transitDestination, validateRecoveryPackage } from '../game/forwardBasing'
 import { snapToHex } from '../game/hex'
 import { OPENING_LOGISTICS, OPENING_RESERVES } from '../game/openingForces'
-import { generateRouteTemplate, templatesForRole, validateGroundStrikeOrder } from '../game/routeTemplates'
+import { generateRouteTemplate, templatesForRole, validateBomberOrderForPlayer, validateGroundStrikeOrder } from '../game/routeTemplates'
 import type { MatchState, Point, Squadron } from '../game/types'
 import { createStartingKnowledge, generateCampaignWorld } from '../game/world'
 import type { OnlineAction, OnlineOrder, OnlineView } from './protocol'
@@ -98,6 +98,9 @@ function validateOrderGeometry(match: MatchState, squadron: Squadron) {
   const strikeError = validateGroundStrikeOrder(match, squadron)
   if (strikeError) return strikeError
   if (mission === 'base-strike') return matchingRoute(route, routeIngress) ? undefined : 'STRIKE INGRESS MUST MATCH THE FLIGHT PATH'
+  const bomberError = validateBomberOrderForPlayer(match, squadron)
+  if (bomberError) return bomberError
+  if (mission === 'bomb') return matchingRoute(route, routeIngress) ? undefined : 'BOMBING ROUTE MUST MATCH THE FLIGHT PATH'
 
   const normalize = (path: Point[]) => deriveRecoveryPlanningView(match, squadron.id, path, flightRangeFor(squadron))?.normalizedRoute
   if (protectedTargetId) {
@@ -150,6 +153,7 @@ function lockOrders(match: MatchState, orders: OnlineOrder[]): MatchState {
       recoveryWaypoints: order.recoveryWaypoints,
       plannedRecoveryFieldId: order.plannedRecoveryFieldId,
       strikeTargetId: order.mission === 'base-strike' ? order.strikeTargetId : undefined,
+      bombingTargets: order.mission === 'bomb' ? order.bombingTargets : undefined,
       reconPosture: squadron.role === 'recon' ? order.reconPosture : undefined,
       protectedPoint: order.mission === 'defensive-cap' && !order.protectedTargetId ? order.protectedPoint : undefined,
       protectedTargetId: order.mission === 'defensive-cap' ? order.protectedTargetId : undefined,

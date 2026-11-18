@@ -8,6 +8,8 @@ import { normalizeMatch } from '../persistence'
 import { cpuPlanningView, cpuReportAt, cpuRouteRisk, planCpu, prepareCpuRound } from './planner'
 import { strikeOrders, orderRisk } from './routes'
 import { observedThreat } from './placement'
+import { bomberActions } from './actions'
+import { groundAttackDamage } from '../strikeRules'
 import { maintainCpu, settleCpuRound } from './settlement'
 import type { CpuDifficulty, CpuSiteReport } from './types'
 
@@ -17,6 +19,34 @@ function view(difficulty: CpuDifficulty = 'medium') {
 }
 
 describe('CPU campaign planning', () => {
+  it('builds bounded bomber routes only from recovered CPU site reports', () => {
+    const initial=view('hard'),home=initial.home
+    const bomber={...initial.cpu.formations[0],id:'red-reinforcement-bomber-1',callsign:'BOMBER 1',role:'bomber' as const,
+      aircraftTypeId:'bomber',mission:'transit' as const,route:[home],routeIngress:[home]}
+    initial.cpu.formations.push(bomber)
+    initial.cpu.sites=[
+      {id:'known-base',kind:'base',position:[home[0]+6,home[1]],health:100,maxHealth:100,observedRound:1},
+      {id:'known-sam',kind:'sam',position:[home[0]+8,home[1]],health:100,maxHealth:100,observedRound:1},
+      {id:'known-aaa',kind:'aaa',position:[home[0]+10,home[1]],health:100,maxHealth:100,observedRound:1},
+    ]
+    const packages=bomberActions(initial,{expansions:0,rejected:[]},bomber)
+    const threeSite=packages.map(candidate=>candidate.orders.find(order=>order.id===bomber.id)!).find(order=>order.mission==='bomb'&&order.bombingTargets?.length===3)!
+    expect(threeSite).toBeDefined()
+    expect(threeSite.bombingTargets?.map(target=>target.routeIndex)).toEqual([1,2,3])
+    expect(threeSite.bombingTargets?.every(target=>initial.cpu.sites.some(site=>site.id===target.targetId))).toBe(true)
+    expect(missionDistance(threeSite.route,home)).toBeLessThanOrEqual(36.001)
+    expect(groundAttackDamage(bomber,'base')).toBe(50)
+    expect(groundAttackDamage(bomber,'sam')).toBe(100)
+    initial.cpu.sites=[]
+    expect(bomberActions(initial,{expansions:0,rejected:[]},bomber).some(candidate=>candidate.orders.some(order=>order.role==='bomber'&&order.mission==='bomb'))).toBe(false)
+    initial.cpu.sites=[{id:'known-base',kind:'base',position:[home[0]+48,home[1]],health:100,maxHealth:100,observedRound:1}]
+    const homeField=initial.assets.find(asset=>asset.kind==='base')!
+    const fob={...homeField,id:'cpu-fob',kind:'fob' as const,position:[home[0]+18,home[1]] as [number,number],operational:true,capacity:2,basedFormationIds:[]}
+    initial.assets.push(fob)
+    const staged=bomberActions(initial,{expansions:0,rejected:[]},bomber).map(candidate=>candidate.orders.find(order=>order.id===bomber.id)!)
+    expect(staged.some(order=>order.mission==='transit'&&order.plannedRecoveryFieldId==='cpu-fob')).toBe(true)
+  })
+
   it('freezes orders before player planning, and hidden player changes cannot affect a fresh planning view', () => {
     const state = createMatch(), changed = structuredClone(state)
     changed.playerAssets.forEach(asset => { asset.position = [300, 400]; asset.health = 1 })

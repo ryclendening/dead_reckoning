@@ -51,11 +51,11 @@ describe('symmetric campaign rules',()=>{
     expect(loaded.cpu!.plan).toEqual(plan)
     const result=resolveRound(loaded)
     expect(result.weaponEffects.filter(e=>e.kind==='air-to-ground-missile'&&e.targetId==='p-base')).toHaveLength(2)
-    expect(result.baseDamage).toBe(100)
+    expect(result.baseDamage).toBe(80)
     expect(result.cpuReport!.recoveredIds).toEqual(expect.arrayContaining(['red-fighter','red-fighter-2']))
     const settled=applyRound(loaded,result)
     expect(applyRound(settled,result)).toBe(settled)
-    expect(campaignOutcome(settled)).toBe('home-base-destroyed')
+    expect(settled.playerBaseHealth).toBe(20)
     expect(normalizeMatch(JSON.parse(JSON.stringify(settled))).cpu).toEqual(settled.cpu)
   })
   it('offers legal strike plus defense and independent staging capabilities in the shared library',()=>{
@@ -136,20 +136,20 @@ describe('symmetric campaign rules',()=>{
     const result=resolveRound(s),strike=result.weaponEffects.find(e=>e.kind==='air-to-ground-missile'&&e.sourceId===fighter.id)!
     const shot=result.weaponEffects.find(e=>e.kind===kind&&e.targetId===fighter.id)!
     expect(strike).toBeDefined();expect(shot).toBeDefined()
-    if(late){expect(shot.end).toBeGreaterThan(strike.start);expect(forecast.damageNow).toBe(60);expect(strike.damage).toBe(60)}
-    else {expect(shot.end).toBeLessThan(strike.start);expect(forecast.damageNow).toBeLessThan(60)}
+    if(late){expect(shot.end).toBeGreaterThan(strike.start);expect(forecast.damageNow).toBe(40);expect(strike.damage).toBe(40)}
+    else {expect(shot.end).toBeLessThan(strike.start);expect(forecast.damageNow).toBeLessThan(40)}
   })
-  it('retains fast coordinated finishers and values return losses after a decisive release separately',()=>{
+  it('retains fast coordinated finishers without inventing return losses after a decisive release',()=>{
     const s=strikeScenario(),defense={...s.playerAssets[0],id:'p-sam',kind:'sam' as const,position:[17,0] as [number,number],health:100,maxHealth:100}
     s.playerAssets.push(defense);s.cpu!.sites.push(cpuReportAt(defense,1))
     const ready=prepareCpuRound(s),orders=ready.cpu!.plan!.orders.filter(o=>o.mission==='base-strike'&&o.sortieOrdered!==false)
     expect(orders).toHaveLength(2)
-    for(const o of orders)expect(o.route.reduce((n,p,i)=>n+(i?Math.hypot(p[0]-o.route[i-1][0],p[1]-o.route[i-1][1]):0),0)).toBeCloseTo(14,4)
+    for(const o of orders)expect(o.route.reduce((n,p,i)=>n+(i?Math.hypot(p[0]-o.route[i-1][0],p[1]-o.route[i-1][1]):0),0)).toBeCloseTo(14.264,2)
     const effects=ready.cpu!.plan!.trace!.chosenEffects!
-    expect(effects.expectedAircraftLoss).toBeGreaterThan(effects.ingressAircraftLoss!)
+    expect(effects.expectedAircraftLoss).toBe(effects.ingressAircraftLoss)
     const result=resolveRound(ready)
-    expect(result.baseDamage).toBe(100)
-    expect(campaignOutcome(applyRound(ready,result))).toBe('home-base-destroyed')
+    expect(result.baseDamage).toBe(80)
+    expect(applyRound(ready,result).playerBaseHealth).toBe(20)
   })
   it('preserves a legacy two-formation save without granting aircraft, condition or money',()=>{
     const s=campaign()

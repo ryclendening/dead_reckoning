@@ -1,8 +1,10 @@
-import { CAMPAIGN_ROUND_LIMIT, BASE_STRIKE_DAMAGE, BASE_STRIKE_RANGE } from '../campaign'
-import { FLIGHT_SPEED, MAX_FLIGHT_DISTANCE, flightRangeFor, flightSpeedFor, routeDistance } from '../flightRules'
+import { CAMPAIGN_ROUND_LIMIT, BASE_STRIKE_RANGE } from '../campaign'
+import { FLIGHT_SPEED, flightRangeFor, flightSpeedFor, routeDistance } from '../flightRules'
 import { formationField, isOperationalAirfield, validateRecoveryPackage } from '../forwardBasing'
+import { groundAttackDamage } from '../strikeRules'
+import { validateBomberOrder } from '../routeTemplates'
 import { estimateEscortCoverage } from '../missionResponsibility'
-import type { Squadron, Point } from '../types'
+import type { Asset, Squadron, Point } from '../types'
 import type { CpuPlanningView } from './planningView'
 import type { BaseAttackEstimate, CpuSiteReport, PredictedEffects, TacticalPackage } from './types'
 import { CPU_PROFILES, cpuRouteRisk, distance, hold, missionOrders, orderRisk, recoveryView, strikeOrders, type RouteWork } from './routes'
@@ -14,7 +16,7 @@ export const emptyEffects = (): PredictedEffects => ({ informationGain:0,baseDam
 export const SEARCH_SECTORS:Point[]=[[0,0],[-6,8],[0,8],[6,8],[-6,0],[6,0],[-6,-8],[0,-8],[6,-8],[-10,12],[0,12],[10,12],[-10,0],[10,0],[-10,-12],[0,-12],[10,-12]]
 export function estimateBaseAttack(view:CpuPlanningView,order:Squadron,sites:CpuSiteReport[]=view.cpu.sites):BaseAttackEstimate {
   const strength=order.strength??100,ingress=orderRisk(view,order,sites,false),whole=orderRisk(view,order,sites)
-  const delivered=(condition:number)=>Math.round(BASE_STRIKE_DAMAGE*condition/100)*Math.max(0,1-ingress/Math.max(1,condition))
+  const delivered=(condition:number)=>groundAttackDamage(order,'base',condition)*Math.max(0,1-ingress/Math.max(1,condition))
   return {damageNow:delivered(strength),followupDamage:delivered(Math.max(0,strength-whole)),preparationRounds:0,releaseSeconds:routeDistance(order.route)/flightSpeedFor(order)}
 }
 /** Escort coverage reduces the air-threat part of collection risk, never SAM
@@ -135,7 +137,7 @@ function fighterActions(view: CpuPlanningView, work: RouteWork, fighter: Squadro
     const followups=base&&site.kind!=='base'&&baseOrders.length?baseOrders.map(o=>estimateBaseAttack(view,o,after)):[]
     const followup=followups.sort((a,b)=>b.damageNow-a.damageNow||a.releaseSeconds-b.releaseSeconds)[0]
     for(const order of site.kind==='base'?earlyBaseOrders:strikeOrders(view,fighter,site,work)) {
-      const attack=estimateBaseAttack(view,order),payload=Math.round(BASE_STRIKE_DAMAGE*(fighter.strength??100)/100)
+      const attack=estimateBaseAttack(view,order),payload=groundAttackDamage(fighter,'base')
       const survive=payload?attack.damageNow/payload:0
       // A late release loses its operating field if an observed strike threat
       // can finish home first. Compare public travel bounds, not future orders.
@@ -166,6 +168,81 @@ function fighterActions(view: CpuPlanningView, work: RouteWork, fighter: Squadro
   return packages
 }
 
+/** Bounded multi-site bomber sorties. Coordinates come only from recovered CPU reports. */
+export function bomberActions(view:CpuPlanningView,work:RouteWork,bomber:Squadron):TacticalPackage[] {
+  const field=formationField(view.assets,bomber.id)
+  if(!field||!isOperationalAirfield(field)||bomber.aircraft<=0||bomber.status==='trapped')return []
+  const known=view.cpu.sites.filter(site=>site.health>0).map(site=>({
+    ...site,intel:'confirmed' as const,confidence:100,hidden:false,struck:false,
+  } as Asset))
+  const reports=[...view.cpu.sites.filter(site=>site.health>0)].sort((a,b)=>
+    (a.kind==='base'?0:a.kind==='sam'?1:a.kind==='radar'?2:a.kind==='aaa'?3:4)-
+    (b.kind==='base'?0:b.kind==='sam'?1:b.kind==='radar'?2:b.kind==='aaa'?3:4)||
+    distance(field.position,a.position)-distance(field.position,b.position)||a.id.localeCompare(b.id)).slice(0,6)
+  const sequences=new Map<string,CpuSiteReport[]>()
+  for(const first of reports){
+    const sequence:CpuSiteReport[]=[first];let current=first.position
+    sequences.set(first.id,[...sequence])
+    const remaining=reports.filter(site=>site.id!==first.id)
+    while(sequence.length<3&&remaining.length){
+      remaining.sort((a,b)=>distance(current,a.position)-distance(current,b.position)||a.id.localeCompare(b.id))
+      const target=remaining.shift()!
+      sequence.push(target);current=target.position
+      sequences.set(sequence.map(site=>site.id).join('|'),[...sequence])
+    }
+  }
+  const packages:TacticalPackage[]=[]
+  for(const sequence of sequences.values()){
+    const route:Point[]=[field.position,...sequence.map(site=>site.position)]
+    const assignments=sequence.map((site,index)=>({targetId:site.id,routeIndex:index+1}))
+    let order:Squadron={...bomber,mission:'bomb',route,routeIngress:route,bombingTargets:assignments,sortieOrdered:true,
+      protectedTargetId:undefined,protectedPoint:undefined,strikeTargetId:undefined,plannedRecoveryFieldId:field.id}
+    const recovery=recoveryView(view,order)
+    if(!recovery?.valid){work.rejected.push(recovery?.reason??'No legal bomber recovery');continue}
+    order={...order,route:recovery.normalizedRoute,routeIngress:recovery.normalizedRoute,plannedRecoveryFieldId:recovery.intendedField.id}
+    // Recovery normalization may append route points. Rebind each release to
+    // its canonical target anchor rather than leaving stale waypoint indices.
+    order={...order,bombingTargets:assignments.map(assignment=>({
+      ...assignment,routeIndex:order.route.findIndex(point=>distance(point,sequence.find(site=>site.id===assignment.targetId)!.position)<.001),
+    }))}
+    if((order.bombingTargets??[]).some(assignment=>assignment.routeIndex<1)||validateBomberOrder(order,field,known,recovery.intendedField))continue
+    const orders=view.cpu.formations.map(formation=>formation.id===bomber.id?order:hold(view,formation))
+    const active=new Set([bomber.id])
+    const valid=validateRecoveryPackage({playerAssets:view.assets,squadrons:orders},flightRangeFor,active)
+    if(!valid.valid){work.rejected.push(valid.reason??'Bomber package failed shared recovery validation');continue}
+    const damage=sequence.reduce((sum,site)=>sum+Math.min(site.health,groundAttackDamage(bomber,site.kind)),0)
+    const base=view.cpu.sites.find(site=>site.kind==='base'&&site.health>0)
+    const baseDamage=sequence.reduce((sum,site)=>sum+(site.kind==='base'?Math.min(site.health,groundAttackDamage(bomber,'base')):0),0)
+    const otherDamage=damage-baseDamage
+    const risk=orderRisk(view,order)
+    const baseAssignment=assignments.find(assignment=>sequence.find(site=>site.id===assignment.targetId)?.kind==='base')
+    const attack:BaseAttackEstimate|undefined=baseDamage>0?{
+      damageNow:baseDamage,followupDamage:0,preparationRounds:0,
+      releaseSeconds:routeDistance(route.slice(0,(baseAssignment?.routeIndex??route.length-1)+1))/flightSpeedFor(bomber),
+    }:undefined
+    packages.push({id:`bomb:${assignments.map(a=>a.targetId).join('|')}:${JSON.stringify(route)}`,
+      summary:`Bomb ${sequence.map(site=>`${site.kind} ${site.id}`).join(', ')} with ${bomber.callsign}.`,orders,purchases:[],baseAttack:attack,
+      predicted:{...emptyEffects(),baseDamage:base?Math.min(1,baseDamage/base.health):0,
+        futureStrikeAccessGain:Math.min(1,otherDamage/150),expectedAircraftLoss:Math.min(bomber.aircraft,risk/100*bomber.maxAircraft),
+        ingressAircraftLoss:Math.min(bomber.aircraft,orderRisk(view,order,view.cpu.sites,false)/100*bomber.maxAircraft)},
+      checks:['confirmed CPU site reports','ordered three-payload limit','shared recovery and range validation']})
+  }
+  // A bomber may also reposition to an operational forward field. CPU site and
+  // territory knowledge remain restricted to its planning view.
+  const base=view.cpu.sites.find(site=>site.kind==='base'&&site.health>0)
+  if(base)for(const destination of view.assets.filter(asset=>asset.kind==='fob'&&isOperationalAirfield(asset)&&asset.id!==field.id)){
+    for(const order of missionOrders(view,bomber,'transit',destination.position,work)){
+      if(order.plannedRecoveryFieldId!==destination.id)continue
+      const current=Math.max(0,distance(field.position,base.position)-flightRangeFor(bomber)),next=Math.max(0,distance(destination.position,base.position)-flightRangeFor(bomber))
+      const access=Math.min(1,Math.max(0,current-next)/flightRangeFor(bomber))
+      if(access<=0)continue
+      const orders=view.cpu.formations.map(formation=>formation.id===bomber.id?order:hold(view,formation))
+      packages.push({id:`bomber-transit:${destination.id}`,summary:`Stage ${bomber.callsign} at ${destination.id} for shorter bombing runs.`,orders,purchases:[],
+        predicted:{...emptyEffects(),futureStrikeAccessGain:access,roundsUntilPayoff:1},checks:['operational recovery field','shared recovery and capacity validation']})
+    }
+  }
+  return packages
+}
 /** One shared capability library per fighter, then compatible joint packages.
  * Retain diverse single-actor options before the bounded Cartesian product;
  * a second fighter can strike, screen, collect or stage independently. */
@@ -178,8 +255,37 @@ export function generateActions(view:CpuPlanningView,work:RouteWork):TacticalPac
   const forecasts=reconForecasts(view)
   const discoveryPayoff=discoveryAttackValue(view)
   const libraries=fighters.map(f=>fighterActions(view,work,f,forecasts).map(p=>({...p,discoveryPayoff})))
-  if(libraries.length===1)return libraries[0]
-  const result=libraries.flatMap((library,i)=>library.map(p=>({...p,id:i===0&&p.id==='save'?'save':fighters[i].id+':'+p.id})))
+  const bomberPackages=view.cpu.formations.filter(f=>f.role==='bomber').flatMap(bomber=>bomberActions(view,work,bomber))
+  const bomberEscorts:TacticalPackage[]=[]
+  const activeBombers=view.cpu.formations.filter(formation=>formation.role==='bomber'&&formation.aircraft>0&&formation.status!=='trapped')
+  for(const bomber of activeBombers)for(const candidate of bomberPackages){
+    const bomberOrder=candidate.orders.find(order=>order.id===bomber.id&&order.sortieOrdered!==false)
+    if(!bomberOrder||bomberOrder.mission!=='bomb')continue
+    for(const fighter of active.filter(formation=>formation.role==='fighter')){
+      const field=formationField(view.assets,fighter.id)
+      if(!field)continue
+      for(const draft of missionOrders(view,fighter,'defensive-cap',bomberOrder.route.at(-1)!,work)){
+        const escort:Squadron={...draft,protectedTargetId:bomber.id,protectedPoint:undefined,strikeTargetId:undefined,bombingTargets:undefined}
+        const escortRecovery=recoveryView(view,escort)
+        if(!escortRecovery?.valid)continue
+        const protectedRoute=[...bomberOrder.route,(view.assets.find(asset=>asset.id===bomberOrder.plannedRecoveryFieldId)?.position??field.position)]
+        const coverage=estimateEscortCoverage({escortRoute:escort.route,protectedRoute,escortSpeed:flightSpeedFor(escort),protectedSpeed:flightSpeedFor(bomberOrder),recoveryPoint:field.position,maxDistance:flightRangeFor(escort)})
+        if(!coverage.recoveryFeasible||coverage.percent<20)continue
+        const orders=candidate.orders.map(order=>order.id===fighter.id?escort:order)
+        const valid=validateRecoveryPackage({playerAssets:view.assets,squadrons:orders},flightRangeFor,new Set(orders.filter(order=>order.sortieOrdered!==false).map(order=>order.id)))
+        if(!valid.valid)continue
+        bomberEscorts.push({...candidate,id:`${candidate.id}:escort:${fighter.id}`,summary:`${fighter.callsign} escorts ${bomber.callsign} on the bombing run.`,orders,
+          predicted:{...candidate.predicted,expectedAircraftLoss:candidate.predicted.expectedAircraftLoss*(1-coverage.percent/100*.35),
+            ingressAircraftLoss:(candidate.predicted.ingressAircraftLoss??0)*(1-coverage.percent/100*.35)},
+          checks:[...candidate.checks,'fighter escort has legal recovery and useful route coverage']})
+        break
+      }
+    }
+  }
+  bomberPackages.push(...bomberEscorts)
+  if(libraries.length===1)return [...libraries[0],...bomberPackages]
+  const result:TacticalPackage[]=libraries.flatMap((library,i)=>library.map(p=>({...p,id:i===0&&p.id==='save'?'save':fighters[i].id+':'+p.id})))
+  result.push(...bomberPackages)
   const reconKey=(p:TacticalPackage)=>JSON.stringify(p.orders.find(o=>o.role==='recon'&&o.sortieOrdered!==false))
   const scores=new WeakMap<TacticalPackage,number>()
   const score=(p:TacticalPackage)=>{let value=scores.get(p);if(value===undefined){value=Object.values(contribution(view,p)).reduce((n,v)=>n+v,0);scores.set(p,value)}return value}

@@ -7,8 +7,9 @@ import { deriveLogisticsIncome, settleLogisticsIncome } from './economy'
 import { applyRecoveryOutcomesToBasing, formationField, isOperationalAirfield, nearestReachableAlternate, normalizeFormationBasing, recoveryPath, setAirfieldOperational, transitDestination } from './forwardBasing'
 import { fighterIsResponsibleFor, mayContinueMissionPursuit, nearestResponsibleContact, preferredObjectiveThreat } from './missionResponsibility'
 import { decideReaction } from './reactionLifecycle'
-import { BASE_STRIKE_DAMAGE, BASE_STRIKE_RANGE, ENEMY_TARGETING_THRESHOLD, selectedStrikeTarget, isCampaign } from './campaign'
-import { validateGroundStrikeOrder, validateStrikeGeometry } from './routeTemplates'
+import { BASE_STRIKE_RANGE, ENEMY_TARGETING_THRESHOLD, selectedStrikeTarget, isCampaign } from './campaign'
+import { validateGroundStrikeOrder, validateStrikeGeometry, validateBomberOrder, validateBomberOrderForPlayer } from './routeTemplates'
+import { groundAttackDamage } from './strikeRules'
 import { facingAfterMove } from './heading'
 import { aircraftAtStrength, EXECUTION_SECONDS, MAX_FLIGHT_DISTANCE, flightRangeFor, flightSpeedFor, missionDistance, routeDistance } from './flightRules'
 import { aircraftSensorRange, aircraftType } from './aircraftTypes'
@@ -18,7 +19,7 @@ import { settleCpuRound } from './cpu/settlement'
 import type { CpuSiteReport, CpuTraffic } from './cpu/types'
 export { EXECUTION_SECONDS, FLIGHT_SPEED, MAX_FLIGHT_DISTANCE, missionDistance, routeDistance } from './flightRules'
 
-export const SENSOR_RANGE: Record<Squadron['role'], number>={fighter:aircraftType(undefined,'fighter').sensorRange,recon:aircraftType(undefined,'recon').sensorRange}
+export const SENSOR_RANGE: Record<Squadron['role'], number>={fighter:aircraftType(undefined,'fighter').sensorRange,recon:aircraftType(undefined,'recon').sensorRange,bomber:aircraftType(undefined,'bomber').sensorRange}
 export const RADAR_RANGE=RADAR_BASE_RANGE
 export const FIXED_ASSET_OBSERVATION_RANGE=3.8
 const MAX_EXECUTION_SECONDS=90
@@ -100,7 +101,7 @@ function enemyFlights(state:MatchState):EnemyFlight[]{if(isCampaign(state)&&stat
   {id:'red-recon',callsign:'SPECTER',role:'recon',aircraft:isolatedTwoVsOne||fobScenario?0:2,initialAircraft:isolatedTwoVsOne||fobScenario?0:2,strength:isolatedTwoVsOne||fobScenario?0:100,morale:70,status:isolatedTwoVsOne||fobScenario?'destroyed':'enroute',target:'base',route:fighterRecon?[enemyBase,toward(.25),toward(.72),friendlyBase,toward(.72),toward(.25),enemyBase]:isCampaign(state)?[enemyBase,state.world.friendlyTerritory.center,enemyBase]:[enemyBase,toward(.3),reconTurn,toward(.38),reconTurn,toward(.3),enemyBase],detectionWindows:[]},
 ]}
 function damage(unit:{strength?:number;morale?:number;aircraft:number;maxAircraft?:number;initialAircraft?:number},amount:number,updateAircraft=true){const before=unit.aircraft;const max=unit.maxAircraft??unit.initialAircraft??before;unit.strength=Math.max(0,strengthOf(unit)-amount);if(updateAircraft)unit.aircraft=aircraftFor(unit.strength,max);unit.morale=Math.max(0,(unit.morale??70)-8-(updateAircraft&&unit.aircraft<before?18:0));return {before,after:unit.aircraft,strength:unit.strength,morale:unit.morale}}
-function weapon(id:string,kind:WeaponKind,sourceId:string,targetId:string,time:number,from:Point,to:Point,hit:boolean,amount:number):WeaponEffect{const travel=kind==='air-to-ground-missile'?.6:kind==='gun'||kind==='aaa' ? .34 : kind==='sam' ? 1.05 : .62;return {id,kind,sourceId,targetId,start:time,end:time+travel,from,to,hit,damage:amount}}
+function weapon(id:string,kind:WeaponKind,sourceId:string,targetId:string,time:number,from:Point,to:Point,hit:boolean,amount:number):WeaponEffect{const travel=(kind==='air-to-ground-missile'||kind==='bomb') ? .6 : kind==='gun'||kind==='aaa' ? .34 : kind==='sam' ? 1.05 : .62;return {id,kind,sourceId,targetId,start:time,end:time+travel,from,to,hit,damage:amount}}
 
 function dogfight(round:number,index:number,friendly:Squadron,hostile:EnemyFlight,location:Point,start:number,seed:number,add:(tone:CombatEvent['tone'],title:string,detail:string,position?:Point,time?:number)=>void){
   const initialFriendly={strength:strengthOf(friendly),aircraft:friendly.aircraft},initialHostile={strength:strengthOf(hostile),aircraft:hostile.aircraft}
@@ -176,7 +177,7 @@ export function battleScoreAt(result:RoundResult,seconds:number){return result.e
 export function attritionCreditAt(result:RoundResult,seconds:number){return result.events.reduce((score,event)=>event.time<=seconds&&(event.title==='AIRCRAFT LOST'||event.title==='ENEMY AIRCRAFT LOST')?score+2:score,0)}
 export function supportCreditsAt(result:RoundResult,seconds:number){return Math.max(0,battleScoreAt(result,seconds)+attritionCreditAt(result,seconds)-result.reinforcementCalls.reduce((sum,call)=>sum+call.scoreCost,0))}
 
-type SimUnit={id:string;callsign:string;role:Role;friendly:boolean;position:Point;facing:Point;route:Point[];waypoint:number;plannedReturnStart?:number;returnWaypoint?:number;mode:FlightMode;targetId?:string;strength:number;morale:number;aircraft:number;maxAircraft:number;traveled:number;frames:UnitFrame[];observed:Set<string>;source:Squadron|EnemyFlight;protectedPosition?:Point;protectOrderEnded?:boolean;launchFieldId?:string;plannedFieldId?:string;recoveryFieldId?:string;recoveryCommanded?:boolean;strikeLaunched?:boolean;diverted?:boolean;trapped?:boolean;strandedCenter?:Point;strandedAngle?:number}
+type SimUnit={id:string;callsign:string;role:Role;friendly:boolean;position:Point;facing:Point;route:Point[];waypoint:number;plannedReturnStart?:number;returnWaypoint?:number;mode:FlightMode;targetId?:string;strength:number;morale:number;aircraft:number;maxAircraft:number;traveled:number;frames:UnitFrame[];observed:Set<string>;source:Squadron|EnemyFlight;protectedPosition?:Point;protectOrderEnded?:boolean;launchFieldId?:string;plannedFieldId?:string;recoveryFieldId?:string;recoveryCommanded?:boolean;strikeLaunched?:boolean;bombReleased?:Set<number>;diverted?:boolean;trapped?:boolean;strandedCenter?:Point;strandedAngle?:number}
 type AirContact={target:SimUnit;source:'radar'|'visual'}
 type TransitionUnit=(unit:SimUnit,mode:FlightMode,time:number,reason:string,targetId?:string,source?:'radar'|'visual')=>void
 type AddCombatEvent=(tone:CombatEvent['tone'],title:string,detail:string,position?:Point,time?:number)=>void
@@ -196,8 +197,9 @@ export const TICK_SECONDS=.05
 const point=(a:Point,b:Point,d:number):Point=>{const l=distance(a,b);return l<=d?[...b] as Point:[a[0]+(b[0]-a[0])*d/l,a[1]+(b[1]-a[1])*d/l]}
 const terminal=(u:SimUnit)=>u.mode==='recovered'||u.mode==='grounded'||u.mode==='trapped'||u.mode==='destroyed'
 const AIR_ENGAGEMENT_RULES:Record<Role,Partial<Record<Role,EngagementRule>>>={
-  fighter:{fighter:{kind:'dogfight',startRange:FIGHTER_MERGE_RANGE},recon:{kind:'pursuit',startRange:FIGHTER_MERGE_RANGE}},
+  fighter:{fighter:{kind:'dogfight',startRange:FIGHTER_MERGE_RANGE},recon:{kind:'pursuit',startRange:FIGHTER_MERGE_RANGE},bomber:{kind:'dogfight',startRange:FIGHTER_MERGE_RANGE}},
   recon:{},
+  bomber:{fighter:{kind:'dogfight',startRange:FIGHTER_MERGE_RANGE}},
 }
 
 function engagementRuleFor(attacker:SimUnit,target:SimUnit){return AIR_ENGAGEMENT_RULES[attacker.role][target.role]}
@@ -217,11 +219,11 @@ function selectAirTarget(unit:SimUnit,contacts:AirContact[],recovery:Point,homeB
 const fighterSide=(unit:SimUnit):'friendly'|'hostile'=>unit.friendly?'friendly':'hostile'
 function fighterMissionModifiers(attacker:SimUnit,defender:SimUnit):CombatProbabilityRecord['modifiers']{
   const modifiers:CombatProbabilityRecord['modifiers']=[]
-  if((attacker.source as Squadron).mission==='forward-patrol')modifiers.push({source:'mission',key:'forward-patrol-attack',delta:FIGHTER_PATROL_ATTACK_DELTA})
+  if(attacker.role==='fighter'&&(attacker.source as Squadron).mission==='forward-patrol')modifiers.push({source:'mission',key:'forward-patrol-attack',delta:FIGHTER_PATROL_ATTACK_DELTA})
   if((defender.source as Squadron).mission){
     const mission=(defender.source as Squadron).mission
-    if(mission==='defensive-cap'&&fighterIsResponsibleFor(defender.source as Squadron,defender.position,defender.protectedPosition))modifiers.push({source:'mission',key:'defensive-cap-cover',delta:FIGHTER_CAP_DEFENSE_DELTA})
-    if(mission==='forward-patrol')modifiers.push({source:'mission',key:'forward-patrol-exposure',delta:FIGHTER_PATROL_EXPOSURE_DELTA})
+    if(defender.role==='fighter'&&mission==='defensive-cap'&&fighterIsResponsibleFor(defender.source as Squadron,defender.position,defender.protectedPosition))modifiers.push({source:'mission',key:'defensive-cap-cover',delta:FIGHTER_CAP_DEFENSE_DELTA})
+    if(defender.role==='fighter'&&mission==='forward-patrol')modifiers.push({source:'mission',key:'forward-patrol-exposure',delta:FIGHTER_PATROL_EXPOSURE_DELTA})
   }
   return modifiers
 }
@@ -247,7 +249,7 @@ function createActiveEngagement(id:string,kind:EngagementKind,attacker:SimUnit,t
 }
 
 function joinDogfightEngagement(engagement:ActiveEngagement,joiner:SimUnit,target:SimUnit,time:number,transition:TransitionUnit,add:AddCombatEvent){
-  if(engagement.kind!=='dogfight'||engagement.participants.some(participant=>participant.id===joiner.id)||!engagement.participants.some(participant=>participant.id===target.id)||fighterSide(joiner)===fighterSide(target)||joiner.role!=='fighter'||target.role!=='fighter'||joiner.mode==='recovering'||joiner.mode==='stranded'||terminal(joiner)||terminal(target)||distance(joiner.position,target.position)>FIGHTER_MERGE_RANGE)return false
+  if(engagement.kind!=='dogfight'||engagement.participants.some(participant=>participant.id===joiner.id)||!engagement.participants.some(participant=>participant.id===target.id)||fighterSide(joiner)===fighterSide(target)||!['fighter','bomber'].includes(joiner.role)||!['fighter','bomber'].includes(target.role)||joiner.mode==='recovering'||joiner.mode==='stranded'||terminal(joiner)||terminal(target)||distance(joiner.position,target.position)>FIGHTER_MERGE_RANGE)return false
   engagement.participants.push(joiner);engagement.initialParticipants[joiner.id]={strength:joiner.strength,aircraft:joiner.aircraft};engagement.joinedAt[joiner.id]=time
   engagement.positionalAssessments.push(fighterAssessment(joiner,target,time),fighterAssessment(target,joiner,time))
   transition(joiner,'dogfighting',time,'dogfight-join',target.id,'visual')
@@ -275,8 +277,10 @@ function updateDogfightEngagement(engagement:ActiveEngagement,time:number,roll:n
   }
   if(!engagement.openingAttack){
     const [firstAssessment,secondAssessment]=engagement.positionalAssessments
+    const fighterParticipants=engagement.participants.filter(participant=>participant.role==='fighter')
+    if(!fighterParticipants.length){engagement.mergedAt=time;engagement.nextExchange=time+.35;add('danger','DOGFIGHT MERGED',`${living('friendly').length} friendly and ${living('hostile').length} hostile formations enter sustained combat.`,engagement.location,time);return {active:engagement,roll,effects:[],released:[]}}
     roll+=1
-    const openingAttackerId=selectFighterOpeningAttacker({id:firstAssessment.participantId,evaluation:firstAssessment.evaluation},{id:secondAssessment.participantId,evaluation:secondAssessment.evaluation},rand(roll))
+    const openingAttackerId=fighterParticipants.length===1?fighterParticipants[0].id:selectFighterOpeningAttacker({id:firstAssessment.participantId,evaluation:firstAssessment.evaluation},{id:secondAssessment.participantId,evaluation:secondAssessment.evaluation},rand(roll))
     const openingAttacker=engagement.participants.find(participant=>participant.id===openingAttackerId)!
     const openingDefender=openingAttacker.id===engagement.attacker.id?engagement.target:engagement.attacker
     const attackerAssessment=engagement.positionalAssessments.find(assessment=>assessment.participantId===openingAttacker.id)!
@@ -309,7 +313,7 @@ function updateDogfightEngagement(engagement:ActiveEngagement,time:number,roll:n
   roll+=1
   // Inverting the existing seeded value preserves the prior `rand(seed) > .31`
   // behavior while exposing the conventional `roll < probability` record.
-  const numerical=evaluateFighterNumericalAdvantage(calculateFighterSidePower(attackers),calculateFighterSidePower(defenders));const resolved=resolveFighterHitProbability({baseHitProbability:FIGHTER_SUSTAINED_GUN_HIT_PROBABILITY,modifiers:[{source:'numbers',key:numerical.classification,delta:numerical.hitProbabilityDelta},...fighterMissionModifiers(attacker,defender)]},1-rand(roll));const amount=resolved.hit?22:0
+  const numerical=evaluateFighterNumericalAdvantage(calculateFighterSidePower(attackers),calculateFighterSidePower(defenders));const resolved=resolveFighterHitProbability({baseHitProbability:attacker.role==='bomber'?.35:FIGHTER_SUSTAINED_GUN_HIT_PROBABILITY,modifiers:attacker.role==='bomber'?[]:[{source:'numbers',key:numerical.classification,delta:numerical.hitProbabilityDelta},...fighterMissionModifiers(attacker,defender)]},1-rand(roll));const amount=resolved.hit?(attacker.role==='bomber'?6:22):0
   const applied=resolved.hit?damage(defender,amount,false):{strength:defender.strength,morale:defender.morale};const exchangeId=`${engagement.id}-fight-${engagement.exchanges.length}`;engagement.exchanges.push({id:exchangeId,time,attackerId:attacker.id,defenderId:defender.id,weapon:'gun',damage:amount,moraleDamage:amount*.6,hit:resolved.hit,position:engagement.location,targetStrength:applied.strength,targetMorale:applied.morale,probability:resolved.probability,numericalAssessment:numerical,resolution:'probability',phase:'merged'});const gunBurst=weapon(`weapon-${exchangeId}`,'gun',attacker.id,defender.id,time,[...attacker.position] as Point,[...defender.position] as Point,resolved.hit,amount);gunBurst.end=time;engagement.effects.push(gunBurst);engagement.nextExchange=time+.35
   if(defender.strength<=0){destroyParticipant(defender,'dogfight-loss',time);add(attacker.friendly?'friendly':'danger','FIGHTER FORMATION LOST',`${attacker.callsign} destroys ${defender.callsign}; the shared engagement continues if both sides remain.`,engagement.location,time)}
   const completed=completeIfResolved();if(completed)return completed
@@ -372,17 +376,17 @@ function* simulateRoundTicks(state:MatchState, recordOpponentView:boolean):Gener
       const route=cpuActive&&distance(flight.route.at(-1)!,home)>.03?[...flight.route,home]:flight.route
       return {id:s.id,callsign:s.callsign,role:s.role,friendly:false,position:[...route[0]] as Point,facing:facingAfterMove(route[0],route[0],route[1]??route[0]),route,waypoint:1,mode:s.aircraft<=0?'destroyed':flight.sortieOrdered===false?'grounded':'following-route',strength:strengthOf(s),morale:s.morale??70,aircraft:s.aircraft,maxAircraft:flight.maxAircraft??flight.initialAircraft,traveled:0,frames:[],observed:new Set,source:s}
     }
-    const ownAssets=friendly?playerAssets:assets;const squadron=s as Squadron;const launch=formationField(ownAssets,squadron.id)??ownAssets.find(asset=>asset.kind==='base')!;const ordered=squadron.sortieOrdered!==false;const intended=ownAssets.find(asset=>asset.id===(ordered?squadron.plannedRecoveryFieldId:undefined))??launch;const validStrike=friendly?validateGroundStrikeOrder(simulationState,squadron)===undefined:validateStrikeGeometry(squadron,launch,state.cpu?.sites.find(site=>site.id===squadron.strikeTargetId),intended)===undefined;const route:Point[]=!ordered||squadron.mission==='base-strike'&&!validStrike?[[...launch.position]]:[[...launch.position],...squadron.route.slice(1)]
+    const ownAssets=friendly?playerAssets:assets;const squadron=s as Squadron;const launch=formationField(ownAssets,squadron.id)??ownAssets.find(asset=>asset.kind==='base')!;const ordered=squadron.sortieOrdered!==false;const intended=ownAssets.find(asset=>asset.id===(ordered?squadron.plannedRecoveryFieldId:undefined))??launch;const validStrike=friendly?validateGroundStrikeOrder(simulationState,squadron)===undefined:validateStrikeGeometry(squadron,launch,state.cpu?.sites.find(site=>site.id===squadron.strikeTargetId),intended)===undefined;const cpuKnownTargets=(state.cpu?.sites??[]).map(site=>({...site,intel:'confirmed' as const,confidence:100,hidden:false,struck:false,maxHealth:site.maxHealth,name:site.kind}));const validBomb=friendly?validateBomberOrderForPlayer(simulationState,squadron)===undefined:validateBomberOrder(squadron,launch,cpuKnownTargets,intended)===undefined;const invalidOrder=squadron.mission==='base-strike'?!validStrike:squadron.mission==='bomb'?!validBomb:false;const route:Point[]=!ordered||invalidOrder?[[...launch.position]]:[[...launch.position],...squadron.route.slice(1)]
     const needsReturnLeg = !transitDestination(squadron,route,intended) &&
-      (Boolean(squadron.recoveryWaypoints?.length) || squadron.mission === 'base-strike' || distance(route.at(-1)!, intended.position) > .03)
+      (Boolean(squadron.recoveryWaypoints?.length) || squadron.mission === 'base-strike' || squadron.mission === 'bomb' || distance(route.at(-1)!, intended.position) > .03)
     const plannedReturnStart = ordered && route.length >= 2 && needsReturnLeg ? route.length : undefined
     if (plannedReturnStart !== undefined) {
       route.push(...recoveryPath(route.at(-1)!, intended.position, squadron.recoveryWaypoints).slice(1))
-    } else if (ordered && route.length && (squadron.mission === 'base-strike' || distance(route.at(-1)!, intended.position) > .03)) {
+    } else if (ordered && route.length && (squadron.mission === 'base-strike' || squadron.mission === 'bomb' || distance(route.at(-1)!, intended.position) > .03)) {
       route.push([...intended.position])
     }
     const trapped=launch.kind==='fob'&&launch.operational===false
-    return {id:s.id,callsign:s.callsign,role:s.role,friendly,position:[...launch.position],facing:facingAfterMove(launch.position,launch.position,route[1]??launch.position),route,waypoint:1,plannedReturnStart,mode:s.aircraft<=0?'destroyed':trapped?'trapped':!ordered||squadron.mission==='base-strike'&&!validStrike?'grounded':'following-route',strength:strengthOf(s),morale:s.morale??70,aircraft:s.aircraft,maxAircraft:squadron.maxAircraft,traveled:0,frames:[],observed:new Set,source:s,launchFieldId:launch.id,plannedFieldId:ordered?squadron.plannedRecoveryFieldId??launch.id:launch.id,recoveryFieldId:intended.id,...(trapped?{trapped:true}: {})}
+    return {id:s.id,callsign:s.callsign,role:s.role,friendly,position:[...launch.position],facing:facingAfterMove(launch.position,launch.position,route[1]??launch.position),route,waypoint:1,plannedReturnStart,mode:s.aircraft<=0?'destroyed':trapped?'trapped':!ordered||invalidOrder?'grounded':'following-route',strength:strengthOf(s),morale:s.morale??70,aircraft:s.aircraft,maxAircraft:squadron.maxAircraft,traveled:0,frames:[],observed:new Set,source:s,launchFieldId:launch.id,plannedFieldId:ordered?squadron.plannedRecoveryFieldId??launch.id:launch.id,recoveryFieldId:intended.id,bombReleased:new Set,...(trapped?{trapped:true}: {})}
   }
   const units=[...squadrons.map(s=>make(s,true)),...flights.map(s=>make(s,false))]; const byId=new Map(units.map(u=>[u.id,u])); const openContacts=new Map<string,ContactInterval>(); const openBehavior=new Map<string,BehaviorInterval>(); const fired=new Set<string>(),returnShots=new Set<string>(); let roll=state.seed+state.round*31; let activeEngagements:ActiveEngagement[]=[];let engagementSerial=0
   const fieldClaims=new Map([...playerAssets,...assets].filter(asset=>asset.kind==='fob').map(asset=>[asset.id,new Set<string>()]));for(const unit of units.filter(unit=>(unit.friendly||cpuActive)&&unit.aircraft>0)){const fieldId=unit.trapped?unit.launchFieldId:unit.recoveryFieldId;if(fieldId)fieldClaims.get(fieldId)?.add(unit.id)}
@@ -470,7 +474,7 @@ function* simulateRoundTicks(state:MatchState, recordOpponentView:boolean):Gener
     const debugDisableTime=state.debugScenario==='fob-stranded'?14:4
     if(!debugFieldDisabled&&time>=debugDisableTime&&(state.debugScenario==='fob-divert'||state.debugScenario==='fob-stranded')){const fob=playerAssets.find(asset=>asset.id==='p-fob-1');if(fob){playerAssets=setAirfieldOperational(playerAssets,fob.id,false);debugFieldDisabled=true;add('danger','FORWARD BASE UNUSABLE',`${fob.name??'Forward base'} can no longer accept aircraft.`,fob.position,time)}}
     // 1-2: fixed speed motion and fuel reserve.
-    const strikeLegs=new Map(units.map(unit=>[unit.id,{position:[...unit.position] as Point,following:unit.mode==='following-route',mode:unit.mode}]))
+    const strikeLegs=new Map(units.map(unit=>[unit.id,{position:[...unit.position] as Point,waypoint:unit.waypoint,following:unit.mode==='following-route',mode:unit.mode}]))
     for(const u of units){if(terminal(u)||u.mode==='dogfighting')continue;const ownAssets=u.friendly?playerAssets:assets;let recoveryField=ownAssets.find(asset=>asset.id===u.recoveryFieldId)
       if((u.friendly||cpuActive)&&u.mode!=='stranded'&&recoveryField&&!isOperationalAirfield(recoveryField)){releaseClaim(u);const alternate=nearestReachableAlternate({playerAssets:ownAssets,squadrons:u.friendly?squadrons:state.cpu!.formations},u.id,u.position,flightRangeFor(u.source)-u.traveled,recoveryField.id,fieldClaims);if(alternate){u.recoveryFieldId=alternate.id;u.diverted=true;u.returnWaypoint=undefined;claim(u,alternate.id);recoveryField=alternate;transition(u,'recovering',time,'recovery-field-unusable');if(u.friendly)add('warning','RECOVERY DIVERSION',`${u.callsign} diverts to ${alternate.name??(alternate.kind==='base'?'HOME BASE':'FORWARD BASE')}.`,u.position,time)}else{u.strandedCenter=[u.position[0]-.35,u.position[1]];u.strandedAngle=0;transition(u,'stranded',time,'no-reachable-recovery');if(u.friendly)add('danger','NO RECOVERY FIELD',`${u.callsign} has no reachable operational recovery field and will be lost at fuel exhaustion.`,u.position,time)}}
       const home=recoveryField?.position??(u.friendly?base:enemyBase)
@@ -496,10 +500,10 @@ function* simulateRoundTicks(state:MatchState, recordOpponentView:boolean):Gener
     // Select shots before applying damage so both fighters can fire on the same pass.
     const airborne = units.filter(unit => !terminal(unit)).sort((a,b) => a.id.localeCompare(b.id))
     const flybyShots = airborne.flatMap(attacker => {
-      if (attacker.role !== 'fighter' || attacker.mode === 'stranded') return []
+      if (!['fighter','bomber'].includes(attacker.role) || attacker.mode === 'stranded') return []
       const returning = attacker.mode === 'recovering'
       return airborne.flatMap(target => {
-        if (target.friendly === attacker.friendly || (!returning && !(target.role === 'fighter' && target.mode === 'recovering'))) return []
+        if (target.friendly === attacker.friendly || (!returning && !(['fighter','bomber'].includes(target.role) && target.mode === 'recovering'))) return []
         const key = `${attacker.id}:${target.id}`
         if (returnShots.has(key)) return []
         const pass = closestMovingPass(strikeLegs.get(attacker.id)?.position ?? attacker.position, attacker.position,
@@ -510,8 +514,8 @@ function* simulateRoundTicks(state:MatchState, recordOpponentView:boolean):Gener
       })
     })
     for (const { attacker, target, pass, returning } of flybyShots) {
-      const hit = rand(roll++) < .48
-      const amount = hit ? Math.min(target.strength, Math.round(6 + rand(roll++) * 7)) : 0
+      const hit = rand(roll++) < (attacker.role==='bomber'?.35:.48)
+      const amount = hit ? Math.min(target.strength, attacker.role==='bomber'?6:Math.round(6 + rand(roll++) * 7)) : 0
       if (amount > 0) damage(target, amount)
       const id = `flyby-${state.round}-${attacker.id}-${target.id}`
       if (amount > 0 && target.strength <= 0) {
@@ -589,7 +593,7 @@ function* simulateRoundTicks(state:MatchState, recordOpponentView:boolean):Gener
     // Direct fighter contact outranks pursuit. Close opposing fighters create a
     // dogfight even when one was chasing recon; that pursuit is ended and is
     // never silently resumed from historical state.
-    const fighterPairs: Array<[SimUnit,SimUnit]>=[];const livingFighters=units.filter(unit=>unit.role==='fighter'&&!terminal(unit))
+    const fighterPairs: Array<[SimUnit,SimUnit]>=[];const livingFighters=units.filter(unit=>['fighter','bomber'].includes(unit.role)&&!terminal(unit))
     for(let left=0;left<livingFighters.length;left++)for(let right=left+1;right<livingFighters.length;right++){const a=livingFighters[left],b=livingFighters[right];if(a.mode!=='recovering'&&b.mode!=='recovering'&&a.mode!=='stranded'&&b.mode!=='stranded'&&a.friendly!==b.friendly&&distance(a.position,b.position)<=FIGHTER_MERGE_RANGE)fighterPairs.push([a,b])}
     const activeDogfightFor=(fighter:SimUnit)=>activeEngagements.find(engagement=>engagement.kind==='dogfight'&&engagement.participants.includes(fighter))
     const interruptPursuit=(fighter:SimUnit)=>{const pursuit=activeEngagements.find(engagement=>engagement.kind==='pursuit'&&engagement.attacker.id===fighter.id);if(!pursuit)return;activeEngagements=activeEngagements.filter(item=>item!==pursuit);if(!terminal(pursuit.attacker))transition(pursuit.attacker,'following-route',time,'pursuit-interrupted-by-combat');sequences.push({id:pursuit.id,kind:'pursuit',participantIds:[pursuit.attacker.id,pursuit.target.id],location:pursuit.location,start:pursuit.start,end:time,exchanges:pursuit.exchanges,finalDisposition:{[pursuit.attacker.id]:terminal(pursuit.attacker)?'destroyed':'enroute',[pursuit.target.id]:terminal(pursuit.target)?'destroyed':pursuit.target.mode==='recovering'?'rtb':'enroute'}});effects.push(...pursuit.effects);add('warning','PURSUIT INTERRUPTED',`${fighter.callsign} breaks from ${pursuit.target.callsign} to answer direct fighter contact.`,fighter.position,time)}
@@ -621,22 +625,60 @@ function* simulateRoundTicks(state:MatchState, recordOpponentView:boolean):Gener
       else if(!attacker.friendly&&!cpuActive)target=units.filter(unit=>unit.friendly&&unit.role==='recon'&&!terminal(unit)&&!engagedUnitIds().has(unit.id)&&distance(attacker.position,unit.position)<=FIGHTER_MERGE_RANGE).sort((a,b)=>distance(attacker.position,a.position)-distance(attacker.position,b.position)||a.id.localeCompare(b.id))[0]
       if(!target||target.role!=='recon'||engagedUnitIds().has(target.id))continue;const started=createActiveEngagement(`pursuit-${state.round}-${engagementSerial++}`,'pursuit',attacker,target,time,transition,add);if(started)activeEngagements.push(started)
     }
-    const launchStrike=(source:SimUnit,target:Asset,kind:WeaponKind,releasePoint:Point=source.position)=>{
-      source.strikeLaunched=true
-      const hit=true,amount=Math.round(BASE_STRIKE_DAMAGE*source.strength/100),effect=weapon(`strike-${state.round}-${source.id}`,kind,source.id,target.id,time,releasePoint,target.position,hit,amount)
+    const launchStrike=(source:SimUnit,target:Asset,kind:WeaponKind,releasePoint:Point=source.position,payloadIndex?:number)=>{
+      if(kind==='bomb'){source.bombReleased??=new Set();if(payloadIndex!==undefined)source.bombReleased.add(payloadIndex)}else source.strikeLaunched=true
+      const order=source.source as Squadron
+      const hit=true,amount=groundAttackDamage(order,target.kind,source.strength),suffix=payloadIndex===undefined?'':`-${payloadIndex}`
+      const effect=weapon(`strike-${state.round}-${source.id}${suffix}`,kind,source.id,target.id,time,releasePoint,target.position,hit,amount)
       effects.push(effect)
       if(cpuActive&&!source.friendly)cpuStrikeReleases.push({sourceId:source.id,targetId:target.id,damage:amount,releasedAt:time})
-      const exchange:CombatExchange={id:`strike-${state.round}-${source.id}`,time,attackerId:source.id,defenderId:target.id,weapon:kind,damage:amount,moraleDamage:0,hit,position:[...target.position],targetStrength:target.health,targetMorale:0}
+      const exchange:CombatExchange={id:`strike-${state.round}-${source.id}${suffix}`,time,attackerId:source.id,defenderId:target.id,weapon:kind,damage:amount,moraleDamage:0,hit,position:[...target.position],targetStrength:target.health,targetMorale:0}
       pendingImpacts.push({effect,impactTime:time+.6,exchange})
-      add(source.friendly?'friendly':'danger',source.friendly?'GROUND STRIKE LAUNCHED':'ENEMY STRIKE INBOUND',`${source.callsign} releases an air-to-ground missile.`,source.friendly?source.position:undefined,time)
-      if(source.plannedReturnStart!==undefined)beginRecovery(source,time,'route-complete')
+      add(source.friendly?'friendly':'danger',kind==='bomb'?'BOMB RELEASED':source.friendly?'GROUND STRIKE LAUNCHED':'ENEMY STRIKE INBOUND',kind==='bomb'?`${source.callsign} releases a bomb against ${target.name??target.kind.toUpperCase()}.`:`${source.callsign} releases an air-to-ground missile.`,source.friendly?source.position:undefined,time)
     }
     for(const unit of units){
-      if(terminal(unit)||unit.mode!=='following-route'||unit.role!=='fighter'||unit.strikeLaunched||engagedUnitIds().has(unit.id))continue
-      const previous=strikeLegs.get(unit.id),followingLeg=previous?.following?previous.position:unit.position
-      if(unit.friendly){const order=unit.source as Squadron,target=assets.find(asset=>asset.id===order.strikeTargetId),release=order.route.at(-1);if(order.mission==='base-strike'&&target&&target.health>0&&release&&unit.waypoint>=order.route.length&&closestSegmentDistance(followingLeg,unit.position,release)<=.03)launchStrike(unit,target,'air-to-ground-missile',release)}
-      else if(cpuActive){const order=unit.source as EnemyFlight,target=playerAssets.find(asset=>asset.id===order.strikeTargetId),release=order.route.at(-1);if(order.mission==='base-strike'&&target&&target.health>0&&release&&unit.waypoint>=order.route.length&&closestSegmentDistance(followingLeg,unit.position,release)<=.03&&distance(release,target.position)<=BASE_STRIKE_RANGE+.001)launchStrike(unit,target,'air-to-ground-missile',release)}
-      else if(isCampaign(state)&&state.baseExposure>=ENEMY_TARGETING_THRESHOLD&&closestSegmentDistance(followingLeg,unit.position,base)<=BASE_STRIKE_RANGE+.001){const home=playerAssets.find(asset=>asset.kind==='base');if(home&&home.health>0)launchStrike(unit,home,'air-to-ground-missile',closestPointOnSegment(followingLeg,unit.position,base))}
+      const previous=strikeLegs.get(unit.id)
+      if(terminal(unit)||!previous?.following)continue
+      const followingLeg=previous.position
+      if(unit.role==='fighter'&&!unit.strikeLaunched&&unit.mode==='following-route'&&!engagedUnitIds().has(unit.id)){
+        if(unit.friendly){const order=unit.source as Squadron,target=assets.find(asset=>asset.id===order.strikeTargetId),release=order.route.at(-1);if(order.mission==='base-strike'&&target&&target.health>0&&release&&closestSegmentDistance(followingLeg,unit.position,release)<=.04)launchStrike(unit,target,'air-to-ground-missile',release)}
+        else if(cpuActive){const order=unit.source as EnemyFlight,target=playerAssets.find(asset=>asset.id===order.strikeTargetId),release=order.route.at(-1);if(order.mission==='base-strike'&&target&&target.health>0&&release&&closestSegmentDistance(followingLeg,unit.position,release)<=.04&&distance(release,target.position)<=BASE_STRIKE_RANGE+.001)launchStrike(unit,target,'air-to-ground-missile',release)}
+        else if(isCampaign(state)&&state.baseExposure>=ENEMY_TARGETING_THRESHOLD&&closestSegmentDistance(followingLeg,unit.position,base)<=BASE_STRIKE_RANGE+.001){const home=playerAssets.find(asset=>asset.kind==='base');if(home&&home.health>0)launchStrike(unit,home,'air-to-ground-missile',closestPointOnSegment(followingLeg,unit.position,base))}
+      }
+      if(unit.role!=='bomber')continue
+      const order=unit.source as Squadron
+      if(order.mission!=='bomb')continue
+      const targets=unit.friendly?assets:playerAssets
+      for(const assignment of order.bombingTargets??[]){
+        if(unit.bombReleased?.has(assignment.routeIndex))continue
+        const anchor=order.route[assignment.routeIndex],target=targets.find(asset=>asset.id===assignment.targetId)
+        if(!anchor||!target)continue
+        const completedFinalWaypoint=unit.mode==='recovering'&&unit.waypoint>previous.waypoint&&unit.waypoint>=(unit.plannedReturnStart??unit.route.length)
+        const outboundAnchor=previous.following&&(unit.mode==='following-route'||completedFinalWaypoint)&&previous.waypoint===assignment.routeIndex&&assignment.routeIndex<(unit.plannedReturnStart??unit.route.length)
+        const crossedAnchor=outboundAnchor&&closestSegmentDistance(followingLeg,unit.position,anchor)<=.04
+        const passedAnchor=previous.waypoint>assignment.routeIndex||(!previous.following&&unit.waypoint>=assignment.routeIndex)
+        if(!crossedAnchor){
+          if(passedAnchor||unit.mode==='recovering'||unit.mode==='recovered'||unit.mode==='destroyed'||unit.mode==='stranded'||unit.mode==='trapped'||unit.mode==='grounded'){unit.bombReleased?.add(assignment.routeIndex);add('warning','BOMB RELEASE MISSED',`${unit.callsign} passed or abandoned the release window for ${target.name??target.kind.toUpperCase()}.`,unit.friendly?unit.position:undefined,time)}
+          continue
+        }
+        if(!outboundAnchor||engagedUnitIds().has(unit.id)){unit.bombReleased?.add(assignment.routeIndex);add('warning','BOMB RELEASE MISSED',`${unit.callsign} crossed the release window for ${target.name??target.kind.toUpperCase()} while unable to release.`,unit.friendly?unit.position:undefined,time);continue}
+        if(target.health<=0){unit.bombReleased?.add(assignment.routeIndex);add('warning','BOMB TARGET DESTROYED',`${target.name??target.kind.toUpperCase()} was destroyed before ${unit.callsign} reached its release point.`,unit.friendly?unit.position:undefined,time);continue}
+        const releasePoint=closestPointOnSegment(followingLeg,unit.position,target.position)
+        if(distance(releasePoint,target.position)<=2.001)launchStrike(unit,target,'bomb',releasePoint,assignment.routeIndex)
+        else{unit.bombReleased?.add(assignment.routeIndex);add('warning','BOMB RELEASE MISSED',`${unit.callsign} passed outside the delivery range for ${target.name??target.kind.toUpperCase()}.`,unit.friendly?unit.position:undefined,time)}
+      }
+    }
+    for(const unit of units.filter(item=>item.role==='bomber'&&(item.source as Squadron).mission==='bomb')){
+      const order=unit.source as Squadron,previous=strikeLegs.get(unit.id),targets=unit.friendly?assets:playerAssets
+      for(const assignment of order.bombingTargets??[]){
+        if(unit.bombReleased?.has(assignment.routeIndex))continue
+        const target=targets.find(asset=>asset.id===assignment.targetId)
+        if(!target)continue
+        if(unit.waypoint>assignment.routeIndex||(!previous?.following&&['recovering','recovered','destroyed','stranded','trapped','grounded'].includes(unit.mode))){
+          unit.bombReleased?.add(assignment.routeIndex)
+          add('warning','BOMB RELEASE MISSED',`${unit.callsign} did not release against ${target.name??target.kind.toUpperCase()} before leaving its outbound Bomb route.`,unit.friendly?unit.position:undefined,time)
+        }
+      }
     }
     // 6-7: tick-level defense launches; damage resolves through queued impacts.
     for(const [sites,hostile] of [[assets,true],[playerAssets,false]] as const)for(const asset of sites){
@@ -684,6 +726,14 @@ function* simulateRoundTicks(state:MatchState, recordOpponentView:boolean):Gener
   for(const unit of units.filter(item=>item.friendly&&(item.source as Squadron).mission==='base-strike'&&(item.source as Squadron).sortieOrdered!==false&&!item.strikeLaunched)){
     const reason=validateGroundStrikeOrder(simulationState,unit.source as Squadron)??(unit.mode==='destroyed'?'FORMATION LOST BEFORE RELEASE':unit.mode==='trapped'?'LAUNCH FIELD UNAVAILABLE':'RELEASE WINDOW NOT REACHED')
     add('warning','GROUND STRIKE FAILED',`${unit.callsign}: ${reason}.`,unit.position,duration)
+  }
+  for(const unit of units.filter(item=>item.role==='bomber'&&(item.source as Squadron).mission==='bomb'&&(item.source as Squadron).sortieOrdered!==false)){
+    const order=unit.source as Squadron,targets=unit.friendly?assets:playerAssets
+    for(const assignment of order.bombingTargets??[])if(!unit.bombReleased?.has(assignment.routeIndex)){
+      const target=targets.find(asset=>asset.id===assignment.targetId)
+      const detail=target?.health===0?`${target.name??target.kind.toUpperCase()} was destroyed before its release window.`:unit.mode==='destroyed'?`${unit.callsign} was destroyed before reaching the assigned release window.`:`${unit.callsign} did not reach the assigned release window for ${target?.name??target?.kind.toUpperCase()??'the ground target'}.`
+      add('warning','BOMB RELEASE MISSED',detail,unit.friendly?unit.position:undefined,duration)
+    }
   }
   for(const flight of flights){const cs=intervals.filter(i=>i.targetId===flight.id);flight.detectionWindows=cs.map(i=>({start:i.start/duration,end:i.end/duration,source:i.source,observer:i.observerId}));flight.identityLearnedAt=cs.find(i=>i.source==='visual')?.start}
   const recoveredRecon=units.filter(u=>u.friendly&&u.role==='recon'&&u.mode==='recovered')

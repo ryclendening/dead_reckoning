@@ -91,7 +91,7 @@ export function planPurchases(view:CpuPlanningView):ReturnType<typeof choosePack
         summary:`${node.commands.length?node.commands.map(c=>`${c.actionId}${c.placement?` at ${c.placement.map(n=>n.toFixed(1))}`:''}`).join(', ')+'. ':''}${p.summary}`,
         predicted:{...p.predicted,logisticsSpent:original.cpu.logistics-node.ctx.logistics,
           futureLogisticsIncome:node.commands.some(command=>command.actionId==='install-supply-depot')
-            ? LOGISTICS_EFFECTS.supplyDepotIncome*Math.max(0,CAMPAIGN_ROUND_LIMIT-original.round):0,
+            ? LOGISTICS_EFFECTS.supplyDepotIncome*Math.max(0,CAMPAIGN_ROUND_LIMIT-original.round)*(1-.75*observedThreat(original)):0,
           defenseCoverageGain:node.coverage,
           reconDenial:node.reconDenial,opponentAttrition:node.opponentAttrition,
           ownBaseRiskReduced:Math.min(1,p.predicted.ownBaseRiskReduced+node.coverage*observedThreat(original)*1.6),
@@ -124,7 +124,7 @@ export function planPurchases(view:CpuPlanningView):ReturnType<typeof choosePack
   const save=all.find(p=>p.purchases.length===0&&p.orders.every(o=>o.sortieOrdered===false))!
   save.id='save'
   const comeback = view.cpu.formations.every(formation => formation.aircraft <= 0)
-    ? all.filter(candidate => candidate.purchases.some(command => command.actionId === 'buy-fighter' || command.actionId === 'buy-recon'))
+    ? all.filter(candidate => candidate.purchases.some(command => command.actionId === 'buy-fighter' || command.actionId === 'buy-recon' || command.actionId === 'buy-bomber'))
     : []
   return choosePackage(nextRound,comeback.length?comeback:all,work.rejected,work.expansions,work.routeCache?.values())
 }

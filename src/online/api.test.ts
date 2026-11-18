@@ -58,6 +58,53 @@ function plannedOrder(player: OnlineResponse, destination: Point): OnlineOrder {
 }
 
 describe('invite-only online campaign API', () => {
+  it('parses bomber orders but rejects malformed release indices at the server boundary', async () => {
+    const {request,store}=fixture()
+    const host=await fetchEntry(request('matches',{token:hostToken}))
+    const game=(await store.get(host.view.matchId))!
+    const match=game.seats[0].match;match.phase='plan'
+    const home=match.playerAssets.find(asset=>asset.kind==='base')!
+    const target={...match.playerAssets.find(asset=>asset.kind==='sam')!,id:'e-sam',position:[home.position[0]+5,home.position[1]] as Point,intel:'confirmed' as const,confidence:100,hidden:false}
+    match.enemyAssets=[target]
+    const source=match.squadrons[0]
+    const bomber={...source,id:'blue-bomber',role:'bomber' as const,aircraftTypeId:'bomber',mission:'bomb' as const,
+      route:[home.position,target.position,home.position],routeIngress:[home.position,target.position,home.position],plannedRecoveryFieldId:home.id,
+      bombingTargets:[{targetId:target.id,routeIndex:1}]}
+    match.squadrons.push(bomber)
+    await store.replace(game,game.version)
+    const response=await request(`matches/${host.view.matchId}/commands`,{
+      id:'a'.repeat(16),revision:game.seats[0].revision,
+      action:{type:'lock-plan',orders:[{id:bomber.id,mission:'bomb',route:bomber.route,routeIngress:bomber.routeIngress,
+        plannedRecoveryFieldId:home.id,bombingTargets:[{targetId:target.id,routeIndex:0}]}]},
+    },hostToken)
+    expect(response.status).toBe(400)
+  })
+
+  it('locks only confirmed bomber targets and preserves ordered release anchors', () => {
+    const game=newOnlineMatch('0'.repeat(32),hostToken,'ABCD2345',123)
+    const match=game.seats[0].match;match.phase='plan'
+    const home=match.playerAssets.find(asset=>asset.kind==='base')!
+    const targets=[
+      {...match.playerAssets.find(asset=>asset.kind==='sam')!,id:'e-sam',position:[home.position[0]+5,home.position[1]] as Point,intel:'confirmed' as const,confidence:100,hidden:false},
+      {...match.playerAssets.find(asset=>asset.kind==='aaa')!,id:'e-aaa',position:[home.position[0]+10,home.position[1]] as Point,intel:'confirmed' as const,confidence:100,hidden:false},
+    ]
+    match.enemyAssets=targets
+    const source=match.squadrons.find(squadron=>squadron.role==='fighter')!
+    const route:Point[]=[home.position,targets[0].position,targets[1].position,home.position]
+    const bomber={...source,id:'blue-bomber',callsign:'BOMBER 1',role:'bomber' as const,aircraftTypeId:'bomber',mission:'bomb' as const,
+      route,routeIngress:route,sortieOrdered:undefined,plannedRecoveryFieldId:home.id,
+      bombingTargets:targets.map((target,index)=>({targetId:target.id,routeIndex:index+1}))}
+    match.squadrons.push(bomber)
+    const order:OnlineOrder={id:bomber.id,mission:'bomb',route,routeIngress:route,plannedRecoveryFieldId:home.id,bombingTargets:bomber.bombingTargets}
+    applyOnlineAction(game,0,{type:'lock-plan',orders:[order]})
+    expect(game.seats[0].match.squadrons.find(squadron=>squadron.id===bomber.id)).toMatchObject({mission:'bomb',bombingTargets:bomber.bombingTargets})
+
+    const rejected=structuredClone(game);rejected.seats[0].locked=false
+    const targetIndex=rejected.seats[0].match.enemyAssets.findIndex(asset=>asset.id===targets[0].id)
+    rejected.seats[0].match.enemyAssets[targetIndex]={...rejected.seats[0].match.enemyAssets[targetIndex],intel:'probable',hidden:false}
+    expect(()=>applyOnlineAction(rejected,0,{type:'lock-plan',orders:[order]})).toThrow('BOMBING TARGET MUST BE ALIVE AND CONFIRMED')
+  })
+
   it('locks a Protect pattern over a FOB and validates outbound Transit only at its selected field', () => {
     const game=newOnlineMatch('0'.repeat(32),hostToken,'ABCD2345',123)
     const match=game.seats[0].match

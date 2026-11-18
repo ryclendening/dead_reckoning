@@ -30,7 +30,7 @@ describe('competitive evaluation opponent contract',()=>{
     expect(validateRecoveryPackage({playerAssets:orders.playerAssets,squadrons:orders.squadrons},MAX_FLIGHT_DISTANCE,ids).valid).toBe(true)
     const result=resolveCompetitiveRound(orders)
     expect(result.weaponEffects.filter(e=>e.kind==='air-to-ground-missile')).toHaveLength(2)
-    expect(result.enemyBaseDamage).toBe(100)
+    expect(result.enemyBaseDamage).toBe(80)
   })
   it('sends recon home after a legitimate live base sighting and recovers its report',()=>{
     let s=campaign()
