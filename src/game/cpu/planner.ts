@@ -4,7 +4,7 @@ import type { Asset, MatchState, Point, Squadron } from '../types'
 import type { CpuDifficulty, CpuPlan, CpuSiteReport, CpuState } from './types'
 import { generateActions } from './actions'
 import { choosePackage } from './strategy'
-import type { RouteWork } from './routes'
+import { hold, type RouteWork } from './routes'
 import { cpuPlanningView, type CpuPlanningView } from './planningView'
 export { cpuPlanningView } from './planningView'
 export type { CpuPlanningView } from './planningView'
@@ -29,10 +29,17 @@ export function planCpu(view:CpuPlanningView):CpuPlan {
   return { round:view.round,objective,intent:decision.intent,reason:decision.package.summary,orders,trace:decision.trace,
     candidates:decision.trace.alternatives.map(a=>({objective:a.intent==='strike-base'||a.intent==='suppress-defenses'?'strike':a.intent==='contest-air'?'patrol':'defend',score:a.bestPackageScore,reason:a.reason})) }
 }
-export function prepareCpuRound(state:MatchState):MatchState {
+export function prepareCpuRound(state:MatchState, options?: { holdFormations: boolean }):MatchState {
   if(!isCampaign(state)||!state.cpu||['adapt','debrief','victory','defeat','draw'].includes(state.phase)||state.cpu.plan?.round===state.round)return state
   const view=cpuPlanningView(state);if(!view)return state
-  const plan=planCpu(view)
+  const plan: CpuPlan = options?.holdFormations ? {
+    round: state.round,
+    objective: 'defend',
+    intent: 'protect-base',
+    reason: 'CPU planning unavailable. Hold formations at their operating fields.',
+    orders: view.cpu.formations.map(formation => hold(view, formation)),
+    candidates: [],
+  } : planCpu(view)
   return {...state,cpu:{...state.cpu,version:2,intent:plan.intent,plan}}
 }
 export function cpuFlights(state:MatchState):import('../types').EnemyFlight[] {

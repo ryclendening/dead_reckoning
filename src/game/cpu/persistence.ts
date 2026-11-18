@@ -29,6 +29,8 @@ const trace = (v: unknown) => record(v) && integer(v.round) && intent(v.selected
   && (v.chosenBaseAttack===undefined||baseAttack(v.chosenBaseAttack))
   && (v.chosenReconPosture===undefined||['aggressive','conservative'].includes(String(v.chosenReconPosture)))
   && record(v.work) && integer(v.work.packages) && integer(v.work.routeExpansions)
+  && (v.work.rankedRoutes === undefined || integer(v.work.rankedRoutes))
+  && (v.work.evaluatedPackages === undefined || integer(v.work.evaluatedPackages))
   && (v.work.routeSearches===undefined||integer(v.work.routeSearches)) && (v.work.optimalRouteSearches===undefined||integer(v.work.optimalRouteSearches))
 function validBombingAssignments(order:Squadron,sites:unknown[]):boolean {
   const targets=order.bombingTargets

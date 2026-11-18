@@ -11,6 +11,8 @@ import { observedThreat } from './placement'
 import { bomberActions } from './actions'
 import { groundAttackDamage } from '../strikeRules'
 import { maintainCpu, settleCpuRound } from './settlement'
+import { CPU_RESUPPLY_WORK_BUDGET } from './purchases'
+import type { Asset, Point } from '../types'
 import type { CpuDifficulty, CpuSiteReport } from './types'
 
 function view(difficulty: CpuDifficulty = 'medium') {
@@ -19,6 +21,52 @@ function view(difficulty: CpuDifficulty = 'medium') {
 }
 
 describe('CPU campaign planning', () => {
+  it('stops late-round resupply after the shared budget and keeps the campaign playable', () => {
+    const opening = createMatch(11, 'hard')
+    const home = opening.enemyAssets.find(asset => asset.kind === 'base')!.position
+    const station = (x: number, z: number): Point => [home[0] + x, home[1] + z]
+    const kinds: Asset['kind'][] = ['base', 'sam', 'aaa', 'radar', 'fob', 'sam', 'aaa', 'radar']
+    const state = {
+      ...opening, round: 8, phase: 'adapt' as const,
+      cpu: {
+        ...opening.cpu!, logistics: 55, plan: undefined,
+        sites: kinds.map((kind, index) => ({
+          kind, id: `known-${index}`, position: station((index % 3 - 1) * 4, 12 + index % 3 * 2),
+          health: 100, maxHealth: 100, observedRound: 7,
+        })),
+        traffic: Array.from({ length: 24 }, (_, index) => {
+          const bearing = index * .47
+          return {
+            position: station(Math.cos(bearing) * 11, Math.sin(bearing) * 11), bearing,
+            role: 'fighter' as const, source: 'visual' as const, observedRound: 7,
+            identity: `F${index % 2}`, strength: 90,
+          }
+        }),
+      },
+    }
+    const adapted = maintainCpu(state)
+    const work = adapted.cpu!.adaptTrace!.work
+    const tacticalWork = work.rankedRoutes! + work.evaluatedPackages!
+    expect(tacticalWork).toBeGreaterThanOrEqual(CPU_RESUPPLY_WORK_BUDGET.hard)
+    // One complete purchase scenario may finish after crossing the budget.
+    expect(tacticalWork).toBeLessThan(15_000)
+    expect(adapted.cpu!.logistics).toBeGreaterThanOrEqual(0)
+    expect(maintainCpu(adapted)).toBe(adapted)
+    const next = beginNextRound(adapted)
+    expect(next.cpu!.plan!.round).toBe(9)
+    expect(normalizeMatch(JSON.parse(JSON.stringify(next))).cpu!.plan).toEqual(next.cpu!.plan)
+  })
+
+  it('commits a reloadable hold order at each operating field when the worker cannot plan', () => {
+    const state = { ...createMatch(), round: 8 }
+    const safe = prepareCpuRound(state, { holdFormations: true })
+    expect(safe.cpu!.plan!.round).toBe(8)
+    expect(safe.cpu!.plan!.orders.map(order => order.id)).toEqual(state.cpu!.formations.map(formation => formation.id))
+    expect(safe.cpu!.plan!.orders.every(order => order.sortieOrdered === false && order.route.length === 1)).toBe(true)
+    expect(normalizeMatch(JSON.parse(JSON.stringify(safe))).cpu!.plan).toEqual(safe.cpu!.plan)
+    expect(resolveRound(safe).enemyFlights.every(formation => formation.sortieOrdered === false)).toBe(true)
+  })
+
   it('builds bounded bomber routes only from recovered CPU site reports', () => {
     const initial=view('hard'),home=initial.home
     const bomber={...initial.cpu.formations[0],id:'red-reinforcement-bomber-1',callsign:'BOMBER 1',role:'bomber' as const,

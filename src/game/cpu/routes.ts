@@ -1,4 +1,4 @@
-import { effectiveDefenseProfile, inCoverageCircle, isOperationalSite, radarRange, SAM_FLIGHT_SECONDS, AAA_FLIGHT_SECONDS, AAA_BURST_INTERVAL, type EffectiveDefenseProfile } from '../equipmentRules'
+import { effectiveDefenseProfile, isOperationalSite, radarRange, SAM_FLIGHT_SECONDS, AAA_FLIGHT_SECONDS, AAA_BURST_INTERVAL, type EffectiveDefenseProfile } from '../equipmentRules'
 import { BASE_STRIKE_RANGE } from '../campaign'
 import { FLIGHT_SPEED, MAX_FLIGHT_DISTANCE, flightRangeFor, flightSpeedFor, routeDistance } from '../flightRules'
 import { deriveRecoveryPlanningView, formationField, isOperationalAirfield } from '../forwardBasing'
@@ -8,6 +8,10 @@ import type { AssetKind, Point, Squadron } from '../types'
 import type { CpuPlanningView } from './planningView'
 import type { CpuDifficulty, CpuSiteReport } from './types'
 export const distance = (a: Point, b: Point) => Math.hypot(a[0]-b[0], a[1]-b[1])
+function withinRadius(point: Point, center: Point, radius: number): boolean {
+  const dx = point[0] - center[0], dz = point[1] - center[1]
+  return dx * dx + dz * dz <= radius * radius
+}
 export const CPU_PROFILES = {
   easy: { offsets: [0, 2, -2, 4, -4, 7, -7], releases: [0, .3, -.3, .7, -.7], expansions: 64, sectors: 4, purchases: 4 },
   medium: { offsets: [0, 2, -2, 4, -4, 7, -7], releases: [0, .3, -.3, .7, -.7, 1.3, -1.3], expansions: 180, sectors: 8, purchases: 4 },
@@ -54,7 +58,7 @@ export function cpuRouteRisk(route: Point[], role: Squadron['role'], sites: CpuS
       const a=route[i-1], b=route[i], length=distance(a,b), samples=Math.max(1,Math.ceil(length/.35))
       for (let j=0;j<samples;j++) {
         const t=(j+.5)/samples, point:Point=[a[0]+(b[0]-a[0])*t,a[1]+(b[1]-a[1])*t]
-        if(circles.some(circle=>inCoverageCircle(point,circle)))inside+=length/samples
+        if(circles.some(circle=>withinRadius(point,circle.position,circle.radius+1e-9)))inside+=length/samples
       }
     }
     const seconds=inside/speed
@@ -63,7 +67,19 @@ export function cpuRouteRisk(route: Point[], role: Squadron['role'], sites: CpuS
   }
   return risk
 }
-export interface RouteWork { expansions: number; rejected: string[]; routeCache?:Map<string,ThreatRouteResult|undefined> }
+export interface RouteWork {
+  expansions: number
+  rejected: string[]
+  routeCache?: Map<string, ThreatRouteResult | undefined>
+  rankedRoutes?: number
+}
+
+function rankRoutes(view: CpuPlanningView, orders: Squadron[], work: RouteWork) {
+  work.rankedRoutes = (work.rankedRoutes ?? 0) + orders.length
+  return orders.map(order => ({
+    order, risk: orderRisk(view, order), length: routeDistance(order.route),
+  }))
+}
 /** Additive route-ranking costs, not promises about combat damage. Actual
  * payload/loss estimates and mission choice still use the shared engine model. */
 export function routeThreats(view:CpuPlanningView,role:Squadron['role'],formation?:Squadron):RouteThreat[] {
@@ -139,10 +155,12 @@ export function missionOrders(view: CpuPlanningView, formation: Squadron, missio
     const recovery=recoveryView(view,order)
     if(!recovery?.valid||recovery.missionDistance>budget+.001){work.rejected.push(recovery?.reason??'No recovery field');return []}
     return [{...order,route:recovery.normalizedRoute,plannedRecoveryFieldId:recovery.intendedField.id}]
-  }).sort((a,b)=>orderRisk(view,a)-orderRisk(view,b)||routeDistance(a.route)-routeDistance(b.route))
-  if(mission!=='base-strike')return orders.slice(0,3)
-  const fastest=[...orders].sort((a,b)=>routeDistance(a.route)-routeDistance(b.route)||orderRisk(view,a)-orderRisk(view,b))[0]
-  return [...new Set([...orders.slice(0,2),...(fastest?[fastest]:[])])]
+  })
+  const ranked = rankRoutes(view, orders, work).sort((a, b) => a.risk - b.risk || a.length - b.length)
+  if (mission !== 'base-strike') return ranked.slice(0, 3).map(candidate => candidate.order)
+  const safest = ranked.slice(0, 2).map(candidate => candidate.order)
+  const fastest = ranked.sort((a, b) => a.length - b.length || a.risk - b.risk)[0]?.order
+  return fastest && !safest.includes(fastest) ? [...safest, fastest] : safest
 }
 export function orderRisk(view: CpuPlanningView, order: Squadron, sites=view.cpu.sites, includeRecovery=true) {
   const recovery=view.assets.find(a=>a.id===order.plannedRecoveryFieldId)
@@ -153,7 +171,14 @@ export function orderRisk(view: CpuPlanningView, order: Squadron, sites=view.cpu
   const trackRisk=new Map<string,number>()
   for(const sector of sectors) {
     let inside=0
-    for(let i=1;i<route.length;i++) {const a=route[i-1],b=route[i],n=Math.max(1,Math.ceil(distance(a,b)/.5));for(let j=0;j<n;j++){const t=(j+.5)/n;if(distance([a[0]+(b[0]-a[0])*t,a[1]+(b[1]-a[1])*t],sector.position)<=4.5)inside+=distance(a,b)/n}}
+    for (let i = 1; i < route.length; i++) {
+      const a = route[i - 1], b = route[i], length = distance(a, b)
+      const n = Math.max(1, Math.ceil(length / .5))
+      for (let j = 0; j < n; j++) {
+        const t = (j + .5) / n
+        if (withinRadius([a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t], sector.position, 4.5)) inside += length / n
+      }
+    }
     const key=sector.identity??sector.trackId??sector.position.join(',')
     trackRisk.set(key,Math.max(trackRisk.get(key)??0,Math.min(1,inside/7)*24/(1+view.round-sector.observedRound)*Math.min(1,((sector.strength??100)+25*Math.max(0,view.round-sector.observedRound))/100)))
   }
@@ -181,7 +206,14 @@ export function orderRisk(view: CpuPlanningView, order: Squadron, sites=view.cpu
     const guards=[...new Map(nearby.sort((a,b)=>a.observedRound-b.observedRound||(a.observedAt??0)-(b.observedAt??0)).map(t=>[t.identity??t.trackId??t.position.join(','),t])).values()]
     const power=guards.reduce((n,t)=>n+Math.min(100,(t.strength??100)+25*Math.max(0,view.round-t.observedRound)),0)
     let exposed=0
-    for(let i=1;i<route.length;i++){const a=route[i-1],b=route[i],n=Math.max(1,Math.ceil(distance(a,b)/.5));for(let j=0;j<n;j++){const t=(j+.5)/n;if(distance([a[0]+(b[0]-a[0])*t,a[1]+(b[1]-a[1])*t],base.position)<=4.5)exposed+=distance(a,b)/n}}
+    for (let i = 1; i < route.length; i++) {
+      const a = route[i - 1], b = route[i], length = distance(a, b)
+      const n = Math.max(1, Math.ceil(length / .5))
+      for (let j = 0; j < n; j++) {
+        const t = (j + .5) / n
+        if (withinRadius([a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t], base.position, 4.5)) exposed += length / n
+      }
+    }
     airRisk=Math.max(airRisk,Math.min(1,exposed/3)*power*(order.role==='fighter'?.4:.2))
   }
   let uncertainty=0
@@ -211,8 +243,9 @@ export function strikeOrders(view: CpuPlanningView, fighter: Squadron, target: C
     if(recovery?.valid&&validateStrikeGeometry(order,field,target)===undefined){optimized={...order,route:recovery.normalizedRoute};all.push(optimized)}
     else work.rejected.push(recovery?.reason??'A* route failed canonical strike validation')
   }
-  const safe=[...all].sort((a,b)=>orderRisk(view,a)-orderRisk(view,b)||routeDistance(a.route)-routeDistance(b.route))
-  const fast=[...all].sort((a,b)=>routeDistance(a.route)-routeDistance(b.route)||orderRisk(view,a)-orderRisk(view,b))
+  const ranked = rankRoutes(view, all, work)
+  const safe = [...ranked].sort((a, b) => a.risk - b.risk || a.length - b.length).map(candidate => candidate.order)
+  const fast = ranked.sort((a, b) => a.length - b.length || a.risk - b.risk).map(candidate => candidate.order)
   const retained=[...safe.slice(0,2),...fast.slice(0,2),...(optimized?[optimized]:[])]
   return [...new Map(retained.map(o=>[JSON.stringify([o.route,o.plannedRecoveryFieldId]),o])).values()]
 }

@@ -326,7 +326,8 @@ export function generateActions(view:CpuPlanningView,work:RouteWork):TacticalPac
   const ingressRisks=new WeakMap<Squadron,number>()
   const ingressRisk=(o:Squadron)=>{let value=ingressRisks.get(o);if(value===undefined){value=orderRisk(view,o,view.cpu.sites,false);ingressRisks.set(o,value)}return value}
   const keys=[...new Set(libraries[0].map(reconKey))]
-  for(const key of keys)for(const a of shortlist(libraries[0],fighters[0],key))for(const b of shortlist(libraries[1],fighters[1],key)) {
+  const secondShortlists = new Map(keys.map(key => [key, shortlist(libraries[1], fighters[1], key)]))
+  for(const key of keys)for(const a of shortlist(libraries[0],fighters[0],key))for(const b of secondShortlists.get(key)!) {
     const orders=a.orders.map(o=>o.id===fighters[1].id?b.orders.find(f=>f.id===o.id)!:o)
     const ids=new Set(orders.filter(o=>o.sortieOrdered!==false).map(o=>o.id))
     if(!validateRecoveryPackage({playerAssets:view.assets,squadrons:orders},flightRangeFor,ids).valid)continue

@@ -29,7 +29,6 @@ interface ResupplyPanelProps {
   busy?: boolean
   cpuAdapting?: boolean
   nextRoundDisabled?: boolean
-  cpuPlanError?: boolean
 }
 
 function PurchaseButton({ quote, onBuy, disabled }: { quote: EconomyActionQuote; onBuy: () => void; disabled?: boolean }) {
@@ -74,7 +73,7 @@ export function PurchaseCatalog({ category, quotes, busy, onCategoryChange, onCh
 export function ResupplyPanel({
   match, selectedTarget, onSelectTarget, onCloseTarget, onPurchase, onNextRound, procurementMode,
   procurementActionId, onProcurementMode, onProcurementAction, hasPlacementPreview, onConfirmPlacement,
-  onCancelPlacement, busy = false, cpuAdapting = false, nextRoundDisabled = false, cpuPlanError = false,
+  onCancelPlacement, busy = false, cpuAdapting = false, nextRoundDisabled = false,
 }: ResupplyPanelProps) {
   const [purchaseCategory, setPurchaseCategory] = useState<PurchaseCategory>('aircraft')
   const [showRepairs, setShowRepairs] = useState(false)
@@ -176,7 +175,7 @@ export function ResupplyPanel({
         setUpgradePending(undefined)
         setShowRepairs(!repairsOpen)
       }}>Repairs <span>{repairTargets.length}</span></button> : null}
-      <button type="button" className="adapt-next" aria-live="polite" title={cpuPlanError ? 'CPU planning failed. Reload to retry.' : undefined} disabled={busy || nextRoundDisabled || cpuPlanError} onClick={onNextRound}>{cpuPlanError ? 'CPU error' : cpuAdapting ? 'CPU adapting…' : `Plan round ${match.round + 1}`} <ChevronRight/></button>
+      <button type="button" className="adapt-next" aria-live="polite" disabled={busy || nextRoundDisabled} onClick={onNextRound}>{cpuAdapting ? 'CPU adapting…' : `Plan round ${match.round + 1}`} <ChevronRight/></button>
     </div>
   </section>
 }
