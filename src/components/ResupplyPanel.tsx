@@ -33,8 +33,14 @@ interface ResupplyPanelProps {
 }
 
 function PurchaseButton({ quote, onBuy, disabled }: { quote: EconomyActionQuote; onBuy: () => void; disabled?: boolean }) {
+  const deployment = quote.effect.kind === 'asset-construction' ? quote.effect.deployment : undefined
   return <button type="button" disabled={disabled || !quote.eligible} onClick={onBuy}>
-    <span><b>{quote.label}</b><small>{quote.detail}</small>{quote.reason ? <em>{quote.reason}</em> : null}</span>
+    <span>
+      <b>{quote.label}</b>
+      {deployment ? <small>{`${deployment.active}/${deployment.limit} operational`}</small> : null}
+      <small>{quote.detail}</small>
+      {quote.reason ? <em>{quote.reason}</em> : null}
+    </span>
     <strong>{formatCash(quote.cost)}</strong>
   </button>
 }

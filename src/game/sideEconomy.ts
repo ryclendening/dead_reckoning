@@ -48,15 +48,20 @@ export const PROCUREMENT_CATALOG: readonly ProcurementDefinition[] = [
 
 export const AIRFIELD_UPGRADE_CATALOG = UPGRADE_CATALOG.filter(upgrade=>upgrade.targets.includes('base'))
 
-function constructionLimitReason(state: SidePlanningContext, kind: ConstructibleAssetKind): string | undefined {
-  const limit = PROCUREMENT_CATALOG.find(definition => definition.kind === kind)?.limit
-  const active = state.assets.filter(asset => asset.kind === kind && isOperationalSite(asset)).length
-  return limit !== undefined && active >= limit ? `LIMIT OF ${limit} OPERATIONAL ${kind.toUpperCase()} SITES PER SIDE` : undefined
+function constructionDeployment(state: SidePlanningContext, definition?: ProcurementDefinition) {
+  if (definition?.limit === undefined) return undefined
+  const active = state.assets.filter(asset => asset.kind === definition.kind && isOperationalSite(asset)).length
+  return { active, limit: definition.limit }
+}
+
+function constructionLimitReason(deployment: ReturnType<typeof constructionDeployment>): string | undefined {
+  return deployment && deployment.active >= deployment.limit ? 'DEPLOYMENT LIMIT REACHED' : undefined
 }
 
 export interface FobPlacementValidation { valid: boolean; reason?: string }
 export function validateAssetPlacement(state: SidePlanningContext, kind: ConstructibleAssetKind, placement: [number, number] | undefined): FobPlacementValidation {
-  const limitReason = constructionLimitReason(state, kind)
+  const definition = PROCUREMENT_CATALOG.find(item => item.kind === kind)
+  const limitReason = constructionLimitReason(constructionDeployment(state, definition))
   if (limitReason) return { valid: false, reason: limitReason }
   if (!placement || !Number.isFinite(placement[0]) || !Number.isFinite(placement[1])) return { valid: false, reason: 'SELECT A MAP LOCATION' }
   if (state.opposingTerritory && territoryContains(placement,state.opposingTerritory)) return { valid: false, reason: 'SITE MUST BE OUTSIDE ENEMY TERRITORY' }
@@ -172,11 +177,13 @@ const ACTIONS: readonly EconomyActionDefinition[] = [
     quote: (state, target, command) => {
       if (target.kind !== 'campaign') return undefined
       const name = constructionName(state, definition.kind)
-      const effect: EconomyEffect = { kind: 'asset-construction', assetKind: definition.kind, name, ...(definition.capacity ? { capacity: definition.capacity } : {}) }
+      const deployment = constructionDeployment(state, definition)
+      const effect: EconomyEffect = { kind: 'asset-construction', assetKind: definition.kind, name,
+        ...(definition.capacity ? { capacity: definition.capacity } : {}), ...(deployment ? { deployment } : {}) }
       const base = createQuote(state, definition.actionId, target, `BUILD ${name}`, definition.detail, definition.cost, effect)
-      const limitReason = constructionLimitReason(state, definition.kind)
-      const placement = command?.placement ? validateAssetPlacement(state, definition.kind, command.placement) : undefined
-      const reason = limitReason ?? placement?.reason
+      const reason = command?.placement
+        ? validateAssetPlacement(state, definition.kind, command.placement).reason
+        : constructionLimitReason(deployment)
       return reason ? { ...base, eligible: false, reason } : base
     },
     apply: (state, target, command) => {

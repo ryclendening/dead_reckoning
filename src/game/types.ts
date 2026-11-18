@@ -82,7 +82,7 @@ export type EconomyEffect =
   | { kind: 'formation-strength'; before: number; after: number }
   | { kind: 'formation-purchase'; role: Role }
   | { kind: 'upgrade-installation'; upgradeId: UpgradeId }
-  | { kind: 'asset-construction'; assetKind: ConstructibleAssetKind; name: string; capacity?: number }
+  | { kind: 'asset-construction'; assetKind: ConstructibleAssetKind; name: string; capacity?: number; deployment?: { active: number; limit: number } }
 export interface EconomyProjection { logistics: number; reserveAircraft: number }
 export interface EconomyCommand {
   actionId: EconomyActionId; target: EconomyTarget

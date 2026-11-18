@@ -4,7 +4,7 @@ import { beginNextRound, deriveLogisticsIncome, economyAttentionTargets, economy
 import { FORMATION_PRICES } from './economyRules'
 import { resolveRound } from './engine'
 import { normalizeMatch } from '../App'
-import type { ConstructibleAssetKind, EconomyActionId, IntelReport, Point } from './types'
+import type { ConstructibleAssetKind, EconomyActionId, IntelReport, MatchState, Point } from './types'
 
 const recoveredReport = (): IntelReport => ({ id: 'intel-1', observerId: 'raven', assetId: 'e-radar', confidence: 90, recovered: true, detail: 'Recovered radar coordinates.' })
 const resultFor = (state = createMatch()) => resolveRound(state)
@@ -193,14 +193,22 @@ describe('logistics economy', () => {
     }))
     const state = { ...initial, phase: 'adapt' as const, logistics: 100, playerAssets: [...initial.playerAssets, ...extras] }
     const actionId = `build-${kind}` as const
-    expect(economyQuotesFor(state, target).find(quote => quote.id === actionId)?.eligible).toBe(false)
+    const deploymentQuote = (match: MatchState) => economyQuotesFor(match, target).find(quote => quote.id === actionId)
+    expect(deploymentQuote(state)).toMatchObject({
+      eligible: false, effect: { deployment: { active: limit, limit } },
+    })
     const afterLoss = { ...state, playerAssets: state.playerAssets.map(asset => asset.id === opening.id ? { ...asset, health: 0 } : asset) }
+    expect(deploymentQuote(afterLoss)).toMatchObject({
+      eligible: true, effect: { deployment: { active: limit - 1, limit } },
+    })
     const [x,z] = state.world.friendlyTerritory.center
     const placement: Point = [x, z - 4]
     expect(executeEconomyCommand(state, { actionId, target, placement })).toBe(state)
     const replaced = executeEconomyCommand(afterLoss, { actionId, target, placement })
     expect(replaced.playerAssets.at(-1)).toMatchObject({ id: `p-${kind}-${limit + 1}`, position: placement })
-    expect(economyQuotesFor(replaced, target).find(quote => quote.id === actionId)?.eligible).toBe(false)
+    expect(deploymentQuote(replaced)).toMatchObject({
+      eligible: false, effect: { deployment: { active: limit, limit } },
+    })
   })
 
   it('blocks overlapping enemy territory without consulting unrelated enemy infrastructure', () => {

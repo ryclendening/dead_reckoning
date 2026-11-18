@@ -84,6 +84,8 @@ describe('Resupply',()=>{
     expect(catalog).toContain('BUILD AAA')
     expect(catalog).toContain('BUILD SAM')
     expect(catalog).toContain('BUILD RADAR')
+    expect(catalog).toMatch(/BUILD SAM[^<]*<\/b><small>1\/3 operational<\/small>/)
+    expect(catalog).toMatch(/BUILD RADAR[^<]*<\/b><small>1\/2 operational<\/small>/)
     expect(catalog).toContain('$180M</strong>')
     expect(catalog).not.toContain('Buy fighter formation')
     expect(catalog).not.toContain('Buy recon formation')

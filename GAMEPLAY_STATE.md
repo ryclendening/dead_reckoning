@@ -240,7 +240,7 @@ Current Resupply actions:
 - Ground-site damage and disablement persist between rounds.
 - Buy a four-aircraft fighter for $160M, recon formation for $120M, or bomber formation for $240M. Every purchase creates a new grounded formation at the home airfield for next-round tasking.
 - Buy one main-airfield upgrade for $120M. **Maintenance Wing** discounts formation repairs by $10M. **Supply Depot** adds the recurring income above.
-- Build a decoy for $40M, AAA for $60M, SAM for $140M, radar for $180M, or a two-slot FOB for $80M. Each side can have three operational SAMs and two operational radars, including the starting sites. Lost sites free a slot. Older saves retain their sites, and each target can have up to three incoming SAM missiles at a time.
+- Build a decoy for $40M, AAA for $60M, SAM for $140M, radar for $180M, or a two-slot FOB for $80M. Each side can have three operational SAMs and two operational radars, including the starting sites. The Ground purchase catalog shows the current operational count and cap for each, such as **1/3 operational** for SAMs. Lost sites free a slot. Older saves retain their sites, and each target can have up to three incoming SAM missiles at a time.
 
 SAM, AAA, radar, and decoy construction must be inside the current friendly territory union, outside the opponent's territory, and at least 1.5 units from every friendly asset. Recovered mapping alone does not grant construction rights for these sites. FOB construction also requires 1.5-unit spacing, but may expand into persistent recovered mapping within a 7-unit reach from the edge of current friendly territory. Once built, an operational FOB extends owned territory by its 3-unit influence circle. Disabled or destroyed FOBs lose their territory influence. Online Resupply validates opposing territory on the server without exposing enemy positions. Unrecovered world bounds remain hidden. New SAM and AAA sites immediately participate in air defense, and new radars support nearby batteries. Decoys can reduce enemy targeting progress when observed alongside the real base; enemy attacks do not dynamically target decoys.
 
@@ -302,6 +302,8 @@ This log keeps only current net changes. Superseded intermediate states belong i
 - Simplified deployment to site choices, placement progress, and a short instruction. Added a **?** button to the match header for help with the current phase.
 
 ### 2026-11-17
+
+- Added current operational SAM and radar counts to the Ground purchase catalog. The counts update as purchases and losses change the deployed force.
 
 - Applied the opposing-territory placement check to online Resupply purchases using the opponent's authoritative assets on the server. The server restores the seat's private enemy-asset view after validation, so rejected placements do not reveal opponent positions.
 - Moved single-player CPU adaptation and next-round planning into a Web Worker. Debrief → Resupply and Resupply → Plan now display immediately; Resupply remains usable during CPU adaptation, and Commit waits for CPU orders.
