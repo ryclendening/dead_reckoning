@@ -40,6 +40,7 @@ The nominal sortie window is 22 simulated seconds. Execution continues while rec
 
 - New campaigns use a deterministic, saved terrain layout selected from coast, highlands, and islands. Starting territories have clear deployment footprints; seeded starting positions and opposing bases vary with the campaign seed. Existing saves and deterministic tactical fixtures without a terrain snapshot retain their original flat geography and do not reroll.
 - Water and mountains block initial asset placement and construction. Airfields require a larger clear land footprint than other sites. Placement uses only surveyed or owned terrain; unknown terrain is not assumed clear.
+- The battlefield draws surveyed terrain as a continuous 3D relief surface with rugged mountain ridges, sloped shores, beaches, and coastal shallows. Fog follows that surface. The relief is visual, and waypoint and placement coordinates use the tactical map plane.
 - Aircraft cross water at normal fuel cost and cross mountains at 1.5 times the normal fuel cost, without a speed change. Planning estimates only known mountain crossings; execution consumes fuel against the actual terrain and can force recovery or fuel exhaustion.
 - The CPU receives only its surveyed terrain plus its owned territory. Online player views omit the seed and full terrain grid and include only surveyed or owned cells. During a completed online round, newly recovered terrain is available with the round result rather than revealed at its exact observation time.
 
@@ -307,6 +308,8 @@ Available fixtures:
 This log keeps only current net changes. Superseded intermediate states belong in git history.
 
 ### 2026-11-18
+
+- Replaced tile water and isolated mountain markers with continuous coastlines, shaded mountain relief, and textured land and water. Fog follows the terrain surface, and route waypoints remain visible over the relief.
 
 - Added saved, seeded coast, highlands, and islands campaign maps with protected clear deployment regions and seed-varied starts. Water and mountains reject construction; airfields require a larger clear footprint. Flight planning, CPU route search, and recovery estimate known mountain fuel at 1.5×, and execution applies actual terrain fuel while preserving flight speed. Fog-aware map rendering shows only surveyed or owned terrain; online views strip the world seed and full grid. Online terrain replay still reveals recovered cells with the completed result rather than at observation time.
 

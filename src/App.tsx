@@ -272,7 +272,9 @@ export default function App(){
   const liveHomeHealth=(replayActive?replayMatch.playerAssets:liveResult?.playerAssets)?.find(asset=>asset.kind==='base')?.health??match.playerAssets.find(asset=>asset.kind==='base')?.health??match.playerBaseHealth
   const playerBase=replayMatch.playerAssets.find(a=>a.kind==='base')?.position??[-7.8,11.2]
   const friendlyTerritory=useMemo(()=>friendlyTerritoryForAssets(replayMatch.world.friendlyTerritory,replayMatch.playerAssets),[replayMatch.playerAssets,replayMatch.world.friendlyTerritory])
-  const visibleTerrain=useMemo(()=>terrainKnownWithin(match.world.terrain,match.mappedAreas,2.65,friendlyTerritory),[friendlyTerritory,match.mappedAreas,match.world.terrain])
+  // Replay HP updates can copy the territory without changing which areas it covers.
+  const terrainTerritoryKey=JSON.stringify(friendlyTerritory)
+  const visibleTerrain=useMemo(()=>terrainKnownWithin(match.world.terrain,match.mappedAreas,2.65,JSON.parse(terrainTerritoryKey)),[terrainTerritoryKey,match.mappedAreas,match.world.terrain])
   const knownEnvelope=useMemo(()=>deriveKnownEnvelope(match.world,match.mappedAreas,match.discoveredBoundaries,friendlyTerritory),[friendlyTerritory,match.discoveredBoundaries,match.mappedAreas,match.world])
   const planningEnvelope=useMemo(()=>derivePlanningEnvelope(knownEnvelope),[knownEnvelope])
   const activeMapPlanningBounds=match.phase==='plan'?match.world.presentationBounds:planningEnvelope

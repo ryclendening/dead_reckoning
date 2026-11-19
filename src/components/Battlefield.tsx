@@ -1,6 +1,7 @@
 import { debriefMapSites, primaryDebriefEvent } from '../game/debriefMap'
 import { DebriefSymbol } from './DebriefSymbols'
 import { UnitCard3D } from './UnitCard3D'
+import { TerrainRelief, useTerrainRelief } from './TerrainRelief'
 import { aircraftCardData, assetCardData, flightActivityLabel } from '../game/unitCards'
 import { samStatusForPhase, SAM_MISSILES_PER_ROUND } from '../game/airDefense'
 import { defenseProfile, effectiveDefenseProfile, isOperationalSite, radarRange, type EffectiveDefenseProfile } from '../game/equipmentRules'
@@ -138,38 +139,26 @@ function RouteWaypoint({position,index,selected,onSelect,onMove,release=false,re
   return <group position={[preview[0],.18,preview[1]]}>
     <mesh rotation={[-Math.PI/2,0,0]} onPointerDown={pointerDown} onPointerMove={pointerMove} onPointerUp={pointerUp} onPointerCancel={pointerCancel} onClick={event=>event.stopPropagation()}><circleGeometry args={[.58,32]}/><meshBasicMaterial transparent opacity={0} depthWrite={false} side={THREE.DoubleSide}/></mesh>
     {selected?<Ring radius={radius+.07} color="#f5fff7" opacity={.95} dashed={false}/>:null}
-    <mesh rotation={[-Math.PI/2,0,0]}><ringGeometry args={[release?.31:.23,radius,24]}/><meshBasicMaterial color={edge} depthWrite={false}/></mesh>
-    <mesh rotation={[-Math.PI/2,0,0]}><circleGeometry args={[release?.29:selected?.26:.22,24]}/><meshBasicMaterial color={fill} depthWrite={false}/></mesh>
-    <Text position={[0,.012,0]} rotation={[-Math.PI/2,0,0]} fontSize={release?.22:selected?.19:.16} color="#e9fff8" anchorX="center" anchorY="middle">{index}</Text>
+    <mesh rotation={[-Math.PI/2,0,0]} renderOrder={12}><ringGeometry args={[release?.31:.23,radius,24]}/><meshBasicMaterial color={edge} transparent depthTest={false} depthWrite={false}/></mesh>
+    <mesh rotation={[-Math.PI/2,0,0]} renderOrder={12}><circleGeometry args={[release?.29:selected?.26:.22,24]}/><meshBasicMaterial color={fill} transparent depthTest={false} depthWrite={false}/></mesh>
+    <Text position={[0,.012,0]} rotation={[-Math.PI/2,0,0]} fontSize={release?.22:selected?.19:.16} color="#e9fff8" anchorX="center" anchorY="middle" renderOrder={13} material-depthTest={false}>{index}</Text>
   </group>
 }
 
-function KnownTerrain({terrain}:{terrain?:TerrainMap}){
-  const waterRef=useRef<THREE.InstancedMesh>(null),mountainRef=useRef<THREE.InstancedMesh>(null)
-  const water=useMemo(()=>terrain?.cells.filter(cell=>cell.kind==='water')??[],[terrain])
-  const mountains=useMemo(()=>terrain?.cells.filter(cell=>cell.kind==='mountain')??[],[terrain])
-  useLayoutEffect(()=>{const dummy=new THREE.Object3D();for(const [cells,ref,kind] of [[water,waterRef,'water'],[mountains,mountainRef,'mountain']] as const){if(!ref.current)continue;if(!terrain){ref.current.count=0;continue}cells.forEach((cell,index)=>{dummy.position.set(cell.x,kind==='water' ? .055 : .25,cell.z);dummy.rotation.set(kind==='water' ? -Math.PI/2 : 0,0,0);dummy.scale.set(kind==='water' ? terrain.cellSize*1.05 : .75,kind==='water' ? terrain.cellSize*1.05 : .72,kind==='water' ? 1 : .75);dummy.updateMatrix();ref.current!.setMatrixAt(index,dummy.matrix)});ref.current.count=cells.length;ref.current.instanceMatrix.needsUpdate=true}},[mountains,terrain,water])
-  return <><instancedMesh ref={waterRef} args={[undefined,undefined,Math.max(1,water.length)]} frustumCulled={false}><planeGeometry args={[1,1]}/><meshStandardMaterial color="#31545a" roughness={.82}/></instancedMesh><instancedMesh ref={mountainRef} args={[undefined,undefined,Math.max(1,mountains.length)]} frustumCulled={false} castShadow><coneGeometry args={[.55,1,5]}/><meshStandardMaterial color="#777451" roughness={1}/></instancedMesh></>
-}
-function Terrain({phase,presentationBounds,planningBounds,terrain,isPlacementValid}:{phase:Phase;presentationBounds:WorldBounds;planningBounds:WorldBounds;terrain?:TerrainMap;isPlacementValid?:(point:Point)=>boolean}){
-  const width=boundsWidth(presentationBounds),depth=boundsDepth(presentationBounds),center=boundsCenter(presentationBounds)
-  const hexOpacity=isPlacementValid ? phase==='deploy' ? .2 : phase==='adapt' ? .42 : 0 : 0
-  const hexColor=phase==='adapt'?'#7ceaf0':'#d9dbc0'
-  return <group>
-    <mesh receiveShadow position={[center[0],0,center[1]]} rotation={[-Math.PI/2,0,0]}><planeGeometry args={[width,depth]}/><meshStandardMaterial color="#596044" roughness={1}/></mesh>
-    <KnownTerrain terrain={terrain}/>
-    {hexOpacity>0?<HexOverlay opacity={hexOpacity} bounds={planningBounds} isValid={isPlacementValid} color={hexColor}/>:null}
-    <mesh position={[center[0],-.03,center[1]]} rotation={[-Math.PI/2,0,0]}><planeGeometry args={[width+.2,depth+.2]}/><meshBasicMaterial color="#0c0f0c" transparent opacity={.08}/></mesh>
-  </group>
-}
-
-const fogVertexShader=`varying vec2 vUv;void main(){vUv=uv;gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.0);}`
+const fogVertexShader=`
+uniform vec4 uWorldBounds;
+varying vec2 vUv;
+void main(){
+  vUv=vec2((position.x-uWorldBounds.x)/(uWorldBounds.y-uWorldBounds.x),
+    (uWorldBounds.w-position.z)/(uWorldBounds.w-uWorldBounds.z));
+  gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.0);
+}`
 const fogFragmentShader=`uniform sampler2D uPersistentMask;uniform sampler2D uLiveMask;uniform vec4 uWorldBounds;varying vec2 vUv;
 float hash21(vec2 p){return fract(sin(dot(p,vec2(127.1,311.7)))*43758.5453);}
 float valueNoise(vec2 p){vec2 i=floor(p),f=fract(p);f=f*f*(3.0-2.0*f);float a=hash21(i),b=hash21(i+vec2(1.0,0.0)),c=hash21(i+vec2(0.0,1.0)),d=hash21(i+vec2(1.0,1.0));return mix(mix(a,b,f.x),mix(c,d,f.x),f.y);}
 void main(){float persistent=texture2D(uPersistentMask,vUv).r;float live=texture2D(uLiveMask,vUv).r;float knowledge=max(persistent,live);float mapped=smoothstep(0.0,0.6,knowledge);float observed=smoothstep(0.6,1.0,knowledge);vec2 world=vec2(mix(uWorldBounds.x,uWorldBounds.y,vUv.x),mix(uWorldBounds.w,uWorldBounds.z,vUv.y));float noise=(valueNoise(world*0.285)+0.45*valueNoise(world*1.25))/1.45-0.5;float alpha=mix(0.54,0.22,mapped);alpha=mix(alpha,0.025,observed);alpha+=noise*mix(0.022,0.012,mapped)*(1.0-observed);vec3 color=mix(vec3(0.1059,0.1451,0.1137),vec3(0.1686,0.2039,0.1647),mapped);gl_FragColor=vec4(color,clamp(alpha,0.0,0.62));}`
 const makeFogTexture=(data:Uint8Array,width:number,height:number)=>{const texture=new THREE.DataTexture(data,width,height,THREE.RedFormat,THREE.UnsignedByteType);texture.minFilter=THREE.LinearFilter;texture.magFilter=THREE.LinearFilter;texture.wrapS=THREE.ClampToEdgeWrapping;texture.wrapT=THREE.ClampToEdgeWrapping;texture.generateMipmaps=false;return texture}
-const FogOfWar=memo(function FogOfWar({mappedAreas,observations,presentationBounds,friendlyTerritory}:{mappedAreas:Point[];observations:MapObservation[];presentationBounds:WorldBounds;friendlyTerritory:FriendlyTerritory}){
+const FogOfWar=memo(function FogOfWar({geometry,mappedAreas,observations,presentationBounds,friendlyTerritory}:{geometry:THREE.BufferGeometry;mappedAreas:Point[];observations:MapObservation[];presentationBounds:WorldBounds;friendlyTerritory:FriendlyTerritory}){
   const size=useMemo(()=>deriveFogMaskSize(presentationBounds),[presentationBounds])
   const persistentData=useMemo(()=>new Uint8Array(size.width*size.height),[size.height,size.width])
   const liveData=useMemo(()=>new Uint8Array(size.width*size.height),[size.height,size.width])
@@ -195,11 +184,9 @@ const FogOfWar=memo(function FogOfWar({mappedAreas,observations,presentationBoun
     lastLiveUpdate.current={observations,texture:liveTexture,bounds:presentationBounds,time:clock.elapsedTime}
   })
   useEffect(()=>()=>{persistentTexture.dispose();liveTexture.dispose()},[persistentTexture,liveTexture])
-  const width=boundsWidth(presentationBounds),depth=boundsDepth(presentationBounds),center=boundsCenter(presentationBounds)
   const uniforms=useMemo(()=>({uPersistentMask:{value:persistentTexture},uLiveMask:{value:liveTexture},uWorldBounds:{value:new THREE.Vector4(presentationBounds.minX,presentationBounds.maxX,presentationBounds.minZ,presentationBounds.maxZ)}}),[liveTexture,persistentTexture,presentationBounds])
-  return <mesh position={[center[0],.095,center[1]]} rotation={[-Math.PI/2,0,0]} renderOrder={-8}>
-    <planeGeometry args={[width,depth,1,1]}/>
-    <shaderMaterial transparent depthWrite={false} depthTest toneMapped={false} uniforms={uniforms} vertexShader={fogVertexShader} fragmentShader={fogFragmentShader}/>
+  return <mesh geometry={geometry} renderOrder={-8}>
+    <shaderMaterial transparent depthWrite={false} depthTest polygonOffset polygonOffsetFactor={-1} polygonOffsetUnits={-1} toneMapped={false} uniforms={uniforms} vertexShader={fogVertexShader} fragmentShader={fogFragmentShader}/>
   </mesh>
 })
 
@@ -726,6 +713,8 @@ function BattlefieldScene({squadrons,assets,playerAssets,mappedAreas,terrain,pre
   },[knownBounds,planningBounds,debriefSites])
   const resolvedPresentationBounds=useMemo(()=>debriefSites.length?expandBounds(resolvedPlanningBounds,6):presentationBounds??expandBounds(resolvedPlanningBounds,6),[presentationBounds,resolvedPlanningBounds,debriefSites])
   const presentationCenter=boundsCenter(resolvedPresentationBounds)
+  const reliefGeometry=useTerrainRelief(resolvedPresentationBounds,terrain)
+  const placementValidator=phase==='deploy'?isPlacementValid:phase==='adapt'?construction?.isValid:undefined
   const placement=playerAssets.find(a=>a.id===placementId)
   const [constructionHover,setConstructionHover]=useState<Point>()
   const [activeWaypoint,setActiveWaypoint]=useState<number>()
@@ -876,7 +865,10 @@ function BattlefieldScene({squadrons,assets,playerAssets,mappedAreas,terrain,pre
     <CameraRig phase={phase} friendlyTerritory={resolvedTerritory} planningBounds={resolvedPlanningBounds} presentationBounds={resolvedPresentationBounds} focusPoint={cameraFocus} focusRequestKey={focusRequestKey} followKey={followId} poseMemory={poseMemory}/>
     <color attach="background" args={['#11140f']}/><fog attach="fog" args={['#11140f',34,60]}/>
     <ambientLight intensity={1.1}/><directionalLight position={[-5,10,5]} intensity={2.1} castShadow shadow-mapSize={[1024,1024]} shadow-autoUpdate={phase!=='execute'} shadow-needsUpdate/>
-    <Terrain phase={phase} terrain={terrain} presentationBounds={resolvedPresentationBounds} planningBounds={resolvedPlanningBounds} isPlacementValid={phase==='deploy'?isPlacementValid:phase==='adapt'?construction?.isValid:undefined}/><FogOfWar mappedAreas={mappedAreas} observations={liveMapObservations} presentationBounds={resolvedPresentationBounds} friendlyTerritory={resolvedTerritory}/><TerritoryOverlay territory={resolvedTerritory} showFobPlacementReach={phase==='adapt'&&construction?.kind==='fob'}/>{phase==='deploy'&&placement?<PlacementHex position={placement.position} placed={positionedPlacementIds?.includes(placement.id)??false}/>:null}{construction&&constructionPoint?<ConstructionPlacementGhost kind={construction.kind} position={constructionPoint} valid={construction.isValid(constructionPoint)}/>:null}
+    <TerrainRelief geometry={reliefGeometry}/>
+    <FogOfWar geometry={reliefGeometry} mappedAreas={mappedAreas} observations={liveMapObservations} presentationBounds={resolvedPresentationBounds} friendlyTerritory={resolvedTerritory}/>
+    {placementValidator?<HexOverlay bounds={resolvedPlanningBounds} isValid={placementValidator} color={phase==='adapt'?'#7ceaf0':'#d9dbc0'} opacity={phase==='adapt'?.42:.2}/>:null}
+    <TerritoryOverlay territory={resolvedTerritory} showFobPlacementReach={phase==='adapt'&&construction?.kind==='fob'}/>{phase==='deploy'&&placement?<PlacementHex position={placement.position} placed={positionedPlacementIds?.includes(placement.id)??false}/>:null}{construction&&constructionPoint?<ConstructionPlacementGhost kind={construction.kind} position={constructionPoint} valid={construction.isValid(constructionPoint)}/>:null}
     {defenseOverlays}
     {previewBattery?.kind==='radar'?<RadarCoverage asset={previewBattery} enemy={false} samGuidance={false} samPreview={false}/>:null}
     {previewBattery&&previewDefense?<BatteryCoverage asset={previewBattery} profile={previewDefense} preview/>:null}
