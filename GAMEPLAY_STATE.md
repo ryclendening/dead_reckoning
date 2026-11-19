@@ -52,7 +52,7 @@ A new normal campaign uses VIPER 1, FALCON 2, and RAVEN 3. GHOST 4 is available 
 Three roles are playable:
 
 - **Fighter** — flies Protect, Forward Patrol, Transit, or Ground Strike. Protect uses Defensive CAP internally and defends a chosen friendly site, map point, or confirmed friendly flight. Forward Patrol hunts along its patrol pattern. These missions change contact priority and fighter-combat odds as well as interception geometry. Transit flies the assigned route to a friendly recovery field without voluntary interceptions; direct fighter contact still triggers combat. Strike is a dedicated ground-attack mission. A recovered fighter can report fixed enemy sites encountered on any mission.
-- **Recon** — flies player-plotted Recon routes or uses Transit to stage at another friendly airfield. Recon maps terrain and observes enemy fixed assets on either task, and must recover to preserve its collection. It can spot ground sites within 8 map units on either task, compared with 3.8 for fighters and bombers. Any airborne aircraft can also pick up an operating radar 1.6 units beyond that radar’s detection radius. During Plan, choose an **Aggressive** or **Conservative** RTB condition. Aggressive recon continues its mission through direct threats; Conservative recon returns to its planned recovery field when a hostile fighter is visually detected or a SAM/AAA launches.
+- **Recon** — flies player-plotted Recon routes or uses Transit to stage at another friendly airfield. Recon maps terrain and observes enemy fixed assets on either task, and must recover to preserve its collection. It can spot ground sites within 8 map units on either task, compared with 3.8 for fighters and bombers. Recon can also pick up an operating radar 1.6 units beyond that radar’s detection radius. During Plan, choose an **Aggressive** or **Conservative** RTB condition. Aggressive recon continues its mission through direct threats; Conservative recon returns to its planned recovery field when a hostile fighter is visually detected or a SAM/AAA launches.
 - **Bomber** — flies Bomb or Transit. Bomb selects up to three confirmed ground sites in route order and releases one payload at each assigned point within two map units. The inbound leg to the first target and outbound leg from the final target to recovery accept player waypoints; target-to-target legs are fixed direct dead-reckoning paths. Its 36-unit range and 32/22 map-unit-per-second speed are shorter and slower than fighter and recon; direct fighter contact can interrupt its mission. Bombers carry no air-to-air missiles and use weak machine guns in direct combat.
 
 ### Enemy flights
@@ -93,7 +93,7 @@ Current ranges, in map units:
 - AAA engagement: `1.9` standalone, `2.85` when linked to radar.
 - Fighter visual detection at full strength: `4.2`.
 - Recon visual detection at full strength: `4.9`.
-- Fixed-site observation: `8` for recon and `3.8` for fighters and bombers. Operating radar emits a detectable signal up to `1.6` beyond its own detection radius, normally `8` from the site, for all airborne roles.
+- Fixed-site observation: `8` for recon and `3.8` for fighters and bombers. Recon can detect an operating radar’s emissions up to `1.6` beyond its detection radius, normally `8` from the site. Fighters and bombers use their ordinary `3.8`-unit observation radius for radar sites.
 
 Aircraft visual range is multiplied by `0.68 + 0.32 × strength fraction`; destroyed formations produce no contacts.
 
@@ -208,7 +208,7 @@ Direct fighter combat interrupts a fighter's recon pursuit. When combat or pursu
 - Losing visual contact returns a still-radar-detected aircraft to an uncertainty marker with the same track ID and previously identified type. Losing every current detection removes its live tactical marker and exact current position. The expandable contact list retains a clearly labeled last-seen report and can focus that last-known position; it never follows hidden movement. Reacquisition retains the same ID for the sortie.
 - The contact list reports separate visual/radar counts, type knowledge, current inbound/outbound/crossing course relative to home derived from detected motion, and aircraft count only during current visual contact. Recovery status does not replace the contact counts.
 - Live hostile contact projection uses absolute simulated time: current radar/visual contact controls whether a hostile track may be shown, while any earlier visual contact preserves identity knowledge for the rest of the sortie without preserving an exact position through a detection gap.
-- Enemy fixed sites within an airborne formation’s ground observation range appear provisionally on the 3D map while observed. Operating radar can also be spotted through its longer-range emissions. Recovering the observing formation confirms the site for later rounds. Recovering a repeated sighting of an already confirmed site does not create a new report.
+- Enemy fixed sites within an airborne formation’s ground observation range appear provisionally on the 3D map while observed. Recon can also spot an operating radar through its longer-range emissions. Recovering the observing formation confirms the site for later rounds. Recovering a repeated sighting of an already confirmed site does not create a new report.
 
 ## Presentation and Phase Surfaces
 
@@ -299,7 +299,9 @@ This log keeps only current net changes. Superseded intermediate states belong i
 
 ### 2026-11-18
 
-- Increased Recon’s ground observation radius to 8 map units. All airborne formations can detect an operating radar’s emissions 1.6 units beyond its own detection range. Single-player now publishes live provisional ground contacts on the battlefield, matching the existing PvP display. Recovery still confirms reports. CPU collection and defense forecasts use the new Recon range.
+- Made long-range radar emissions detectable by Recon only. Fighters and bombers can still confirm radar sites they spot from within their normal 3.8-unit observation radius and report after landing.
+
+- Increased Recon’s ground observation radius to 8 map units. Single-player now publishes live provisional ground contacts on the battlefield, matching the existing PvP display. Recovery still confirms reports. CPU collection and defense forecasts use the new Recon range.
 
 - Reduced Execute rendering work by reusing ground shadows, updating fog only when its inputs change, and switching to lighter fighter silhouettes on slow renderers. PvP playback keeps its selected wall-clock speed through slow frames in a visible tab.
 

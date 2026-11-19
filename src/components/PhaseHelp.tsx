@@ -1,7 +1,7 @@
 import { useId, useRef } from 'react'
 import type { Phase } from '../game/types'
 import { RADAR_PLACEMENT_HELP } from './DefenseSiteDetails'
-import { RECON_GROUND_OBSERVATION_RANGE, STANDARD_RADAR_EMISSION_OBSERVATION_RANGE } from '../game/siteObservation'
+import { FIXED_ASSET_OBSERVATION_RANGE, RECON_GROUND_OBSERVATION_RANGE } from '../game/siteObservation'
 
 type PlayPhase = 'deploy' | 'plan' | 'execute' | 'debrief' | 'adapt'
 
@@ -18,7 +18,7 @@ const help: Record<PlayPhase, { title: string; tips: [string, string][]; online?
     title: 'Planning',
     tips: [
       ['Choose a task', 'Tap an aircraft to choose a task. Recon flies the waypoints you plot. Ground Strike requires recovered intelligence on the target.'],
-      ['Spot ground sites', `Recon can spot ground sites within ${RECON_GROUND_OBSERVATION_RANGE} map units. Any airborne formation can pick up a standard operating radar within ${STANDARD_RADAR_EMISSION_OBSERVATION_RANGE} units.`],
+      ['Spot ground sites', `Recon spots sites within ${RECON_GROUND_OBSERVATION_RANGE} map units and can pick up an operating radar beyond its coverage. Fighters and bombers spot sites within ${FIXED_ASSET_OBSERVATION_RANGE} units.`],
       ['Budget fuel', 'You can add up to five waypoints per leg. Outbound travel, the mission pattern, and the return all use fuel. Shorten a leg if a waypoint exceeds the budget.'],
       ['Choose where to land', 'Tap a friendly airfield on Return, or tap it on Outbound during Transit. Tapping a FOB while planning Protect makes it the defended site.'],
     ],
