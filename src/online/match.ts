@@ -13,6 +13,7 @@ import type { MatchState, Point, Squadron } from '../game/types'
 import { createStartingKnowledge, generateCampaignWorld } from '../game/world'
 import { terrainKnownWithin } from '../game/terrain'
 import { friendlyTerritoryForAssets } from '../game/territory'
+import { packDisplayTerrain } from './displayTerrain'
 import type { OnlineAction, OnlineOrder, OnlineView } from './protocol'
 
 export type SeatIndex = 0 | 1
@@ -76,6 +77,7 @@ export function playerView(game: OnlineMatch, index: SeatIndex): OnlineView {
         bounds: world.presentationBounds, presentationBounds: world.presentationBounds,
         terrain:terrainKnownWithin(world.terrain,match.mappedAreas,2.65,friendlyTerritoryForAssets(world.friendlyTerritory,match.playerAssets)) },
     },
+    displayTerrain: packDisplayTerrain(world.terrain),
     matchId: game.id,
     revision: seat.revision,
     joined: Boolean(game.seats[1].tokenHash),

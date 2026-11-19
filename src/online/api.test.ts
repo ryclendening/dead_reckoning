@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from 'vitest'
 import { handleOnlineRequest, type MatchStore } from './api'
-import { applyOnlineAction, newOnlineMatch, type OnlineMatch } from './match'
+import { applyOnlineAction, newOnlineMatch, playerView, type OnlineMatch } from './match'
+import { unpackDisplayTerrain } from './displayTerrain'
 import type { OnlineAction, OnlineEntry, OnlineOrder, OnlineResponse } from './protocol'
 import { generateRouteTemplate } from '../game/routeTemplates'
 import { deriveRecoveryPlanningView } from '../game/forwardBasing'
@@ -58,6 +59,20 @@ function plannedOrder(player: OnlineResponse, destination: Point): OnlineOrder {
 }
 
 describe('invite-only online campaign API', () => {
+  it('shares relief across seats without changing private deployment or surveyed terrain', () => {
+    const game = newOnlineMatch('0'.repeat(32), hostToken, 'ABCD2345', 123)
+    const host = playerView(game, 0)
+    const guest = playerView(game, 1)
+    expect(host.displayTerrain).toBe(guest.displayTerrain)
+    const display = unpackDisplayTerrain(host.displayTerrain)!
+    const source = game.seats[0].match.world.terrain!
+    expect(display.cells).toEqual(source.cells)
+    expect(host.match.world.terrain!.cells.length).toBeLessThan(display.cells.length)
+    expect(host.match.world.seed).toBe(0)
+    expect(host.match.enemyAssets).toEqual([])
+    expect(host.match.world.friendlyTerritory.center).not.toEqual(guest.match.world.friendlyTerritory.center)
+  })
+
   it('parses bomber orders but rejects malformed release indices at the server boundary', async () => {
     const {request,store}=fixture()
     const host=await fetchEntry(request('matches',{token:hostToken}))

@@ -34,10 +34,9 @@ function noise(x: number, z: number) {
     mix(hash(ix, iz + 1), hash(ix + 1, iz + 1), u), v)
 }
 
-// Keep all samples on one world-space lattice. Uncharted space needs only
-// a coarse apron, and newly mapped regions join the same surface seamlessly.
+// Subdivide each terrain cell and use a coarse mesh on the surrounding apron.
 function sampleAxis(min: number, max: number, first: number, last: number) {
-  const step = .125
+  const step = .1875
   const start = Math.ceil(Math.max(min + 1e-5, first - 1.1) / step)
   const end = Math.floor(Math.min(max - 1e-5, last + 1.1) / step)
   const coordinates = [min]

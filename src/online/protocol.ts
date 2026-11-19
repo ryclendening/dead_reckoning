@@ -16,6 +16,8 @@ export interface OnlineSession { matchId: string; token: string }
 
 export interface OnlineView {
   match: MatchState
+  /** Shared relief for display. Surveyed terrain for rules remains in match.world. */
+  displayTerrain?: string
   matchId: string
   revision: number
   joined: boolean

@@ -40,10 +40,9 @@ The nominal sortie window is 22 simulated seconds. Execution continues while rec
 
 - New campaigns use a deterministic, saved terrain layout selected from coast, highlands, and islands. Starting territories have clear deployment footprints; seeded starting positions and opposing bases vary with the campaign seed. Existing saves and deterministic tactical fixtures without a terrain snapshot retain their original flat geography and do not reroll.
 - Water and mountains block initial asset placement and construction. Airfields require a larger clear land footprint than other sites. Placement uses only surveyed or owned terrain; unknown terrain is not assumed clear.
-- The battlefield draws surveyed terrain as a continuous 3D relief surface with rugged mountain ridges, sloped shores, beaches, and coastal shallows. Fog follows that surface. The relief is visual, and waypoint and placement coordinates use the tactical map plane.
-- A light veil leaves surveyed relief readable outside current observation. Unexplored ground uses a neutral map surface. Enemy contacts follow sensor visibility separately.
+- The battlefield draws the full terrain layout as continuous 3D relief with mountain ridges, beaches, and coastal shallows. Fog dims the relief outside mapped and observed areas without concealing its shape. Waypoints and placement use the tactical map plane.
 - Aircraft cross water at normal fuel cost and cross mountains at 1.5 times the normal fuel cost, without a speed change. Planning estimates only known mountain crossings; execution consumes fuel against the actual terrain and can force recovery or fuel exhaustion.
-- The CPU receives only its surveyed terrain plus its owned territory. Online player views omit the seed and full terrain grid and include only surveyed or owned cells. During a completed online round, newly recovered terrain is available with the round result rather than revealed at its exact observation time.
+- The CPU receives surveyed and owned terrain for its decisions. Both online players receive the same topography for display, with the seed and enemy placements kept private. Order and construction validation still use each side's surveyed and owned terrain.
 
 ## Forces
 
@@ -208,8 +207,8 @@ Direct fighter combat interrupts a fighter's recon pursuit. When combat or pursu
 - Enemy AAA, SAM and radar sites (plus decoys in legacy/debug layouts) use seeded individual placements around their base, with at least 1.15 units between sites and at least .5 units of world-edge clearance. AAA lies 1.2–1.9 units from its base, SAM 1.8–3.2, radar 2–4, and decoy 2.5–4. Seeded CPU deployments place the radar where it links both starting weapons. Player asset sites remain manually selected during Deploy.
 - Layout generation is deterministic for a stored seed. New Campaign and campaign Reboot obtain fresh random seeds. Compatible saves keep their existing world, deployed sites, and committed CPU orders; loading does not reroll them. Tactical debug fixtures retain their legacy deterministic positions.
 - Planning and camera limits derive from recovered knowledge plus an exploration margin, not from hidden world bounds.
-- Friendly territory is initially known. Most other terrain is obscured by a continuous, feathered haze, while generic terrain remains faintly visible.
-- During execution, living friendly formations reveal terrain around their rendered positions; recon's live terrain reveal is larger than a fighter's. Recon mapping is accumulated from its executed route, not revealed at Commit.
+- Friendly territory is initially surveyed. Actual terrain under the feathered haze remains visible, while enemy aircraft and sites follow their own detection rules.
+- During execution, living friendly formations lighten the haze around their positions. Recon's live area is larger than a fighter's. Its recovered flight path extends the surveyed area used for fuel estimates and construction.
 - World edges constrain movement but are not discovered by aircraft; the true bounds are not shown as map lines. Compatible older saves may retain boundary reports recovered by earlier builds.
 - Persistent mapped areas remain lighter on the 3D battlefield in later rounds.
 - Ground-radar-only contacts appear as amber uncertainty markers with stable, sortie-local IDs such as **TRACK 01 · UNKNOWN AIRCRAFT**. IDs are allocated from acquired contacts only and count formations, not individual aircraft; multiple sensors observing one formation do not create duplicate tracks. Visual contact identifies callsign and role and labels the current fighter type **MiG-23**; the generic recon has no named airframe and is labeled **RECON AIRCRAFT**. Visual models and health cards expose current aircraft counts and strength.
@@ -300,7 +299,6 @@ Available fixtures:
 - CPU v2 uses analytic package estimates rather than opponent rollouts or a campaign game tree. Competitive ordering remains a tuning question; deterministic scenarios and paired scripted campaigns do not establish a universal Hard > Medium > Easy ordering or substitute for authorized human playtests. Unsupported CPU decoy benefits remain inactive. CPU escort candidates still require the complete drawn recon route to fit fighter recovery/range; fuel-limited partial escort prefixes are not yet enumerated.
 - Legacy in-sortie reinforcement, reserve inventories, service, rearm, and readiness restoration exist in code or tests but are not connected to the current UI flow. The Resupply actions listed above are authoritative.
 - The managed Site still uses the static build. The server-backed online build can run on the supplied Node/SQLite server or the local Worker/D1 prototype.
-- Online terrain replay does not yet time each newly observed terrain cell against the replay clock. Recovered mapping is exposed with the completed round result.
 - The README contains older and aspirational mechanics. This document takes precedence for current gameplay.
 
 
@@ -310,13 +308,15 @@ This log keeps only current net changes. Superseded intermediate states belong i
 
 ### 2026-11-19
 
+- Made mountains, shorelines, and islands visible beneath fog from the start of the campaign. Survey status still affects construction and fuel estimates. Enemy contacts remain gated by detection.
+
 - Fixed patrol sizing to reserve return fuel before accepting the on-station pattern, including Protect points in fog. Deployment and construction previews reuse surveyed terrain across candidate hexes. Lightened fog over the battlefield so mapped relief stays readable between sorties.
 
 ### 2026-11-18
 
 - Replaced tile water and isolated mountain markers with continuous coastlines, shaded mountain relief, and textured land and water. Fog follows the terrain surface, and route waypoints remain visible over the relief.
 
-- Added saved, seeded coast, highlands, and islands campaign maps with protected clear deployment regions and seed-varied starts. Water and mountains reject construction; airfields require a larger clear footprint. Flight planning, CPU route search, and recovery estimate known mountain fuel at 1.5×, and execution applies actual terrain fuel while preserving flight speed. Fog-aware map rendering shows only surveyed or owned terrain; online views strip the world seed and full grid. Online terrain replay still reveals recovered cells with the completed result rather than at observation time.
+- Added saved, seeded coast, highlands, and islands campaign maps with clear deployment regions and varied starts. Water and mountains reject construction, and airfields require a larger clear footprint. Flight planning, CPU route search, and recovery estimate surveyed mountain fuel at 1.5×. Execution charges for actual terrain while preserving flight speed.
 
 - Made long-range radar emissions detectable by Recon only. Fighters and bombers can still confirm radar sites they spot from within their normal 3.8-unit observation radius and report after landing.
 

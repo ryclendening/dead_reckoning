@@ -164,7 +164,7 @@ void main(){
   float observed=smoothstep(0.6,1.0,knowledge);
   vec2 world=vec2(mix(uWorldBounds.x,uWorldBounds.y,vUv.x),mix(uWorldBounds.w,uWorldBounds.z,vUv.y));
   float noise=(valueNoise(world*0.285)+0.45*valueNoise(world*1.25))/1.45-0.5;
-  float alpha=mix(0.38,0.14,mapped);
+  float alpha=mix(0.31,0.14,mapped);
   alpha=mix(alpha,0.025,observed);
   alpha+=noise*mix(0.052,0.018,mapped)*(1.0-observed);
   vec3 color=mix(vec3(0.19,0.22,0.20),vec3(0.20,0.24,0.22),mapped);
