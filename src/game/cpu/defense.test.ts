@@ -22,7 +22,7 @@ function fixture(angle=0, role:'fighter'|'recon'='fighter', seed=7301):MatchStat
     world:{...s.world,friendlyTerritory:{center:p(20),radius:4.5},bounds:{minX:-45,maxX:45,minZ:-45,maxZ:45}},
     cpu:{...s.cpu!,plan:undefined,intent:undefined,logistics:16,reserves:0,sites:[],mappedAreas:[p(8),p(11)],
       formations:s.cpu!.formations.map(f=>({...f,route:[[0,0]],routeIngress:[[0,0]]})),
-      traffic:[{identity:'observed',role,position:p(8),source:'visual',strength:100,aircraft:4,observedRound:2,bearing:angle}]}}
+      traffic:[{identity:'observed',role,position:p(role==='recon'?4:8),source:'visual',strength:100,aircraft:4,observedRound:2,bearing:angle}]}}
 }
 function holdCpu(s:MatchState):MatchState {
   return {...s,phase:'plan',cpu:{...s.cpu!,plan:{round:s.round,objective:'defend',reason:'Ground defense execution.',candidates:[],orders:s.cpu!.formations.map(f=>({...f,sortieOrdered:false}))}}}
@@ -129,8 +129,10 @@ describe('territory-aware defensive capabilities',()=>{
     expect(defenseBenefits({...view,homeHealth:100,cpu:{...view.cpu,traffic:[contact,radar]}},[4.05,0],'sam').opponentAttrition).toBe(0)
     const hidden={...quiet,playerAssets:quiet.playerAssets.map(a=>({...a,position:[-19,5] as Point})),squadrons:quiet.squadrons.map(f=>({...f,strength:1,aircraft:1}))}
     expect(maintainCpu(hidden).cpu!.adaptTrace).toEqual(maintainCpu(quiet).cpu!.adaptTrace)
-    const covered={...view,assets:[...view.assets,{...view.assets[0],id:'existing-a',kind:'sam' as const,position:[4.05,0] as Point},{...view.assets[0],id:'existing-b',kind:'sam' as const,position:[4.05,1.5] as Point}]}
-    expect(defenseBenefits(covered,[4.05,-1.5],'sam').reconDenial).toBeLessThan(e.reconDenial)
+    const weakened={...view,cpu:{...view.cpu,traffic:view.cpu.traffic.map(t=>({...t,strength:40}))}}
+    const covered={...weakened,assets:[...view.assets,{...view.assets[0],id:'existing-a',kind:'sam' as const,position:[4.05,0] as Point},{...view.assets[0],id:'existing-b',kind:'sam' as const,position:[4.05,1.5] as Point}]}
+    expect(defenseBenefits(covered,[4.05,-1.5],'sam').reconDenial)
+      .toBeLessThan(defenseBenefits(weakened,[4.05,-1.5],'sam').reconDenial)
     expect(legalPlacements(view,'sam').every(p=>validateAssetPlacement(view.context,'sam',p).valid)).toBe(true)
   })
 })

@@ -11,7 +11,7 @@ import { Billboard, Html, Line, MapControls, Text, useGLTF, useTexture } from '@
 import * as THREE from 'three'
 import type { MapControls as MapControlsImpl } from 'three-stdlib'
 import { EXECUTION_SECONDS } from '../game/engine'
-import { projectGroundAssetAt, projectFriendlyUnitAt, projectHostileUnitAt, sampleUnitTrack, sampleUnitTrackForRender, unitTrackFor, type HostileUnitProjection } from '../game/executionProjection'
+import { observedGroundSiteIdsAt, projectGroundAssetAt, projectFriendlyUnitAt, projectHostileUnitAt, sampleUnitTrack, sampleUnitTrackForRender, unitTrackFor, type HostileUnitProjection } from '../game/executionProjection'
 import { axialToPoint, HEX_RADIUS, snapToHex } from '../game/hex'
 import { deriveFogMaskSize, MAPPED_RADIUS, updateLiveFogMask, updatePersistentFogMask } from '../game/fog'
 import { fighterEngagementPresentationAt } from '../game/engagementPresentation'
@@ -765,7 +765,7 @@ function BattlefieldScene({squadrons,assets,playerAssets,mappedAreas,presentatio
   const replayWeaponEffects=executionResult?.weaponEffects??[]
   const eventEnemyIds=(executionResult?.enemyFlights??[]).filter(flight=>activeEvent?.detail.includes(flight.callsign)).map(flight=>flight.id)
   const visibleActiveEvent=activeEvent&&(eventEnemyIds.length===0||enemyVisibleFor(eventEnemyIds))?activeEvent:undefined
-  const observedAssetIds=new Set((executionResult?.contactObservations??[]).filter(o=>phase==='execute'&&seconds>=o.start&&seconds<=o.end&&o.targetId.startsWith('e-')).map(o=>o.targetId))
+  const observedAssetIds=observedGroundSiteIdsAt(phase==='execute'&&!groundAssetsProjected?executionResult:undefined,seconds)
   const liveMapObservations=useMemo(()=>{
     if(phase!=='execute')return EMPTY_MAP_OBSERVATIONS
     const observations=squadrons.flatMap(squadron=>{

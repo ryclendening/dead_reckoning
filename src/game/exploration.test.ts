@@ -5,19 +5,56 @@ import {beginNextRound,openAdaptPhase} from './economy'
 import {deriveRecoveryPlanningView,formationField,routeToRecoveryField,validateRecoveryPackage} from './forwardBasing'
 import {flightRangeFor} from './flightRules'
 import {generateRouteTemplate} from './routeTemplates'
+import {observedGroundSiteIdsAt} from './executionProjection'
+import {RADAR_BASE_RANGE} from './equipmentRules'
 import type {Asset,Point} from './types'
 
 const edgeRoute=(match:ReturnType<typeof createMatch>):Point[]=>{const base=match.world.friendlyTerritory.center;return [base,[base[0],base[1]>=0?match.world.bounds.minZ-8:match.world.bounds.maxZ+8]]}
 const onlyRaven=(match:ReturnType<typeof createMatch>)=>({...match,squadrons:match.squadrons.map(squadron=>squadron.id==='raven'?{...squadron,mission:'search-area' as const,route:edgeRoute(match),routeIngress:edgeRoute(match)}:{...squadron,aircraft:0,strength:0})})
 
 describe('reconnaissance exploration recovery',()=>{
+  it.each(['raven','viper'] as const)('spots operating radar beyond radar coverage on a %s sortie', id => {
+    const state=createMatch(7301)
+    const home:Point=[0,0], leg:Point[]=[home,[0,6.25],home]
+    const base={...state.enemyAssets.find(asset=>asset.kind==='base')!,position:[0,13.75] as Point}
+    const radar={...state.enemyAssets.find(asset=>asset.kind==='radar')!,position:[1.6,13.75] as Point}
+    const offlineRadar={...radar,id:'e-offline-radar',position:[-1.6,13.75] as Point,operational:false}
+    state.playerAssets=state.playerAssets.filter(asset=>asset.kind==='base').map(asset=>({...asset,position:home}))
+    state.enemyAssets=[base,radar,offlineRadar]
+    state.squadrons=state.squadrons.map(formation=>({...formation,sortieOrdered:formation.id===id,
+      mission:'transit',route:leg,routeIngress:leg,plannedRecoveryFieldId:'p-base'}))
+    state.cpu!.plan={round:state.round,objective:'defend',reason:'Isolate ground observation',candidates:[],
+      orders:state.cpu!.formations.map(formation=>({...formation,sortieOrdered:false}))}
+
+    const simulation=createRoundSimulation(state)
+    expect(observedGroundSiteIdsAt(simulation.result,0).size).toBe(0)
+    while(!simulation.complete&&!observedGroundSiteIdsAt(simulation.result,simulation.result.duration).has(radar.id))simulation.advance()
+    expect(simulation.complete).toBe(false)
+    const frame=simulation.result.unitTracks.find(track=>track.unitId===id)!.frames.at(-1)!
+    const separation=Math.hypot(frame.position[0]-radar.position[0],frame.position[1]-radar.position[1])
+    expect(separation).toBeGreaterThan(RADAR_BASE_RANGE)
+    expect(simulation.result.contactObservations.find(observation=>observation.targetId===radar.id)?.source)
+      .toBe(id==='raven'?'visual':'radar')
+    expect(simulation.result.intelReports).toEqual([])
+    expect(simulation.result.assets.find(asset=>asset.id===radar.id)?.hidden).toBe(true)
+
+    while(!simulation.complete)simulation.advance()
+    expect(simulation.result.cpuReport!.traffic).toEqual([])
+    const expected=id==='raven'?[base.id,radar.id,offlineRadar.id]:[radar.id]
+    expect(simulation.result.intelReports.filter(report=>report.recovered).map(report=>report.assetId))
+      .toEqual(expect.arrayContaining(expected))
+    expect(simulation.result.intelReports).toHaveLength(expected.length)
+    expect(observedGroundSiteIdsAt(simulation.result,simulation.result.duration).size).toBe(0)
+    expect(applyRound(state,simulation.result).enemyAssets.find(asset=>asset.id===radar.id)?.intel).toBe('confirmed')
+  })
+
   it('stages recon at a FOB, then launches from it and recovers outbound and return observations at home', () => {
     const state = createMatch(7301)
     const home: Asset = { ...state.playerAssets.find(asset => asset.kind === 'base')!, position: [0,0] }
     const fob: Asset = { ...home, id: 'p-fob-1', kind: 'fob', position: [6,0], operational: true, capacity: 2, basedFormationIds: [] }
     const enemyBase: Asset = { ...state.enemyAssets.find(asset => asset.kind === 'base')!, position: [15,12] }
-    const outboundSite: Asset = { ...enemyBase, id: 'e-outbound-radar', kind: 'radar', position: [6,7] }
-    const returnSite: Asset = { ...outboundSite, id: 'e-return-radar', position: [1,8] }
+    const outboundSite: Asset = { ...enemyBase, id: 'e-outbound-radar', kind: 'radar', position: [6,9] }
+    const returnSite: Asset = { ...outboundSite, id: 'e-return-radar', position: [-5,9] }
     const detour: Point = [2,-2]
     state.playerAssets = [home,fob]
     state.enemyAssets = [enemyBase,outboundSite,returnSite]
@@ -47,7 +84,7 @@ describe('reconnaissance exploration recovery',()=>{
     expect(formationField(next.playerAssets,raven.id)?.id).toBe(fob.id)
     const basedRecon = next.squadrons.find(formation => formation.id === raven.id)!
     expect(basedRecon.routeIngress).toEqual([fob.position])
-    const ingress: Point[] = [fob.position,outboundSite.position,[9,7]]
+    const ingress: Point[] = [fob.position,outboundSite.position,[9,9]]
     const route = generateRouteTemplate({ template: 'search-area', ingress,
       maxDistance: flightRangeFor(basedRecon), bounds: next.world.presentationBounds }).route
     expect(route).toEqual(ingress)

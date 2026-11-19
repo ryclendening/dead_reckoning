@@ -33,7 +33,7 @@ import { DebriefLegend, DebriefSymbol } from './components/DebriefSymbols'
 import { missionOrderDebrief } from './game/missionDebrief'
 export { normalizeMatch }
 import { withoutLastPlanningWaypoint, viablePlanningFormationIds } from './game/planningQueue'
-import { projectGroundAssetAt, projectOnlineGroundReplay } from './game/executionProjection'
+import { observedGroundSiteIdsAt, projectGroundAssetAt, projectOnlineGroundReplay } from './game/executionProjection'
 import {createScenario} from './game/scenarios'
 import { deriveKnownEnvelope, derivePlanningEnvelope } from './game/world'
 import { friendlyTerritoryForAssets } from './game/territory'
@@ -253,7 +253,7 @@ export default function App(){
   const pickingGroundTarget=!waitingOnPlan&&(isGroundStrikeTargeting(match.phase,selected,planningStep)||planningStep==='target'&&isBomberTargeting(match.phase,selected,planningStep))
   const inspectionResult=executionResult??(match.phase==='debrief'?match.lastResult:undefined)
   const inspectionSeconds=replayActive?replaySeconds:inspectionResult?.duration??0
-  const observedAssetIds=new Set(match.phase==='execute'?(liveResult?.contactObservations??[]).filter(observation=>observation.start<=liveResult!.duration&&observation.end>=liveResult!.duration).map(observation=>observation.targetId):[])
+  const observedAssetIds=observedGroundSiteIdsAt(match.phase==='execute'?liveResult:undefined,inspectionSeconds)
   const selectedAsset=[...replayMatch.playerAssets,...replayMatch.enemyAssets.filter(asset=>!asset.hidden&&asset.intel!=='unknown'||observedAssetIds.has(asset.id))].find(asset=>asset.id===selectedAssetId)
   const inspectionAsset=selectedAsset&&(projectedGround?selectedAsset:replayActive?projectGroundAssetAt(selectedAsset,onlineRound,replaySeconds):[...inspectionResult?.playerAssets??[],...inspectionResult?.assets??[]].find(asset=>asset.id===selectedAsset.id)??selectedAsset)
   const inspectedAsset=inspectionAsset&&observedAssetIds.has(inspectionAsset.id)&&inspectionAsset.intel==='unknown'?{...inspectionAsset,intel:'probable' as const,hidden:false,confidence:70}:inspectionAsset

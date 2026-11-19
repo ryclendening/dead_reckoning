@@ -13,15 +13,16 @@ import { groundAttackDamage } from './strikeRules'
 import { facingAfterMove } from './heading'
 import { aircraftAtStrength, EXECUTION_SECONDS, MAX_FLIGHT_DISTANCE, flightRangeFor, flightSpeedFor, missionDistance, routeDistance } from './flightRules'
 import { aircraftSensorRange, aircraftType } from './aircraftTypes'
+import { groundObservationRange, siteObservationRange } from './siteObservation'
 import { defenseProfile, effectiveDefenseProfile, inCoverageCircle, radarRange, RADAR_BASE_RANGE, SAM_FLIGHT_SECONDS, AAA_FLIGHT_SECONDS, AAA_BURST_INTERVAL, SAM_DEPLOYMENT_LIMIT } from './equipmentRules'
 import { cpuFlights, cpuReportAt } from './cpu/planner'
 import { settleCpuRound } from './cpu/settlement'
 import type { CpuSiteReport, CpuTraffic } from './cpu/types'
 export { EXECUTION_SECONDS, FLIGHT_SPEED, MAX_FLIGHT_DISTANCE, missionDistance, routeDistance } from './flightRules'
+export { FIXED_ASSET_OBSERVATION_RANGE } from './siteObservation'
 
 export const SENSOR_RANGE: Record<Squadron['role'], number>={fighter:aircraftType(undefined,'fighter').sensorRange,recon:aircraftType(undefined,'recon').sensorRange,bomber:aircraftType(undefined,'bomber').sensorRange}
 export const RADAR_RANGE=RADAR_BASE_RANGE
-export const FIXED_ASSET_OBSERVATION_RANGE=3.8
 const MAX_EXECUTION_SECONDS=90
 const FIGHTER_MERGE_RANGE=1.2
 export const REINFORCEMENT_OPTIONS:Record<ReinforcementType,{label:string;scoreCost:number;commandCost:number;reserveCost:number;summary:string}>={
@@ -430,6 +431,21 @@ function* simulateRoundTicks(state:MatchState, recordOpponentView:boolean):Gener
   const liveResult=(duration:number):RoundResult=>({round:state.round,duration:Math.max(TICK_SECONDS,duration),tickSeconds:TICK_SECONDS,unitTracks:units.map(u=>({unitId:u.id,frames:u.frames})),contactIntervals:intervals,behaviorIntervals:behavior.map(item=>openBehavior.get(item.unitId)===item?{...item,end:duration}:item),events,squadrons,assets,enemyLosses:0,friendlyLosses:0,friendlyAttrition:[],enemyAttrition:[],friendlyFormationsDestroyed:0,enemyFormationsDestroyed:0,intelGained:[],baseDamage,enemyBaseDamage,logisticsIncome:{base:0,intel:0,enemyAircraft:0,total:0},command:state.command,executionRoutes:Object.fromEntries(units.map(u=>[u.id,u.frames.map(f=>f.position)])),enemyFlights:flights.map(f=>({...f,detectionWindows:intervals.filter(i=>i.targetId===f.id).map(i=>({start:i.start/Math.max(TICK_SECONDS,duration),end:i.end/Math.max(TICK_SECONDS,duration),source:i.source,observer:i.observerId}))})),defenseCues:[],defensiveAwareness:0,lessons:[],playerAssets,reinforcementCalls:[],roundScore:0,baseExposure,baseExposureDelta,combatSequences:sequences,activeDogfights:activeEngagements.filter(engagement=>engagement.kind==='dogfight').map(activeDogfightPresentation),weaponEffects:[...effects,...activeEngagements.flatMap(engagement=>engagement.effects)],contactObservations:observations,interceptPlans:plans,intelReports:[],mappedAreas:[],discoveredBoundaries:[],recoveryOutcomes:[],simulationCommands:commands,threatAlerts})
   const groundSightings: [import('./types').GroundSiteSighting[], import('./types').GroundSiteSighting[]] = [[], []]
   const latestSightings: [Map<string, import('./types').GroundSiteSighting>, Map<string, import('./types').GroundSiteSighting>] = [new Map(), new Map()]
+  const latestObservations = new Map<SimUnit, Map<string, ContactObservation>>()
+  const recordObservation = (observer: SimUnit, asset: Asset, separation: number, time: number) => {
+    const source = separation > groundObservationRange(observer.role) ? 'radar' : 'visual'
+    let sightings = latestObservations.get(observer)
+    if (!sightings) { sightings = new Map(); latestObservations.set(observer, sightings) }
+    const last = sightings.get(asset.id)
+    if (last && last.source === source && time - last.end <= TICK_SECONDS + .000001) {
+      last.end = time
+      return
+    }
+    const observation: ContactObservation = { id: `ground-observation-${observations.length}`, observerId: observer.id,
+      targetId: asset.id, position: [...asset.position], start: time, end: time, source, confidence: 70, recovered: false }
+    observations.push(observation)
+    sightings.set(asset.id, observation)
+  }
   const recordGroundSighting = (asset: Asset, side: 0 | 1, time: number) => {
     const last = latestSightings[side].get(asset.id)
     if (last && time-last.end <= TICK_SECONDS+.000001 && last.asset.health === asset.health && last.asset.operational === asset.operational) {
@@ -716,7 +732,22 @@ function* simulateRoundTicks(state:MatchState, recordOpponentView:boolean):Gener
     // no pre-combat target or pursuit intent survives this point.
     for(const unit of released.sort((a,b)=>a.id.localeCompare(b.id)))evaluateReaction(unit)
     for(const unit of units.filter(unit=>unit.mode==='destroyed'))releaseClaim(unit)
-    for(const observer of units.filter(u=>!terminal(u)))for(const asset of observer.friendly?assets:(isCampaign(state)?playerAssets:[]))if(distance(observer.position,asset.position)<=FIXED_ASSET_OBSERVATION_RANGE){observer.observed.add(asset.id);if(recordOpponentView)recordGroundSighting(asset,observer.friendly?0:1,time);if(cpuActive&&!observer.friendly){const reports=cpuSites.get(observer.id)??new Map<string,CpuSiteReport>();reports.set(asset.id,cpuReportAt(asset,state.round,time));cpuSites.set(observer.id,reports)}}
+    for (const observer of units) {
+      if (terminal(observer)) continue
+      const opposingSites = observer.friendly ? assets : isCampaign(state) ? playerAssets : []
+      for (const asset of opposingSites) {
+        const separation = distance(observer.position, asset.position)
+        if (separation > siteObservationRange(observer.role, asset)) continue
+        observer.observed.add(asset.id)
+        if (recordOpponentView) recordGroundSighting(asset, observer.friendly ? 0 : 1, time)
+        else if (observer.friendly) recordObservation(observer, asset, separation, time)
+        if (cpuActive && !observer.friendly) {
+          const reports = cpuSites.get(observer.id) ?? new Map<string, CpuSiteReport>()
+          reports.set(asset.id, cpuReportAt(asset, state.round, time))
+          cpuSites.set(observer.id, reports)
+        }
+      }
+    }
     record(time)
     if(time>=22&&units.every(terminal)&&activeEngagements.length===0&&pendingImpacts.length===0)break
     if(time>=60&&!units.some(unit=>unit.mode==='stranded')&&pendingImpacts.length===0)break
@@ -737,6 +768,7 @@ function* simulateRoundTicks(state:MatchState, recordOpponentView:boolean):Gener
   }
   for(const flight of flights){const cs=intervals.filter(i=>i.targetId===flight.id);flight.detectionWindows=cs.map(i=>({start:i.start/duration,end:i.end/duration,source:i.source,observer:i.observerId}));flight.identityLearnedAt=cs.find(i=>i.source==='visual')?.start}
   const recoveredRecon=units.filter(u=>u.friendly&&u.role==='recon'&&u.mode==='recovered')
+  for (const observation of observations) observation.recovered = byId.get(observation.observerId)?.mode === 'recovered'
   const recoveredCpu=units.filter(unit=>!unit.friendly&&unit.mode==='recovered')
   const recoveredSites = new Map(recoveredCpu.flatMap(unit => [...(cpuSites.get(unit.id)?.values() ?? [])]
     .map(report => ({ report, observerId: unit.id })))

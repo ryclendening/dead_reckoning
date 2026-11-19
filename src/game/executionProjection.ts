@@ -103,6 +103,12 @@ export function unitTrackFor(result: RoundResult | undefined, unitId: string): U
   return result?.unitTracks.find(track => track.unitId === unitId)
 }
 
+export function observedGroundSiteIdsAt(result: RoundResult | undefined, seconds: number): Set<string> {
+  return new Set((result?.contactObservations ?? [])
+    .filter(observation => observation.start <= seconds + 1e-6 && observation.end >= seconds - 1e-6)
+    .map(observation => observation.targetId))
+}
+
 export function contactProjectionAt(
   result: RoundResult | undefined,
   targetId: string,

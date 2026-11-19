@@ -1,6 +1,7 @@
 import { useId, useRef } from 'react'
 import type { Phase } from '../game/types'
 import { RADAR_PLACEMENT_HELP } from './DefenseSiteDetails'
+import { RECON_GROUND_OBSERVATION_RANGE, STANDARD_RADAR_EMISSION_OBSERVATION_RANGE } from '../game/siteObservation'
 
 type PlayPhase = 'deploy' | 'plan' | 'execute' | 'debrief' | 'adapt'
 
@@ -17,6 +18,7 @@ const help: Record<PlayPhase, { title: string; tips: [string, string][]; online?
     title: 'Planning',
     tips: [
       ['Choose a task', 'Tap an aircraft to choose a task. Recon flies the waypoints you plot. Ground Strike requires recovered intelligence on the target.'],
+      ['Spot ground sites', `Recon can spot ground sites within ${RECON_GROUND_OBSERVATION_RANGE} map units. Any airborne formation can pick up a standard operating radar within ${STANDARD_RADAR_EMISSION_OBSERVATION_RANGE} units.`],
       ['Budget fuel', 'You can add up to five waypoints per leg. Outbound travel, the mission pattern, and the return all use fuel. Shorten a leg if a waypoint exceeds the budget.'],
       ['Choose where to land', 'Tap a friendly airfield on Return, or tap it on Outbound during Transit. Tapping a FOB while planning Protect makes it the defended site.'],
     ],
@@ -26,10 +28,9 @@ const help: Record<PlayPhase, { title: string; tips: [string, string][]; online?
     title: 'Execution',
     tips: [
       ['Follow the action', 'Select a flight to track it. Free look lets you pan the map. Use 1× or 2× to change playback speed.'],
-      ['Read contacts', 'Radar can show a track before its aircraft type is identified.'],
+      ['Read contacts', 'Radar can show a track before its aircraft type is identified. Newly spotted ground sites appear while an aircraft can observe them.'],
       ['Watch for recovery', 'Conservative recon turns back when it sees an enemy fighter or comes under ground fire. Flights must land to bring their new intelligence home.'],
     ],
-    online: 'Newly spotted ground sites appear while they are in sight. Recover the observation to keep their coordinates.',
   },
   debrief: {
     title: 'Debrief',

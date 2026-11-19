@@ -1,7 +1,8 @@
 import { BASE_STRIKE_RANGE } from '../../src/game/campaign'
 import { generateRouteTemplate, validateGroundStrikeOrder } from '../../src/game/routeTemplates'
 import { contactTracksAt } from '../../src/game/contactTracks'
-import { createRoundSimulation, FIXED_ASSET_OBSERVATION_RANGE } from '../../src/game/engine'
+import { createRoundSimulation } from '../../src/game/engine'
+import { RECON_GROUND_OBSERVATION_RANGE } from '../../src/game/siteObservation'
 import { deriveRecoveryPlanningView, formationField } from '../../src/game/forwardBasing'
 import { MAX_FLIGHT_DISTANCE, routeDistance } from '../../src/game/flightRules'
 import type { Asset, MatchState, Point, RoundResult, SimulationCommand, Squadron } from '../../src/game/types'
@@ -93,7 +94,7 @@ export function playerRtbCommands(s:MatchState,live:RoundResult,nextTick:number)
     if(live.simulationCommands?.some(c=>c.unitId===f.id))continue
     const frame=live.unitTracks.find(t=>t.unitId===f.id)?.frames.at(-1)
     if(!frame||['recovered','destroyed','grounded','trapped','recovering'].includes(frame.mode))continue
-    const seenBase=live.assets.some(a=>a.kind==='base'&&distance(a.position,frame.position)<=FIXED_ASSET_OBSERVATION_RANGE)
+    const seenBase=live.assets.some(a=>a.kind==='base'&&distance(a.position,frame.position)<=RECON_GROUND_OBSERVATION_RANGE)
     const threatened=live.threatAlerts!.some(t=>t.unitId===f.id)
     if(seenBase||frame.strength<50||threatened&&frame.traveledDistance>8)commands.push({id:`script-rtb-r${s.round}-${f.id}`,unitId:f.id,type:'rtb',issuedAtTick:nextTick})
   }
