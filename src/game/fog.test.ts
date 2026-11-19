@@ -20,4 +20,17 @@ describe('fog mask sizing',()=>{
     expect(target[2*4+2]).toBe(255)
     expect(target[0]).toBe(0)
   })
+
+  it('clips observations at the texture edge and clears old visibility on buffer reuse',()=>{
+    const observation={position:[-1.9,1.9] as [number,number],radius:.9}
+    const input:FogMaskInput={mappedAreas:[],observations:[observation],width:8,height:8,presentationBounds:{minX:-2,maxX:2,minZ:-2,maxZ:2},friendlyTerritory:{center:[0,0],radius:1}}
+    const target=new Uint8Array(64)
+    updateLiveFogMask(input,target)
+    expect(target[0]).toBe(255)
+    expect(target[63]).toBe(0)
+
+    updateLiveFogMask({...input,observations:[{...observation,position:[1.9,-1.9]}]},target)
+    expect(target[0]).toBe(0)
+    expect(target[63]).toBe(255)
+  })
 })

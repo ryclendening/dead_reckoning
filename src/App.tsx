@@ -17,6 +17,7 @@ import { placeInitialAsset, validateInitialPlacement } from './game/campaignPlac
 import { confirmCampaignSetup, validateCampaignAllocation, SETUP_REQUIRED_ASSET_IDS } from './game/campaignSetup'
 import { applyRound, createRoundSimulation, EXECUTION_SECONDS, resolveRound, TICK_SECONDS, type RoundSimulationController } from './game/engine'
 import { flightRangeFor } from './game/flightRules'
+import { advanceReplayTime } from './game/frameClock'
 import { advanceToNextRound, economyCommandForQuote, economyQuotesFor, executeEconomyCommand, openAdaptPhaseImmediately, PROCUREMENT_CATALOG, validateAssetPlacement } from './game/economy'
 import { formatCash, LOGISTICS_EFFECTS } from './game/economyRules'
 import { snapToHex } from './game/hex'
@@ -546,8 +547,9 @@ export default function App(){
       setCompletedPlayback(playbackKey)
       try{localStorage.setItem(ONLINE_PLAYBACK_KEY,playbackKey)}catch{}
     }
+    const resetFrameTime=()=>{last=performance.now()}
     const tick=(now:number)=>{
-      elapsed=Math.min(onlineRound.duration,elapsed+Math.max(0,Math.min(100,now-last))/1000*speedRef.current)
+      elapsed=advanceReplayTime(elapsed,document.hidden?0:now-last,speedRef.current,onlineRound.duration)
       last=now
       if(now-lastPublish>=TICK_SECONDS*1000||elapsed>=onlineRound.duration){
         lastPublish=now
@@ -561,8 +563,9 @@ export default function App(){
       }
       frame=requestAnimationFrame(tick)
     }
+    document.addEventListener('visibilitychange',resetFrameTime)
     frame=requestAnimationFrame(tick)
-    return()=>{cancelAnimationFrame(frame);if(completionTimer!==undefined)clearTimeout(completionTimer)}
+    return()=>{document.removeEventListener('visibilitychange',resetFrameTime);cancelAnimationFrame(frame);if(completionTimer!==undefined)clearTimeout(completionTimer)}
   },[onlineRound,playbackKey,replayActive])
 
   const closeProcurement=()=>{setProcurementMode('closed');setProcurementActionId(undefined);setProcurementPlacement(undefined)}

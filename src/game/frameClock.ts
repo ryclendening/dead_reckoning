@@ -10,6 +10,11 @@ export function createFrameClock(time: number, wallTime = 0): FrameClock {
   return { time, target: time, lastTarget: time, lastTargetWallTime: wallTime, rate: 1 }
 }
 
+/** A late foreground frame still represents wall time spent watching the replay. */
+export function advanceReplayTime(elapsed: number, wallDeltaMs: number, speed: number, duration: number): number {
+  return Math.min(duration, elapsed + Math.max(0, wallDeltaMs) * speed / 1000)
+}
+
 /** Smoothly follows fixed simulation snapshots at their observed playback rate. */
 export function advanceFrameClock(clock: FrameClock, target: number, wallTime: number, delta: number): number {
   if(target===clock.lastTarget&&clock.lastTargetWallTime===0){clock.lastTargetWallTime=wallTime;clock.target=target;return clock.time}

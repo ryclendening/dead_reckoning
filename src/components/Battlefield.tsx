@@ -5,7 +5,7 @@ import { aircraftCardData, assetCardData, flightActivityLabel } from '../game/un
 import { samStatusForPhase, SAM_MISSILES_PER_ROUND } from '../game/airDefense'
 import { defenseProfile, effectiveDefenseProfile, isOperationalSite, radarRange, type EffectiveDefenseProfile } from '../game/equipmentRules'
 import { formatDefenseRange } from './DefenseSiteDetails'
-import { memo, Suspense, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
+import { createContext, memo, Suspense, useContext, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { Canvas, ThreeEvent, useFrame, useThree } from '@react-three/fiber'
 import { Billboard, Html, Line, MapControls, Text, useGLTF, useTexture } from '@react-three/drei'
 import * as THREE from 'three'
@@ -27,10 +27,13 @@ import { advanceFrameClock, createFrameClock, type FrameClock } from '../game/fr
 import { identifiedAircraftType } from '../game/contactTracks'
 import { groundAttackProfile } from '../game/strikeRules'
 import { aircraftType } from '../game/aircraftTypes'
-import type { FogMaskInput, MapObservation } from '../game/fog'
+import type { MapObservation } from '../game/fog'
 import { authorizedWeaponTarget, combatManeuver, combatWindow, headingAngle, sampledBank, weaponPath, weaponTangent, weaponTrail, weaponVisibleAt, weaponVisualLifecycle } from './graphicsPresentation'
 
 const friendly='#55d6df', amber='#d99a25', hostile='#de4f3f'
+const EMPTY_MAP_OBSERVATIONS:MapObservation[]=[]
+const PLANNING_DPR:[number,number]=[1,1.5]
+const LightweightAircraft=createContext(false)
 const airLossTitles=new Set(['AIRCRAFT LOST','PURSUIT LOSS','ENEMY AIRCRAFT LOST','FIGHTER FORMATION LOST','OPENING-FIRE KILL','RECON DESTROYED'])
 const airDamageTitles=new Set(['DAMAGE REPORTED','OVEREXTENSION DAMAGE'])
 const groundDamageTitles=new Set(['WEAPONS IMPACT','TARGET DESTROYED','HOME BASE STRUCK','ENEMY BASE STRUCK','GROUND TARGET STRUCK','DEFENSE SITE DAMAGED'])
@@ -175,12 +178,25 @@ const FogOfWar=memo(function FogOfWar({mappedAreas,observations,presentationBoun
   const liveData=useMemo(()=>new Uint8Array(size.width*size.height),[size.height,size.width])
   const persistentTexture=useMemo(()=>makeFogTexture(persistentData,size.width,size.height),[persistentData,size.height,size.width])
   const liveTexture=useMemo(()=>makeFogTexture(liveData,size.width,size.height),[liveData,size.height,size.width])
-  const lastLiveUpdate=useRef(-Infinity)
-  const persistentInput=useMemo<FogMaskInput>(()=>({mappedAreas,observations:[],width:size.width,height:size.height,presentationBounds,friendlyTerritory}),[friendlyTerritory.center[0],friendlyTerritory.center[1],friendlyTerritory.radius,mappedAreas,presentationBounds.maxX,presentationBounds.maxZ,presentationBounds.minX,presentationBounds.minZ,size.height,size.width])
-  const latestLiveInput=useRef<FogMaskInput>({mappedAreas:[],observations:[],width:size.width,height:size.height,presentationBounds,friendlyTerritory})
-  useEffect(()=>{latestLiveInput.current={mappedAreas:[],observations,width:size.width,height:size.height,presentationBounds,friendlyTerritory}},[friendlyTerritory,observations,presentationBounds,size.height,size.width])
-  useEffect(()=>{updatePersistentFogMask(persistentInput,persistentData);persistentTexture.needsUpdate=true},[persistentData,persistentInput,persistentTexture])
-  useFrame(({clock})=>{if(clock.elapsedTime-lastLiveUpdate.current<.05)return;lastLiveUpdate.current=clock.elapsedTime;updateLiveFogMask(latestLiveInput.current,liveData);liveTexture.needsUpdate=true})
+  const persistentMask=useRef<{texture:THREE.DataTexture;bounds:WorldBounds;areas:Point[];territory:string}|undefined>(undefined)
+  const lastLiveUpdate=useRef<{observations:MapObservation[];texture:THREE.DataTexture;bounds:WorldBounds;time:number}|undefined>(undefined)
+  useLayoutEffect(()=>{
+    // PvP ground projections can rebuild the territory object without moving its edges.
+    const territory=territoryRegions(friendlyTerritory).map(region=>[...region.center,region.radius].join(',')).join(';')
+    const last=persistentMask.current
+    if(last?.texture===persistentTexture&&last.bounds===presentationBounds&&last.areas===mappedAreas&&last.territory===territory)return
+    updatePersistentFogMask({...size,mappedAreas,observations:EMPTY_MAP_OBSERVATIONS,presentationBounds,friendlyTerritory},persistentData)
+    persistentTexture.needsUpdate=true
+    persistentMask.current={texture:persistentTexture,bounds:presentationBounds,areas:mappedAreas,territory}
+  },[friendlyTerritory,mappedAreas,persistentData,persistentTexture,presentationBounds,size])
+  useFrame(({clock})=>{
+    const last=lastLiveUpdate.current
+    const sameGrid=last?.texture===liveTexture&&last.bounds===presentationBounds
+    if(sameGrid&&(last.observations===observations||clock.elapsedTime-last.time<.05))return
+    updateLiveFogMask({...size,mappedAreas:[],observations,presentationBounds,friendlyTerritory},liveData)
+    liveTexture.needsUpdate=true
+    lastLiveUpdate.current={observations,texture:liveTexture,bounds:presentationBounds,time:clock.elapsedTime}
+  })
   useEffect(()=>()=>{persistentTexture.dispose();liveTexture.dispose()},[persistentTexture,liveTexture])
   const width=boundsWidth(presentationBounds),depth=boundsDepth(presentationBounds),center=boundsCenter(presentationBounds)
   const uniforms=useMemo(()=>({uPersistentMask:{value:persistentTexture},uLiveMask:{value:liveTexture},uWorldBounds:{value:new THREE.Vector4(presentationBounds.minX,presentationBounds.maxX,presentationBounds.minZ,presentationBounds.maxZ)}}),[liveTexture,persistentTexture,presentationBounds])
@@ -319,10 +335,12 @@ function Defense({asset,enemy=true,selected=false,missiles=SAM_MISSILES_PER_ROUN
 }
 
 const ROLE_UV:Record<Squadron['role'],{x:number;y:number;s:number}>={fighter:{x:1,y:2,s:.96},recon:{x:0,y:0,s:1.12},bomber:{x:0,y:2,s:1.3}}
-function AircraftTexture({role,color}:{role:Squadron['role'];color:string}){
+function AircraftTexture({role,color,enemy}:{role:Squadron['role'];color:string;enemy:boolean}){
   const base=useTexture('/assets/aircraft-atlas.png')
   const uv=ROLE_UV[role]??ROLE_UV.fighter
-  const texture=useMemo(()=>{const clone=base.clone();clone.needsUpdate=true;clone.repeat.set(.5,1/3);clone.offset.set(uv.x*.5,uv.y/3);return clone},[base,uv.x,uv.y])
+  const column=enemy&&role==='fighter'?0:uv.x
+  const texture=useMemo(()=>{const clone=base.clone();clone.needsUpdate=true;clone.repeat.set(.5,1/3);clone.offset.set(column*.5,uv.y/3);return clone},[base,column,uv.y])
+  useEffect(()=>()=>texture.dispose(),[texture])
   const scale=uv.s
   return <group rotation={[-Math.PI/2,0,Math.PI]} scale={[scale,scale,scale]}>
     <mesh position={[0,0,.011]} renderOrder={6}><planeGeometry args={[1.25,1.65]}/><meshBasicMaterial map={texture} transparent opacity={.94} depthWrite={false}/></mesh>
@@ -335,7 +353,7 @@ function FighterJet({enemy=false}:{enemy?:boolean}){
   const normalized=useMemo(()=>{
     const object=scene.clone(true);const box=new THREE.Box3().setFromObject(object);const size=box.getSize(new THREE.Vector3());const center=box.getCenter(new THREE.Vector3());const scale=1.55/Math.max(size.x,size.y,size.z)
     object.position.set(-center.x,-center.y,-center.z)
-    object.traverse(child=>{if(child instanceof THREE.Mesh){child.castShadow=true;child.receiveShadow=true;const material=child.material as THREE.MeshStandardMaterial;if(material&&'roughness' in material)material.roughness=Math.max(.28,material.roughness??.45)}})
+    object.traverse(child=>{if(child instanceof THREE.Mesh){child.castShadow=false;child.receiveShadow=true;const material=child.material as THREE.MeshStandardMaterial;if(material&&'roughness' in material)material.roughness=Math.max(.28,material.roughness??.45)}})
     return {object,scale}
   },[scene])
   const edge=enemy?hostile:friendly
@@ -345,15 +363,16 @@ function FighterJet({enemy=false}:{enemy?:boolean}){
   </group>
 }
 
-function PlaneModel({color=friendly,role='fighter',aircraftTypeId,enemy=false}:{color?:string,role?:Squadron['role'];aircraftTypeId?:string;enemy?:boolean}){
-  if(aircraftType(aircraftTypeId,role).model==='f16')return <Suspense fallback={<mesh><coneGeometry args={[.22,.82,5]}/><meshStandardMaterial color={color}/></mesh>}><FighterJet enemy={enemy}/></Suspense>
+const PlaneModel=memo(function PlaneModel({color=friendly,role='fighter',aircraftTypeId,enemy=false}:{color?:string,role?:Squadron['role'];aircraftTypeId?:string;enemy?:boolean}){
+  const lightweight=useContext(LightweightAircraft)
+  if(!lightweight&&aircraftType(aircraftTypeId,role).model==='f16')return <Suspense fallback={<mesh><coneGeometry args={[.22,.82,5]}/><meshStandardMaterial color={color}/></mesh>}><FighterJet enemy={enemy}/></Suspense>
   const body=role==='recon'?{f:.12,l:.95,w:1.36}:role==='bomber'?{f:.2,l:1.22,w:1.62}:{f:.15,l:.78,w:.96}
   return <group rotation={[0,Math.PI,0]}>
-    <AircraftTexture role={role} color={color}/>
-    <mesh castShadow rotation={[Math.PI/2,0,0]}><coneGeometry args={[body.f,body.l,5]}/><meshStandardMaterial color="#4b5251" emissive={color} emissiveIntensity={.05} metalness={.38} roughness={.42}/></mesh>
-    <mesh castShadow position={[0,0,.04]}><boxGeometry args={[body.w,.035,.14]}/><meshStandardMaterial color={color} metalness={.35} roughness={.45}/></mesh>
+    <Suspense fallback={null}><AircraftTexture role={role} color={color} enemy={enemy}/></Suspense>
+    <mesh rotation={[Math.PI/2,0,0]}><coneGeometry args={[body.f,body.l,5]}/><meshStandardMaterial color="#4b5251" emissive={color} emissiveIntensity={.05} metalness={.38} roughness={.42}/></mesh>
+    <mesh position={[0,0,.04]}><boxGeometry args={[body.w,.035,.14]}/><meshStandardMaterial color={color} metalness={.35} roughness={.45}/></mesh>
   </group>
-}
+})
 
 const formationSlots:[number,number,number][]=[[-.34,0,.26],[.34,0,.26],[-.2,0,-.28],[.2,0,-.28]]
 function AircraftSlot({id,index,position,role,aircraftTypeId,color,enemy,sceneClock,window}:{id:string;index:number;position:[number,number,number];role:Squadron['role'];aircraftTypeId?:string;color:string;enemy:boolean;sceneClock:FrameClock;window?:{start:number;end:number}}){
@@ -369,6 +388,7 @@ function AircraftFormation({id,role,aircraftTypeId,aircraft,color=friendly,enemy
 
 useGLTF.preload('/assets/f16.glb')
 useGLTF.preload('/assets/mig-23_mld.glb')
+useTexture.preload('/assets/aircraft-atlas.png')
 
 function SearchAreaOverlay({points,selected,tintColor}:{points:Point[];selected:boolean;tintColor?:string}){
   if(points.length<4)return null
@@ -522,6 +542,24 @@ function useSmoothExecutionTime(seconds:number){
   const clock=useRef(createFrameClock(seconds)),time=useRef(seconds)
   useFrame(({clock:frameClock},delta)=>{time.current=advanceFrameClock(clock.current,seconds,frameClock.elapsedTime,delta)})
   return time
+}
+
+// Use lighter aircraft for the rest of the battlefield session after sustained slow frames.
+function useLightweightAircraft(executing:boolean){
+  const [lightweight,setLightweight]=useState(false)
+  const sample=useRef({seconds:0,frames:0})
+  useFrame((_,delta)=>{
+    const current=sample.current
+    if(lightweight)return
+    if(!executing||document.hidden){current.seconds=0;current.frames=0;return}
+    current.seconds+=delta
+    current.frames++
+    if(current.seconds<1.25)return
+    if(current.frames/current.seconds<24)setLightweight(true)
+    current.seconds=0
+    current.frames=0
+  })
+  return lightweight
 }
 
 function useSceneVisualClock(seconds:number,clockKey:string){
@@ -707,6 +745,7 @@ function BattlefieldScene({squadrons,assets,playerAssets,mappedAreas,presentatio
     draft.current=next.map(point=>[...point] as Point)
   },[editPath])
   const seconds=progress*(executionResult?.duration??EXECUTION_SECONDS)
+  const lightweightAircraft=useLightweightAircraft(phase==='execute')
   const sceneClock=useSceneVisualClock(seconds,`${phase}:${executionResult?.round??'none'}`)
   const friendlyProjections=useMemo(()=>new globalThis.Map(phase==='execute'?squadrons.flatMap(squadron=>{const projection=projectFriendlyUnitAt(executionResult,squadron.id,seconds);return projection?[[squadron.id,projection] as const]:[]}):[]),[executionResult,phase,seconds,squadrons])
   const hostileProjections=useMemo(()=>new globalThis.Map(phase==='execute'?(executionResult?.enemyFlights??[]).flatMap(flight=>{const projection=projectHostileUnitAt(executionResult,flight.id,seconds);return projection?[[flight.id,projection] as const]:[]}):[]),[executionResult,phase,seconds])
@@ -727,11 +766,15 @@ function BattlefieldScene({squadrons,assets,playerAssets,mappedAreas,presentatio
   const eventEnemyIds=(executionResult?.enemyFlights??[]).filter(flight=>activeEvent?.detail.includes(flight.callsign)).map(flight=>flight.id)
   const visibleActiveEvent=activeEvent&&(eventEnemyIds.length===0||enemyVisibleFor(eventEnemyIds))?activeEvent:undefined
   const observedAssetIds=new Set((executionResult?.contactObservations??[]).filter(o=>phase==='execute'&&seconds>=o.start&&seconds<=o.end&&o.targetId.startsWith('e-')).map(o=>o.targetId))
-  const liveMapObservations:MapObservation[]=phase==='execute'?squadrons.flatMap(squadron=>{
-    const frame=friendlyProjections.get(squadron.id)?.frame
-    if(!frame||frame.aircraft<=0||frame.mode==='recovered'||frame.mode==='trapped')return []
-    return [{position:frame.position,radius:squadron.role==='recon'?2.7:1.45}]
-  }):[]
+  const liveMapObservations=useMemo(()=>{
+    if(phase!=='execute')return EMPTY_MAP_OBSERVATIONS
+    const observations=squadrons.flatMap(squadron=>{
+      const frame=friendlyProjections.get(squadron.id)?.frame
+      if(!frame||frame.aircraft<=0||frame.mode==='recovered'||frame.mode==='trapped')return []
+      return [{position:frame.position,radius:squadron.role==='recon'?2.7:1.45}]
+    })
+    return observations.length?observations:EMPTY_MAP_OBSERVATIONS
+  },[friendlyProjections,phase,squadrons])
   const displayedPlayerAssets=playerAssets.map(asset=>phase==='execute'&&!groundAssetsProjected?projectGroundAssetAt(asset,executionResult,seconds):asset)
   const displayedEnemyAssets=assets.map(asset=>{const timed=phase==='execute'&&!groundAssetsProjected?projectGroundAssetAt(asset,executionResult,seconds):asset;return observedAssetIds.has(asset.id)&&timed.intel==='unknown'?{...timed,intel:'probable' as const,confidence:70,hidden:false}:timed})
   const recoveryById=useMemo(()=>new globalThis.Map((executionResult?.recoveryOutcomes??[]).map(outcome=>[outcome.formationId,outcome])),[executionResult])
@@ -832,10 +875,10 @@ function BattlefieldScene({squadrons,assets,playerAssets,mappedAreas,presentatio
   }
   const mapMove=(e:ThreeEvent<PointerEvent>)=>{if(phase==='adapt'&&construction){const hit=e.ray.intersectPlane(groundPlane,new THREE.Vector3());setConstructionHover(snapToHex(hit?[hit.x,hit.z]:[e.point.x,e.point.z]))}}
   const editableWaypoints=editingReturn?(recoveryRoute??[]).slice(1,-1).map((position,index)=>({position,routeIndex:index+1,label:`R${index+1}`,release:false})):editingInbound&&selected.mission==='bomb'?(editPath??[]).slice(1,-1).map((position,index)=>({position,routeIndex:index+1,label:`I${index+1}`,release:false})):selected.mission==='base-strike'?selected.routeIngress.slice(1).map((position,index,array)=>({position,routeIndex:index+1,label:index===array.length-1?'S':String(index+1),release:index===array.length-1})):selected.mission==='bomb'?[]:selected.routeIngress.slice(1,fixedTransitEnd?-1:6).map((position,index)=>({position,routeIndex:index+1,label:String(index+1),release:false}))
-  return <>
+  return <LightweightAircraft value={lightweightAircraft}>
     <CameraRig phase={phase} friendlyTerritory={resolvedTerritory} planningBounds={resolvedPlanningBounds} presentationBounds={resolvedPresentationBounds} focusPoint={cameraFocus} focusRequestKey={focusRequestKey} followKey={followId} poseMemory={poseMemory}/>
     <color attach="background" args={['#11140f']}/><fog attach="fog" args={['#11140f',34,60]}/>
-    <ambientLight intensity={1.1}/><directionalLight position={[-5,10,5]} intensity={2.1} castShadow shadow-mapSize={[1024,1024]}/>
+    <ambientLight intensity={1.1}/><directionalLight position={[-5,10,5]} intensity={2.1} castShadow shadow-mapSize={[1024,1024]} shadow-autoUpdate={phase!=='execute'} shadow-needsUpdate/>
     <Terrain phase={phase} presentationBounds={resolvedPresentationBounds} planningBounds={resolvedPlanningBounds} isPlacementValid={phase==='deploy'?isPlacementValid:phase==='adapt'?construction?.isValid:undefined}/><FogOfWar mappedAreas={mappedAreas} observations={liveMapObservations} presentationBounds={resolvedPresentationBounds} friendlyTerritory={resolvedTerritory}/><TerritoryOverlay territory={resolvedTerritory} showFobPlacementReach={phase==='adapt'&&construction?.kind==='fob'}/>{phase==='deploy'&&placement?<PlacementHex position={placement.position} placed={positionedPlacementIds?.includes(placement.id)??false}/>:null}{construction&&constructionPoint?<ConstructionPlacementGhost kind={construction.kind} position={constructionPoint} valid={construction.isValid(constructionPoint)}/>:null}
     {defenseOverlays}
     {previewBattery?.kind==='radar'?<RadarCoverage asset={previewBattery} enemy={false} samGuidance={false} samPreview={false}/>:null}
@@ -874,8 +917,13 @@ function BattlefieldScene({squadrons,assets,playerAssets,mappedAreas,presentatio
     {phase==='debrief'&&executionResult?<HistoryOverlay result={executionResult} focusPoint={focusPoint}/>:null}
     {visibleActiveEvent?<CombatEffect key={visibleActiveEvent.id} event={visibleActiveEvent}/>:null}
     <mesh position={[presentationCenter[0],.001,presentationCenter[1]]} rotation={[-Math.PI/2,0,0]} onPointerDown={down} onPointerMove={mapMove} onClick={mapClick} onPointerLeave={()=>setConstructionHover(undefined)}><planeGeometry args={[boundsWidth(resolvedPresentationBounds),boundsDepth(resolvedPresentationBounds)]}/><meshBasicMaterial transparent opacity={0} depthWrite={false}/></mesh>
-  </>
+  </LightweightAircraft>
 }
 const clamp01=(value:number)=>Math.max(0,Math.min(1,value))
 
-export const Battlefield=memo(function Battlefield({cameraMemory,...props}:BattlefieldProps){const localPoseMemory=useRef<CameraPoseSnapshot|undefined>(undefined),poseMemory=cameraMemory??localPoseMemory;return <Canvas orthographic shadows="basic" dpr={[1,1.5]} gl={{antialias:true,powerPreference:'high-performance'}}><BattlefieldScene {...props} poseMemory={poseMemory}/></Canvas>})
+export const Battlefield=memo(function Battlefield({cameraMemory,...props}:BattlefieldProps){
+  const localPoseMemory=useRef<CameraPoseSnapshot|undefined>(undefined)
+  return <Canvas orthographic shadows="basic" dpr={props.phase==='execute'?1:PLANNING_DPR} gl={{antialias:true,powerPreference:'high-performance'}}>
+    <BattlefieldScene {...props} poseMemory={cameraMemory??localPoseMemory}/>
+  </Canvas>
+})

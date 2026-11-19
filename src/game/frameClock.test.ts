@@ -1,7 +1,14 @@
 import { describe, expect, it } from 'vitest'
-import { advanceFrameClock, createFrameClock } from './frameClock'
+import { advanceFrameClock, advanceReplayTime, createFrameClock } from './frameClock'
 
 describe('frame clock', () => {
+  it('counts the full interval after a delayed foreground replay frame at either speed', () => {
+    expect(advanceReplayTime(2, 450, 1, 10)).toBeCloseTo(2.45)
+    expect(advanceReplayTime(2, 450, 2, 10)).toBeCloseTo(2.9)
+    expect(advanceReplayTime(9.9, 450, 2, 10)).toBe(10)
+    expect(advanceReplayTime(2, -10, 1, 10)).toBe(2)
+  })
+
   it('smoothly interpolates 20 Hz snapshots at 1x and 2x playback', () => {
     for (const rate of [1, 2]) {
       const clock = createFrameClock(0)

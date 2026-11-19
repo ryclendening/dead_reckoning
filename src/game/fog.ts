@@ -50,23 +50,35 @@ const pointForPixel = (x: number, y: number, input: FogMaskInput): Point => [
   input.presentationBounds.maxZ - ((y + 0.5) / input.height) * (input.presentationBounds.maxZ - input.presentationBounds.minZ),
 ]
 
-const friendlyCoverage = (point: Point, territory:FriendlyTerritory) => territoryRegions(territory).reduce((coverage,region)=>Math.max(coverage,smoothstep(0,FRIENDLY_FEATHER,region.radius-edgeVariation(point)-distance(point,region.center))),0)
-const mappedCoverage = (point: Point, areas: Point[]) => areas.reduce((coverage, area) => Math.max(coverage, smoothstep(0, MAPPED_FEATHER, MAPPED_RADIUS - edgeVariation(point) - distance(point, area))), 0)
-const liveCoverage = (point: Point, observations: MapObservation[]) => observations.reduce((coverage, observation) => Math.max(coverage, smoothstep(0, LIVE_FEATHER, observation.radius - edgeVariation(point) - distance(point, observation.position))), 0)
+/** Outside the circle's bounding box its contribution is always zero. */
+function stampCoverage(input: FogMaskInput, target: Uint8Array, center: Point, radius: number, feather: number, opacity = 1) {
+  const { width, height, presentationBounds: bounds } = input
+  const [centerX, centerZ] = center
+  const spanX = bounds.maxX - bounds.minX
+  const spanZ = bounds.maxZ - bounds.minZ
+  const left = spanX > 0 ? Math.max(0, Math.floor((centerX - radius - bounds.minX) / spanX * width)) : 0
+  const right = spanX > 0 ? Math.min(width, Math.ceil((centerX + radius - bounds.minX) / spanX * width)) : width
+  const top = spanZ > 0 ? Math.max(0, Math.floor((bounds.maxZ - centerZ - radius) / spanZ * height)) : 0
+  const bottom = spanZ > 0 ? Math.min(height, Math.ceil((bounds.maxZ - centerZ + radius) / spanZ * height)) : height
+  for (let y = top; y < bottom; y++) for (let x = left; x < right; x++) {
+    const point = pointForPixel(x, y, input)
+    const coverage = smoothstep(0, feather, radius - edgeVariation(point) - distance(point, center))
+    const index = y * width + x
+    target[index] = Math.max(target[index], Math.round(coverage * opacity * 255))
+  }
+}
 
 export function updatePersistentFogMask(input: FogMaskInput, target: Uint8Array) {
   const expectedLength = input.width * input.height
   if (target.length !== expectedLength) throw new Error(`Persistent fog mask requires ${expectedLength} bytes`)
-  for (let y = 0; y < input.height; y += 1) for (let x = 0; x < input.width; x += 1) {
-    const point = pointForPixel(x, y, input)
-    target[y * input.width + x] = Math.round(Math.max(friendlyCoverage(point,input.friendlyTerritory), mappedCoverage(point, input.mappedAreas) * 0.6) * 255)
-  }
+  target.fill(0)
+  for (const region of territoryRegions(input.friendlyTerritory)) stampCoverage(input, target, region.center, region.radius, FRIENDLY_FEATHER)
+  for (const area of input.mappedAreas) stampCoverage(input, target, area, MAPPED_RADIUS, MAPPED_FEATHER, 0.6)
 }
 
 export function updateLiveFogMask(input: FogMaskInput, target: Uint8Array) {
   const expectedLength = input.width * input.height
   if (target.length !== expectedLength) throw new Error(`Live fog mask requires ${expectedLength} bytes`)
-  for (let y = 0; y < input.height; y += 1) for (let x = 0; x < input.width; x += 1) {
-    target[y * input.width + x] = Math.round(liveCoverage(pointForPixel(x, y, input), input.observations) * 255)
-  }
+  target.fill(0)
+  for (const { position, radius } of input.observations) stampCoverage(input, target, position, radius, LIVE_FEATHER)
 }
