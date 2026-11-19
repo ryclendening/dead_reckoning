@@ -700,7 +700,12 @@ function BattlefieldScene({squadrons,assets,playerAssets,mappedAreas,presentatio
   const fixedTransitEnd=!!transitField&&transitDestination(selected,selected.routeIngress,transitField)
   const editPath=editingReturn?recoveryRoute:editingInbound&&selected.mission==='bomb'?selected.routeIngress.slice(0,(selected.bombingTargets?.[0]?.routeIndex??1)+1):selected.routeIngress
   useEffect(()=>{draft.current=[];setActiveWaypoint(undefined)},[selectedId,routePlanningEnabled,editingReturn,editingInbound,phase])
-  useEffect(()=>{if(draft.current.length>0)draft.current=editPath?.map(point=>[...point] as Point)??[]},[editPath])
+  useEffect(()=>{
+    if(!draft.current.length)return
+    const next=editPath??[]
+    if(draft.current.length!==next.length)setActiveWaypoint(undefined)
+    draft.current=next.map(point=>[...point] as Point)
+  },[editPath])
   const seconds=progress*(executionResult?.duration??EXECUTION_SECONDS)
   const sceneClock=useSceneVisualClock(seconds,`${phase}:${executionResult?.round??'none'}`)
   const friendlyProjections=useMemo(()=>new globalThis.Map(phase==='execute'?squadrons.flatMap(squadron=>{const projection=projectFriendlyUnitAt(executionResult,squadron.id,seconds);return projection?[[squadron.id,projection] as const]:[]}):[]),[executionResult,phase,seconds,squadrons])

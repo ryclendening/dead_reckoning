@@ -1,7 +1,7 @@
 import { useRef, useState, type PointerEvent } from 'react'
 import { PhaseHelp } from './PhaseHelp'
 import { AlertTriangle, Bomb as BombIcon, CheckCircle2, ChevronDown, ChevronLeft, ChevronRight, ChevronUp, Crosshair, Eye, List, LocateFixed, Map, RotateCcw, Shield, Sword } from 'lucide-react'
-import { MAX_RECOVERY_WAYPOINTS, type RouteBudget } from '../game/forwardBasing'
+import { MAX_RECOVERY_WAYPOINTS, transitDestination, type RouteBudget } from '../game/forwardBasing'
 import { formationStatus, recoveryReasonLabel } from '../game/formationStatus'
 import { contactTracksAt } from '../game/contactTracks'
 import { airfieldLabel, formationBaseGroups } from '../game/formationBasing'
@@ -79,7 +79,7 @@ export function PlanningChitRail({squadrons,bases,activeBaseId,selectedId,review
   </aside>
 }
 
-function PlanningFuel({budget,needsLanding}:{budget:RouteBudget;needsLanding:boolean}){
+function PlanningFuel({budget,needsLanding,waypoints}:{budget:RouteBudget;needsLanding:boolean;waypoints:string}){
   const {ingressDistance,patternDistance,recoveryReserve,missionDistance,remainingRange,maxDistance,intendedField}=budget
   const legs=[{label:'Outbound',value:ingressDistance,kind:'outbound'},{label:'On station',value:patternDistance,kind:'pattern'},
     {label:'Return',value:recoveryReserve,kind:'return'}]
@@ -89,11 +89,11 @@ function PlanningFuel({budget,needsLanding}:{budget:RouteBudget;needsLanding:boo
       {legs.map(leg=><span key={leg.kind} className={leg.kind} style={{width:`${Math.min(100,leg.value/maxDistance*100)}%`}}/>)}
     </div>
     <div className="planning-fuel-legs">{legs.map(leg=><span key={leg.kind} className={leg.kind}>{leg.label} <b>{leg.value.toFixed(1)}</b></span>)}</div>
-    <small>{needsLanding?'Landing field not selected':`Landing at ${airfieldLabel(intendedField)}`}</small>
+    <div className="planning-fuel-footer"><small>{needsLanding?'Choose a landing field':`Landing at ${airfieldLabel(intendedField)}`}</small><small>{waypoints}</small></div>
   </div>
 }
 
-export function CommandShelf({squadrons,bases,activeBaseId,rosterMode,squadron,routeNotice,routeBudget,protectSummary,editingReturn=false,editingInbound=false,editingBombingRun=false,onRouteLegChange,onSelect,onBaseSelect,onRosterMode,onMission,onPickProtectTarget,onProtectFlight,onRecoverHome,onReconPosture,onClear,onBack,onCommit,step,onClose,reviewedIds,reviewedCount,totalCount,groundTargets=[],onChangeGroundTarget,onInspectGroundTarget,strikeUnlocked=false,strikeDisabledReason='RECOVER BASE INTELLIGENCE TO UNLOCK',selectingProtectTarget=false,allowEmptyCommit=false,onlineLock=false,cpuPlanning=false,onSelectBombTargets}:{squadrons:Squadron[];bases:Asset[];activeBaseId:string;rosterMode:PlanningRosterMode;squadron:Squadron;routeNotice?:string;routeBudget?:RouteBudget;protectSummary?:string;editingReturn?:boolean;editingInbound?:boolean;editingBombingRun?:boolean;onRouteLegChange?:(leg:'inbound'|'run'|'outbound'|'route'|'return')=>void;onSelect:(id:string)=>void;onBaseSelect:(id:string)=>void;onRosterMode:(mode:PlanningRosterMode)=>void;onMission:(mission:MissionId)=>void;onPickProtectTarget?:()=>void;onProtectFlight?:(id:string)=>void;onRecoverHome?:()=>void;onReconPosture?:(posture:ReconPosture)=>void;onClear:()=>void;onBack?:()=>void;onCommit:()=>void;step:PlanningStep;onClose:()=>void;reviewedIds:Set<string>;reviewedCount:number;totalCount:number;campaign?:boolean;groundTargets?:Asset[];onChangeGroundTarget?:()=>void;onInspectGroundTarget?:(id:string)=>void;strikeUnlocked?:boolean;strikeDisabledReason?:string;selectingProtectTarget?:boolean;allowEmptyCommit?:boolean;onlineLock?:boolean;cpuPlanning?:boolean;onSelectBombTargets?:()=>void}){
+export function CommandShelf({squadrons,bases,activeBaseId,rosterMode,squadron,routeNotice,routeBudget,protectSummary,editingReturn=false,editingInbound=false,editingBombingRun=false,onRouteLegChange,onSelect,onBaseSelect,onRosterMode,onMission,onPickProtectTarget,onProtectFlight,onRecoverHome,onReconPosture,onClear,onUndoWaypoint,onBack,onCommit,step,onClose,reviewedIds,reviewedCount,totalCount,groundTargets=[],onChangeGroundTarget,onInspectGroundTarget,strikeUnlocked=false,strikeDisabledReason='RECOVER BASE INTELLIGENCE TO UNLOCK',selectingProtectTarget=false,allowEmptyCommit=false,onlineLock=false,cpuPlanning=false,onSelectBombTargets}:{squadrons:Squadron[];bases:Asset[];activeBaseId:string;rosterMode:PlanningRosterMode;squadron:Squadron;routeNotice?:string;routeBudget?:RouteBudget;protectSummary?:string;editingReturn?:boolean;editingInbound?:boolean;editingBombingRun?:boolean;onRouteLegChange?:(leg:'inbound'|'run'|'outbound'|'route'|'return')=>void;onSelect:(id:string)=>void;onBaseSelect:(id:string)=>void;onRosterMode:(mode:PlanningRosterMode)=>void;onMission:(mission:MissionId)=>void;onPickProtectTarget?:()=>void;onProtectFlight?:(id:string)=>void;onRecoverHome?:()=>void;onReconPosture?:(posture:ReconPosture)=>void;onClear:()=>void;onUndoWaypoint?:()=>void;onBack?:()=>void;onCommit:()=>void;step:PlanningStep;onClose:()=>void;reviewedIds:Set<string>;reviewedCount:number;totalCount:number;campaign?:boolean;groundTargets?:Asset[];onChangeGroundTarget?:()=>void;onInspectGroundTarget?:(id:string)=>void;strikeUnlocked?:boolean;strikeDisabledReason?:string;selectingProtectTarget?:boolean;allowEmptyCommit?:boolean;onlineLock?:boolean;cpuPlanning?:boolean;onSelectBombTargets?:()=>void}){
   const force=formationStatus(squadron)
   const swipeStart=useRef<{id:number;x:number;y:number;dragging:boolean}|undefined>(undefined)
   const suppressSwipeClick=useRef(false)
@@ -142,12 +142,15 @@ export function CommandShelf({squadrons,bases,activeBaseId,rosterMode,squadron,r
     :squadron.mission==='base-strike'?'Tap to add waypoints. Drag S to move the release point.'
     :squadron.mission==='defensive-cap'?(protectSummary??'Tap a site or map point to defend.')
     :'Tap to add waypoints. Drag a point to move it.'
-  const transitEnd=squadron.mission==='transit'&&squadron.plannedRecoveryFieldId
+  const transitField=bases.find(asset=>asset.id===squadron.plannedRecoveryFieldId)
+  const transitEnd=Boolean(transitField&&transitDestination(squadron,squadron.routeIngress,transitField))
   const firstBombRouteIndex=squadron.bombingTargets?.[0]?.routeIndex??1
   const waypointCount=editingReturn?squadron.recoveryWaypoints?.length??0
     :editingInbound?Math.max(0,firstBombRouteIndex-1)
     : Math.max(0,squadron.routeIngress.length-(squadron.mission==='base-strike'||transitEnd?2:1)-(squadron.mission==='bomb'?(squadron.bombingTargets?.length??0):0))
-  const waypointSummary=editingBombingRun?'DIRECT DEAD-RECKONING LEGS · FIXED':`${waypointCount} / ${MAX_RECOVERY_WAYPOINTS} ${editingReturn?'outbound':editingInbound?'inbound':'route'} waypoints`
+  const waypointSummary=editingBombingRun?'Fixed legs':`${waypointCount} / ${MAX_RECOVERY_WAYPOINTS} waypoints`
+  const clearLabel=editingReturn?(squadron.mission==='bomb'?'CLEAR OUTBOUND':'CLEAR RETURN')
+    :editingInbound?'CLEAR INBOUND':squadron.mission==='base-strike'?'CLEAR WAYPOINTS':'CLEAR ROUTE'
   const commitButton=step==='idle'&&(ready||allowEmptyCommit)
     ?<button type="button" className="shelf-primary" disabled={primaryDisabled} onClick={primaryAction}>{primaryLabel} <ChevronRight/></button>
     :null
@@ -164,42 +167,48 @@ export function CommandShelf({squadrons,bases,activeBaseId,rosterMode,squadron,r
           <h2 className="planning-title">{step==='route' ? (squadron.role==='recon' ? 'Search Area route' : 'Build route') : step==='target' ? 'Choose target' : 'Choose task'}</h2>
           {step!=='mission'?<p className="planning-help">{step==='target'?squadron.mission==='bomb'?'Tap confirmed enemy sites in flight order. Up to three payloads.':'Tap a confirmed enemy site on the map.':routeHelp}</p>:null}
         </div>
-        {step==='route'&&onRouteLegChange?<div className="planning-route-legs" role="group" aria-label="Route leg">
-          {squadron.mission==='bomb'?<>
-            <button type="button" aria-pressed={editingInbound} onClick={()=>onRouteLegChange('inbound')}>Inbound</button>
-            <button type="button" aria-pressed={editingBombingRun} onClick={()=>onRouteLegChange('run')}>Bombing run</button>
-            <button type="button" aria-pressed={editingReturn} onClick={()=>onRouteLegChange('outbound')}>Outbound</button>
-          </>:<>
-            <button type="button" aria-pressed={!editingReturn} onClick={()=>onRouteLegChange('route')}>Outbound</button>
-            <button type="button" aria-pressed={editingReturn} onClick={()=>onRouteLegChange('return')}>Return</button>
-          </>}
+        {step==='route'?<div className="planning-route-body">
+          <div className="planning-route-data">
+            {onRouteLegChange?<div className={`planning-route-legs${squadron.mission==='bomb'?' bomb-legs':''}`} role="group" aria-label="Route leg">
+              {squadron.mission==='bomb'?<>
+                <button type="button" aria-pressed={editingInbound} onClick={()=>onRouteLegChange('inbound')}>Inbound</button>
+                <button type="button" aria-pressed={editingBombingRun} onClick={()=>onRouteLegChange('run')}>Bombing run</button>
+                <button type="button" aria-pressed={editingReturn} onClick={()=>onRouteLegChange('outbound')}>Outbound</button>
+              </>:<>
+                <button type="button" aria-pressed={!editingReturn} onClick={()=>onRouteLegChange('route')}>Outbound</button>
+                <button type="button" aria-pressed={editingReturn} onClick={()=>onRouteLegChange('return')}>Return</button>
+              </>}
+            </div>:null}
+            {routeBudget?<PlanningFuel budget={routeBudget} needsLanding={squadron.mission==='transit'&&!transitEnd} waypoints={waypointSummary}/>:<p className="shelf-range">{waypointSummary}</p>}
+          </div>
+          <div className="planning-route-context">
+            {!editingReturn&&squadron.mission==='defensive-cap'?<div className="planning-protect-target">
+              <button onClick={onPickProtectTarget}>DEFEND AREA</button>
+              <select aria-label="Escort flight" value="" onChange={event=>{if(event.target.value)onProtectFlight?.(event.target.value)}}>
+                <option value="" disabled>ESCORT FLIGHT</option>
+                {squadrons.filter(item=>item.id!==squadron.id&&reviewedIds.has(item.id)&&item.aircraft>0).map(item=><option key={item.id} value={item.id}>{item.callsign}</option>)}
+                {!squadrons.some(item=>item.id!==squadron.id&&reviewedIds.has(item.id)&&item.aircraft>0)?<option disabled>Confirm another flight first</option>:null}
+              </select>
+            </div>:null}
+            {selectedGroundTarget ? <div className="strike-target-summary">
+              <span>{selectedGroundTarget.name ?? selectedGroundTarget.kind.toUpperCase()}</span>
+              <button type="button" onClick={onChangeGroundTarget}>Change</button>
+              <button type="button" onClick={()=>onInspectGroundTarget?.(selectedGroundTarget.id)}>Inspect</button>
+            </div> : null}
+            {squadron.mission==='bomb'?<div className="bomb-target-summary"><span>{bombingTargetCount} / 3 TARGETS SELECTED</span><button type="button" onClick={onSelectBombTargets}>SELECT TARGETS</button></div>:null}
+            {!editingReturn&&squadron.role==='recon'&&squadron.mission==='search-area'?<div className="recon-posture" role="group" aria-label="Recon RTB condition"><span>RTB CONDITION</span><div>{(['aggressive','conservative'] as const).map(posture=><button key={posture} type="button" className={(squadron.reconPosture??'aggressive')===posture?'active':''} aria-pressed={(squadron.reconPosture??'aggressive')===posture} onClick={()=>onReconPosture?.(posture)}>{posture.toUpperCase()}</button>)}</div><small>{(squadron.reconPosture??'aggressive')==='conservative'?'RETURN ON FIGHTER CONTACT OR SAM/AAA LAUNCH':'FOLLOW THE PLANNED ROUTE THROUGH THREATS'}</small></div>:null}
+          </div>
         </div>:null}
-        {step==='route'?<>
-          {routeBudget?<PlanningFuel budget={routeBudget} needsLanding={squadron.mission==='transit'&&!transitEnd}/>:null}
-          <p className="shelf-range">{waypointSummary}</p>
-          {routeNotice?<p className="planning-route-notice" role="status">{routeNotice}</p>:null}
-        </>:routeNotice?<p className="planning-route-notice" role="status">{routeNotice}</p>:null}
-        {step==='route'&&!editingReturn&&squadron.mission==='defensive-cap'?<div className="planning-protect-target">
-          <button onClick={onPickProtectTarget}>DEFEND AREA</button>
-          <select aria-label="Escort flight" value="" onChange={event=>{if(event.target.value)onProtectFlight?.(event.target.value)}}>
-            <option value="" disabled>ESCORT FLIGHT</option>
-            {squadrons.filter(item=>item.id!==squadron.id&&reviewedIds.has(item.id)&&item.aircraft>0).map(item=><option key={item.id} value={item.id}>{item.callsign}</option>)}
-            {!squadrons.some(item=>item.id!==squadron.id&&reviewedIds.has(item.id)&&item.aircraft>0)?<option disabled>Confirm another flight first</option>:null}
-          </select>
-        </div>:null}
-        {step==='route'&&selectedGroundTarget ? <div className="strike-target-summary">
-          <span>{selectedGroundTarget.name ?? selectedGroundTarget.kind.toUpperCase()}</span>
-          <button type="button" onClick={onChangeGroundTarget}>Change</button>
-          <button type="button" onClick={()=>onInspectGroundTarget?.(selectedGroundTarget.id)}>Inspect</button>
-        </div> : null}
-        {step==='route'&&squadron.mission==='bomb'?<div className="bomb-target-summary"><span>{bombingTargetCount} / 3 TARGETS SELECTED</span><button type="button" onClick={onSelectBombTargets}>SELECT TARGETS</button></div>:null}
-        {step==='route'&&!editingReturn&&squadron.role==='recon'?<div className="recon-posture" role="group" aria-label="Recon RTB condition"><span>RTB CONDITION</span><div>{(['aggressive','conservative'] as const).map(posture=><button key={posture} type="button" className={(squadron.reconPosture??'aggressive')===posture?'active':''} aria-pressed={(squadron.reconPosture??'aggressive')===posture} onClick={()=>onReconPosture?.(posture)}>{posture.toUpperCase()}</button>)}</div><small>{(squadron.reconPosture??'aggressive')==='conservative'?'RETURN ON FIGHTER CONTACT OR SAM/AAA LAUNCH':'FOLLOW THE PLANNED ROUTE THROUGH THREATS'}</small></div>:null}
+        {routeNotice?<p className="planning-route-notice" role="status">{routeNotice}</p>:null}
         {step==='mission'?<div className="shelf-route">{templatesForRole(squadron.role).filter(template=>template.id!=='base-strike').map(template=>{const MissionIcon=template.id==='defensive-cap'?Shield:template.id==='forward-patrol'?Sword:template.id==='bomb'?BombIcon:template.id==='search-area'?Eye:Map;return <button key={template.id} className={squadron.mission===template.id?'active':''} aria-label={template.label} aria-pressed={squadron.mission===template.id} onClick={()=>onMission(template.id)}><MissionIcon/><b>{template.shortLabel}</b></button>})}{squadron.role==='fighter'?<button className={squadron.mission==='base-strike'?'active':''} aria-label="Ground Strike" aria-pressed={squadron.mission==='base-strike'} disabled={!strikeUnlocked} title={!strikeUnlocked?strikeDisabledReason:'Choose a confirmed enemy ground target.'} onClick={()=>onMission('base-strike')}><Crosshair/><b>GROUND STRIKE</b></button>:null}</div>:null}
       </div>
       {step==='mission'?<p className="mission-effect">{squadron.mission==='forward-patrol'?'Pursue contacts near the route.':squadron.mission==='base-strike'?'Choose a confirmed ground target.':squadron.mission==='bomb'?'Select up to three confirmed sites in flight order.':squadron.mission==='transit'?'Fly to a friendly airfield.':squadron.role==='recon'?'Plot waypoints to map terrain and observe enemy sites.':'Defend a site, point, or flight.'}</p>:<div className="planning-route-actions">
-        {onBack?<button onClick={onBack}>CHANGE TASK</button>:<span/>}
-        {step==='route'&&!editingReturn&&squadron.mission!=='bomb'&&forwardBased&&onRecoverHome?<button onClick={onRecoverHome}>RECOVER HOME</button>:<span/>}
-        {step==='route'&&!editingBombingRun?<button onClick={onClear}>{editingReturn?'CLEAR OUTBOUND':editingInbound?'CLEAR INBOUND':squadron.mission==='base-strike'?'CLEAR WAYPOINTS':'CLEAR ROUTE'}</button>:<span/>}
+        {onBack?<button type="button" onClick={onBack}>CHANGE TASK</button>:null}
+        {step==='route'&&!editingReturn&&squadron.mission!=='bomb'&&forwardBased&&onRecoverHome?<button type="button" onClick={onRecoverHome}>RECOVER HOME</button>:null}
+        {step==='route'&&!editingBombingRun?<>
+          <button type="button" aria-label="Undo last waypoint" disabled={!onUndoWaypoint} onClick={onUndoWaypoint}>UNDO</button>
+          <button type="button" onClick={onClear}>{clearLabel}</button>
+        </>:null}
       </div>}
       {step!=='route'?<p className="shelf-range">{reviewedCount} / {totalCount} ORDERS READY</p>:null}
     </div>:null}

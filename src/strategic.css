@@ -90,7 +90,7 @@
   max-width: calc(100% - 16px);
   gap: 4px;
 }
-.game-frame .map-tools > *, .game-frame .map-tools > .world-map-toggle {
+.game-frame .map-tools > * {
   position: static;
   inset: auto;
   width: auto;
@@ -149,55 +149,63 @@
 .phase-execute .execute-hud:has(.execution-shelf.expanded) .execute-view-controls { visibility: hidden; }
 .phase-plan .map-tip { display: none; }
 
-/* Keep one planning surface visible and give its controls full touch targets. */
+/* A content-sized sheet keeps navigation and route actions in the same view. */
 .phase-plan .command-shelf { bottom: max(8px, env(safe-area-inset-bottom)); }
 .phase-plan .command-shelf.expanded { border: 0; background: none; box-shadow: none; }
 .game-frame .command-shelf .command-sheet {
   inset: auto 0 0;
   height: auto;
-  max-height: min(42dvh, 320px);
+  max-height: none;
   display: flex;
   flex-direction: column;
-  gap: 8px;
-  padding: 8px;
-  overflow-y: auto;
-  touch-action: pan-y;
+  gap: 6px;
+  padding: 7px;
+  overflow: visible;
+  touch-action: none;
 }
 .command-sheet > * { flex: 0 0 auto; }
-.command-sheet .planning-aircraft-nav { grid-template-columns: 44px minmax(0, 1fr) 44px 56px; }
+.command-sheet .planning-aircraft-nav { grid-template-columns: 40px minmax(0, 1fr) 40px minmax(56px, auto); }
 .command-sheet .planning-aircraft-nav button,
 .command-sheet .planning-protect-target > button,
 .command-sheet .planning-protect-target > select,
 .command-sheet .planning-route-actions button,
 .command-sheet .strike-target-summary button,
-.command-sheet .recon-posture button {
-  min-height: 44px;
+.command-sheet .recon-posture button, .command-sheet .bomb-target-summary button {
+  min-height: 36px;
   height: auto;
-  font-size: 14px;
+  font-size: 13px;
   white-space: normal;
   letter-spacing: normal;
 }
+.command-sheet .planning-aircraft-nav button { padding-inline: 7px; }
+.command-sheet .planning-route-actions button:disabled { opacity: .48; cursor: default; }
 .command-sheet .planning-aircraft-identity b { font-size: 17px; }
-.command-sheet .planning-aircraft-identity small { font-size: 12px; }
-.command-sheet .planning-title { font-size: 18px; line-height: 1.15; }
+.command-sheet .planning-aircraft-identity small { font-size: 11px; }
+.command-sheet .planning-title { font-size: 16px; line-height: 1.15; }
 .command-sheet .planning-help, .command-sheet .mission-effect, .command-sheet .shelf-range {
   max-height: none;
   white-space: normal;
-  font: 600 13px/1.3 Inter, sans-serif;
+  font: 600 12px/1.25 Inter, sans-serif;
 }
+.command-sheet .planning-help { overflow: visible; }
 .command-sheet .shelf-route button b { font-size: 14px; line-height: 1.05; }
 .command-sheet .shelf-route button { min-height: 48px; }
-.command-sheet .strike-target-summary { height: auto; font-size: 15px; }
-.command-sheet .recon-posture { grid-template-columns: 1fr; }
-.command-sheet .recon-posture > span, .command-sheet .recon-posture > small { font-size: 12px; line-height: 1.3; }
-.command-sheet .planning-route-actions { grid-template-columns: repeat(3, minmax(0, 1fr)); }
-.planning-route-legs { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
+.command-sheet .strike-target-summary { height: auto; font-size: 13px; }
+.command-sheet .bomb-target-summary { margin: 0; }
+.command-sheet .recon-posture { grid-template-columns: auto minmax(0, 1fr); gap: 3px 6px; }
+.command-sheet .recon-posture > span, .command-sheet .recon-posture > small { font-size: 11px; line-height: 1.15; }
+.command-sheet .planning-route-actions { grid-template-columns: none; grid-auto-flow: column; grid-auto-columns: minmax(0, 1fr); gap: 4px; }
+.command-sheet .planning-route-actions:empty, .planning-route-context:empty { display: none; }
+.planning-route-body, .planning-route-data, .planning-route-context { display: grid; gap: 4px; min-width: 0; }
+.planning-route-legs { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 4px; }
+.planning-route-legs.bomb-legs { grid-template-columns: repeat(3, minmax(0, 1fr)); }
 .planning-route-legs button {
-  min-height: 44px;
+  min-height: 32px;
+  padding: 2px 3px;
   border: 1px solid var(--line);
   background: #19221b;
   color: #d8e6d8;
-  font: 700 15px 'Barlow Condensed', sans-serif;
+  font: 700 14px 'Barlow Condensed', sans-serif;
   cursor: pointer;
 }
 .planning-route-legs button[aria-pressed="true"] { border-color: var(--cyan); background: #25443a; }
@@ -267,6 +275,10 @@
 .resupply-panel .adapt-based-flights > button, .resupply-panel .adapt-confirm button,
 .resupply-panel .campaign-placement-confirm button { min-height: 44px; font-size: 14px; }
 .debrief-cash { padding: 10px 12px; background: #16231b; border: 1px solid #435b48; font: 600 14px/1.35 Inter, sans-serif; }
+.debrief-campaign { font-size: 12px; gap: 4px 12px; }
+.debrief-campaign > span { display: flex; align-items: baseline; flex-wrap: wrap; gap: 2px 7px; padding: 4px 8px; border: 1px solid #435b48; background: #16231b; }
+.debrief-campaign b { font-size: 15px; white-space: nowrap; }
+.debrief-campaign > .base-damaged { color: #ffd291; border-color: #ac7751; background: #322218; }
 .debrief-metrics { grid-template-columns: repeat(3, minmax(0, 1fr)); }
 .debrief-cash > header, .debrief-cash dl > div { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; }
 .debrief-cash > header { padding-bottom: 6px; border-bottom: 1px solid #435b48; }
@@ -275,10 +287,10 @@
 .debrief-cash dd { margin: 0; color: #d6e7c9; white-space: nowrap; }
 .debrief-cash dt small { margin-left: 4px; color: #a8bba5; font-size: 12px; }
 
-.planning-fuel { display: grid; gap: 5px; padding: 8px; margin-top: 6px; background: #101914; border: 1px solid #435b48; font: 600 13px/1.3 Inter, sans-serif; }
-.planning-fuel-header, .planning-fuel-legs { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 4px 8px; }
-.planning-fuel-header > span, .planning-fuel > small { color: #b0c3b0; font-size: 12px; }
-.planning-fuel-meter { display: flex; height: 8px; background: #2a372d; overflow: hidden; }
+.planning-fuel { display: grid; gap: 3px; padding: 5px 7px; background: #101914; border: 1px solid #435b48; font: 600 12px/1.25 Inter, sans-serif; }
+.planning-fuel-header, .planning-fuel-legs, .planning-fuel-footer { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 2px 6px; }
+.planning-fuel-header > span, .planning-fuel-footer > small { color: #b0c3b0; font-size: 11px; }
+.planning-fuel-meter { display: flex; height: 5px; background: #2a372d; overflow: hidden; }
 .planning-fuel-meter > span { flex-shrink: 0; }
 .planning-fuel-legs .outbound { color: #7ceaf0; }
 .planning-fuel-legs .pattern { color: #f1c65b; }
@@ -286,7 +298,7 @@
 .planning-fuel-meter .outbound { background: #7ceaf0; }
 .planning-fuel-meter .pattern { background: #f1c65b; }
 .planning-fuel-meter .return { background: #d4b4ff; }
-.planning-route-notice { margin: 6px 0 0; color: #ffd291; font: 600 13px/1.35 Inter, sans-serif; }
+.planning-route-notice { margin: 0; color: #ffd291; font: 600 12px/1.25 Inter, sans-serif; }
 .pvp-base-health { display: flex; justify-content: center; flex-wrap: wrap; gap: 6px 20px; padding: 5px 8px; background: #141d17; border-bottom: 1px solid #435b48; color: #b7cab9; font: 600 13px/1.25 Inter, sans-serif; }
 .pvp-base-health b { margin-left: 4px; color: #eef0df; }
 
@@ -360,8 +372,20 @@
   .phase-debrief .debrief.briefing.debrief-summary { height: 52dvh; min-height: 0; }
   .phase-plan .command-shelf.expanded {
     left: auto;
-    width: min(390px, calc(100% - 16px));
+    width: min(430px, calc(100% - 16px));
   }
-  .phase-plan .command-shelf.expanded .command-sheet { max-height: 69dvh; }
+  .planning-route-body:has(.planning-route-context:not(:empty)) { grid-template-columns: minmax(0, 1.15fr) minmax(0, 1fr); align-items: start; }
+  .route-step .planning-pane-caption { display: flex; flex-wrap: wrap; align-items: baseline; gap: 2px 8px; }
+  .route-step .planning-help, .planning-fuel-legs { font-size: 11px; }
+  .planning-fuel-footer > small { font-size: 10px; }
+  .command-sheet .recon-posture { grid-template-columns: 1fr; }
+  .command-sheet .strike-target-summary { flex-wrap: wrap; gap: 3px; }
+  .command-sheet .strike-target-summary span { flex: 0 0 100%; }
   .resupply-panel .adapt-actions { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+
+@media (orientation: landscape) and (max-height: 360px) {
+  .game-frame .command-shelf .command-sheet { gap: 4px; padding: 5px; }
+  .command-sheet .planning-aircraft-nav button, .command-sheet .planning-route-actions button,
+  .command-sheet .recon-posture button { min-height: 32px; }
 }

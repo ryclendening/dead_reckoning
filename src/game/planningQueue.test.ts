@@ -1,8 +1,26 @@
 import { describe, expect, it } from 'vitest'
 import { createMatch } from './data'
 import { formationBaseGroups } from './formationBasing'
-import { airfieldFirstPlanningIds, nextUnplannedFormationId, planningPackageReady, viablePlanningFormationIds } from './planningQueue'
-import type { Asset } from './types'
+import { airfieldFirstPlanningIds, nextUnplannedFormationId, planningPackageReady, viablePlanningFormationIds, withoutLastPlanningWaypoint } from './planningQueue'
+import type { Asset, Point } from './types'
+
+describe('undo last planning waypoint', () => {
+  const start: Point = [0, 0]
+  const first: Point = [1, 1]
+  const last: Point = [2, 2]
+  const end: Point = [3, 3]
+
+  it('removes the last unanchored waypoint and keeps takeoff', () => {
+    expect(withoutLastPlanningWaypoint([start, first, last], false)).toEqual([start, first])
+    expect(withoutLastPlanningWaypoint([start, first], false)).toEqual([start])
+    expect(withoutLastPlanningWaypoint([start], false)).toBeUndefined()
+  })
+
+  it('removes only the last intermediate point of an anchored leg', () => {
+    expect(withoutLastPlanningWaypoint([start, first, last, end], true)).toEqual([start, first, end])
+    expect(withoutLastPlanningWaypoint([start, end], true)).toBeUndefined()
+  })
+})
 
 describe('sequential planning queue', () => {
   it('requires every surviving formation to be explicitly reviewed with a valid route', () => {

@@ -5,6 +5,18 @@ import { createMatch } from '../game/data'
 import { resolveRound } from '../game/engine'
 
 describe('mission debrief surface',()=>{
+  it('shows home base damage before losses, payouts, and round highlights',()=>{
+    const match=createMatch()
+    const result=resolveRound(match)
+    const view={...match,phase:'debrief' as const,playerBaseHealth:20,lastResult:{...result,baseDamage:80}}
+    const markup=renderToStaticMarkup(<Debrief match={view} onFocus={()=>{}} onResupply={()=>{}}/>)
+
+    expect(markup).toContain('HOME BASE <b>100 → 20 HP</b>')
+    expect(markup.indexOf('100 → 20 HP')).toBeLessThan(markup.indexOf('FRIENDLY LOST'))
+    expect(markup.indexOf('100 → 20 HP')).toBeLessThan(markup.indexOf('Cash earned this round'))
+    expect(markup.indexOf('100 → 20 HP')).toBeLessThan(markup.indexOf('Round highlights'))
+  })
+
   it('shows strike purpose and concrete launch failure beside the existing summary',()=>{
     const match=createMatch(),fighter=match.squadrons.find(squadron=>squadron.role==='fighter')!
     match.squadrons=match.squadrons.map(squadron=>squadron.id===fighter.id?{...squadron,mission:'base-strike',sortieOrdered:true}:{...squadron,sortieOrdered:false})
