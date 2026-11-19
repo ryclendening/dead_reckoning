@@ -20,8 +20,8 @@ export function friendlyAssetsFor(world:CampaignWorld):Asset[]{const base=world.
   {id:'p-aaa',kind:'aaa',position:add(base,[-2.1,-1.2]),intel:'confirmed',confidence:100,health:100,maxHealth:100,hidden:false,struck:false},
 ]}
 
-export function enemyBaseFor(world:CampaignWorld):Point{if(world.layoutVersion===1)return campaignEnemyStart(world.seed,world.bounds,world.friendlyTerritory.center);const [x,z]=world.friendlyTerritory.center;return snapToHex([(x>=0?-1:1)*9.2,(z>=0?-1:1)*12.4])}
-export function enemyAssetsFor(world:CampaignWorld):Asset[]{const base=enemyBaseFor(world),sites=world.layoutVersion===1?campaignEnemySites(world.seed,world.bounds,base):undefined;return [
+export function enemyBaseFor(world:CampaignWorld):Point{if(world.layoutVersion===1||world.layoutVersion===2)return campaignEnemyStart(world.seed,world.bounds,world.friendlyTerritory.center);const [x,z]=world.friendlyTerritory.center;return snapToHex([(x>=0?-1:1)*9.2,(z>=0?-1:1)*12.4])}
+export function enemyAssetsFor(world:CampaignWorld):Asset[]{const base=enemyBaseFor(world),sites=world.layoutVersion===1||world.layoutVersion===2?campaignEnemySites(world.seed,world.bounds,base):undefined;return [
   {id:'e-base',kind:'base',position:base,intel:'unknown',confidence:0,health:100,maxHealth:100,hidden:true,struck:false},
   {id:'e-decoy',kind:'decoy',position:sites?.decoy??add(base,[-3.1,1.8]),intel:'unknown',confidence:0,health:50,maxHealth:50,hidden:true,struck:false},
   {id:'e-radar',kind:'radar',position:sites?.radar??add(base,[1.9,3.3]),intel:'unknown',confidence:0,health:100,maxHealth:100,hidden:true,struck:false},

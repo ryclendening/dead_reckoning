@@ -36,6 +36,13 @@ This is the source of truth for behavior implemented in the current build. It re
 
 The nominal sortie window is 22 simulated seconds. Execution continues while recovery is unresolved, normally to a 60-second cap. A stranded formation may extend the round to at most 90 seconds while it exhausts its remaining range.
 
+## Geography
+
+- New campaigns use a deterministic, saved terrain layout selected from coast, highlands, and islands. Starting territories have clear deployment footprints; seeded starting positions and opposing bases vary with the campaign seed. Existing saves and deterministic tactical fixtures without a terrain snapshot retain their original flat geography and do not reroll.
+- Water and mountains block initial asset placement and construction. Airfields require a larger clear land footprint than other sites. Placement uses only surveyed or owned terrain; unknown terrain is not assumed clear.
+- Aircraft cross water at normal fuel cost and cross mountains at 1.5 times the normal fuel cost, without a speed change. Planning estimates only known mountain crossings; execution consumes fuel against the actual terrain and can force recovery or fuel exhaustion.
+- The CPU receives only its surveyed terrain plus its owned territory. Online player views omit the seed and full terrain grid and include only surveyed or owned cells. During a completed online round, newly recovered terrain is available with the round result rather than revealed at its exact observation time.
+
 ## Forces
 
 ### Friendly formation pool
@@ -104,6 +111,7 @@ Aircraft visual range is multiplied by `0.68 + 0.32 × strength fraction`; destr
 - Protect appends a 4.5-unit-radius orbit around its selected station. Forward Patrol appends a compact patrol loop. Player Recon follows its outbound waypoints in order. CPU recon can still plot a five-pass search sweep. An escort fighter follows its selected friendly flight's live position instead of flying its generated orbit while that flight remains on mission.
 - If a full pattern does not fit the visible map bounds and fuel, the pattern can shrink to 25% scale. The player’s route editor rejects an over-budget waypoint and explains how to shorten the route.
 - Fighter maximum mission distance is `40`; recon maximum mission distance is `64`. Fighter and recon speeds remain fixed at `40/22` and `48/22` map units per simulated second respectively, so the additional recon range does not increase its speed. Tapping a longer route does not increase speed.
+- Route and recovery fuel budgets use surveyed terrain. Mountain cells add 50% fuel to the portion of a leg that crosses them; water leaves the fuel budget unchanged. Unknown terrain uses the ordinary-fuel estimate, while execution charges the terrain actually crossed.
 - Use **Outbound** and **Return** to switch legs in the route editor. The dashed purple line shows the return from the end of the mission route to the chosen landing field. Tap an operational friendly airfield while editing Return to change the destination. The launch field is the default. Tap to add up to five return waypoints, labeled **R1** onward, and drag them to move them. Both legs count against the formation’s range. **Undo** removes the last editable waypoint on the active leg and keeps fixed release points and landing fields. **Clear Return** restores the direct path. Transit has one editable leg and ends at the selected airfield. Formations without a confirmed order stay grounded and preserve aircraft, readiness, and ammunition for the next round.
 - Aircraft fly the plotted return leg after completing their mission. An early fuel or Conservative recon return, a diversion, or insufficient fuel after tactical maneuvering can supersede the planned return with direct recovery.
 - Passing over or ending a waypoint at a FOB does not assign it as a landing field. In Outbound, tapping an airfield ends the route there only for Transit. Tapping a friendly site while planning Protect sets the defended site. Selecting an airfield in Return changes only the landing destination and keeps the mission route. During Transit or Return, a tap within 1.05 map units of an operational FOB center also selects it when no waypoint is selected. Airfield roster selection remains available with the route editor closed.
@@ -290,6 +298,7 @@ Available fixtures:
 - CPU v2 uses analytic package estimates rather than opponent rollouts or a campaign game tree. Competitive ordering remains a tuning question; deterministic scenarios and paired scripted campaigns do not establish a universal Hard > Medium > Easy ordering or substitute for authorized human playtests. Unsupported CPU decoy benefits remain inactive. CPU escort candidates still require the complete drawn recon route to fit fighter recovery/range; fuel-limited partial escort prefixes are not yet enumerated.
 - Legacy in-sortie reinforcement, reserve inventories, service, rearm, and readiness restoration exist in code or tests but are not connected to the current UI flow. The Resupply actions listed above are authoritative.
 - The managed Site still uses the static build. The server-backed online build can run on the supplied Node/SQLite server or the local Worker/D1 prototype.
+- Online terrain replay does not yet time each newly observed terrain cell against the replay clock. Recovered mapping is exposed with the completed round result.
 - The README contains older and aspirational mechanics. This document takes precedence for current gameplay.
 
 
@@ -298,6 +307,8 @@ Available fixtures:
 This log keeps only current net changes. Superseded intermediate states belong in git history.
 
 ### 2026-11-18
+
+- Added saved, seeded coast, highlands, and islands campaign maps with protected clear deployment regions and seed-varied starts. Water and mountains reject construction; airfields require a larger clear footprint. Flight planning, CPU route search, and recovery estimate known mountain fuel at 1.5×, and execution applies actual terrain fuel while preserving flight speed. Fog-aware map rendering shows only surveyed or owned terrain; online views strip the world seed and full grid. Online terrain replay still reveals recovered cells with the completed result rather than at observation time.
 
 - Reduced Execute rendering work by reusing ground shadows, updating fog only when its inputs change, and switching to lighter fighter silhouettes on slow renderers. PvP playback keeps its selected wall-clock speed through slow frames in a visible tab.
 

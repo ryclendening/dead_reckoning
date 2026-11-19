@@ -1,8 +1,9 @@
-import type { Asset, MatchState, MissionId, Point, Role, Squadron } from './types'
-import { missionDistance } from './flightRules'
+import type { Asset, MatchState, MissionId, Point, Role, Squadron, TerrainMap } from './types'
 import { flightRangeFor } from './flightRules'
 import { BASE_STRIKE_RANGE, selectedStrikeTarget } from './campaign'
 import { formationField, recoveryPath, routeDistanceForBasing } from './forwardBasing'
+import { terrainKnownWithin } from './terrain'
+import { friendlyTerritoryForAssets } from './territory'
 import { groundAttackProfile, MAX_BOMBING_TARGETS } from './strikeRules'
 
 export interface RouteBounds { minX:number; maxX:number; minZ:number; maxZ:number }
@@ -31,7 +32,8 @@ export function buildGroundStrikeRoute(state:MatchState,squadronId:string,target
   const travel=d<=releaseRange?Math.min(.25,d):d-(releaseRange-.1)
   const release:Point=d>.001?[origin[0]+(target.position[0]-origin[0])*travel/d,origin[1]+(target.position[1]-origin[1])*travel/d]:[origin[0]+.05,origin[1]]
   const route:Point[]=[[...origin],release]
-  return missionDistance(route,origin)<=flightRangeFor(squadron)+.001?route:undefined
+  const terrain=terrainKnownWithin(state.world.terrain,state.mappedAreas,2.65,friendlyTerritoryForAssets(state.world.friendlyTerritory,state.playerAssets))
+  return routeDistanceForBasing([...route,origin],terrain)<=flightRangeFor(squadron)+.001?route:undefined
 }
 
 /** Preserve both mission anchors while replacing only optional ingress waypoints. */
@@ -40,7 +42,7 @@ export function groundStrikeRoute(anchors:Point[],waypoints:Point[],releasePoint
 }
 
 /** Shared geometry and payload-role validation; callers supply only authorized target knowledge. */
-export function validateStrikeGeometry(squadron:Squadron,launch:Asset|undefined,target:Pick<Asset,'position'>|undefined,recoveryField=launch):string|undefined {
+export function validateStrikeGeometry(squadron:Squadron,launch:Asset|undefined,target:Pick<Asset,'position'>|undefined,recoveryField=launch,terrain?:TerrainMap):string|undefined {
   if(squadron.mission!=='base-strike')return undefined
   if(!target)return 'SELECT A CONFIRMED GROUND TARGET'
   if(squadron.role!=='fighter')return 'GROUND STRIKE REQUIRES A FIGHTER'
@@ -50,14 +52,15 @@ export function validateStrikeGeometry(squadron:Squadron,launch:Asset|undefined,
   const releaseRange=groundAttackProfile(squadron).releaseRange
   if(distance(route.at(-1)!,target.position)>releaseRange+.001)return `KEEP THE STRIKE POINT INSIDE THE ${releaseRange}-UNIT RELEASE CIRCLE`
   const recovery = recoveryPath(route.at(-1)!, recoveryField?.position??launch.position, squadron.recoveryWaypoints)
-  if(routeDistanceForBasing(route)+routeDistanceForBasing(recovery)>flightRangeFor(squadron)+.001)return 'GROUND STRIKE ROUTE EXCEEDS AVAILABLE RANGE'
+  if(routeDistanceForBasing(route,terrain)+routeDistanceForBasing(recovery,terrain)>flightRangeFor(squadron)+.001)return 'GROUND STRIKE ROUTE EXCEEDS AVAILABLE RANGE'
   return undefined
 }
 export function validateGroundStrikeOrder(state:MatchState,squadron:Squadron):string|undefined {
-  return validateStrikeGeometry(squadron,formationField(state.playerAssets,squadron.id),selectedStrikeTarget(state,squadron.strikeTargetId),state.playerAssets.find(asset=>asset.id===squadron.plannedRecoveryFieldId&&(asset.kind==='base'||asset.kind==='fob')))
+  const terrain=terrainKnownWithin(state.world.terrain,state.mappedAreas,2.65,friendlyTerritoryForAssets(state.world.friendlyTerritory,state.playerAssets))
+  return validateStrikeGeometry(squadron,formationField(state.playerAssets,squadron.id),selectedStrikeTarget(state,squadron.strikeTargetId),state.playerAssets.find(asset=>asset.id===squadron.plannedRecoveryFieldId&&(asset.kind==='base'||asset.kind==='fob')),terrain)
 }
 
-export function validateBomberOrder(squadron:Squadron,launch:Asset|undefined,targets:readonly Asset[],recoveryField=launch):string|undefined {
+export function validateBomberOrder(squadron:Squadron,launch:Asset|undefined,targets:readonly Asset[],recoveryField=launch,terrain?:TerrainMap):string|undefined {
   if(squadron.mission!=='bomb')return undefined
   if(squadron.role!=='bomber')return 'BOMBING REQUIRES A BOMBER'
   if(!launch||launch.health<=0||launch.operational===false||squadron.aircraft<=0)return 'NO LEGAL BOMBING INGRESS FROM THIS FIELD'
@@ -75,11 +78,12 @@ export function validateBomberOrder(squadron:Squadron,launch:Asset|undefined,tar
     if(distance(squadron.route[assignment.routeIndex],target.position)>groundAttackProfile(squadron).releaseRange+.001)return 'KEEP EACH BOMB RELEASE INSIDE THE TWO-UNIT DELIVERY RANGE'
   }
   const recovery=recoveryPath(squadron.route.at(-1)!,recoveryField?.position??launch.position,squadron.recoveryWaypoints)
-  if(routeDistanceForBasing(squadron.route)+routeDistanceForBasing(recovery)>flightRangeFor(squadron)+.001)return 'BOMBING ROUTE EXCEEDS AVAILABLE RANGE'
+  if(routeDistanceForBasing(squadron.route,terrain)+routeDistanceForBasing(recovery,terrain)>flightRangeFor(squadron)+.001)return 'BOMBING ROUTE EXCEEDS AVAILABLE RANGE'
   return undefined
 }
 export function validateBomberOrderForPlayer(state:MatchState,squadron:Squadron):string|undefined {
-  return validateBomberOrder(squadron,formationField(state.playerAssets,squadron.id),state.enemyAssets,state.playerAssets.find(asset=>asset.id===squadron.plannedRecoveryFieldId&&(asset.kind==='base'||asset.kind==='fob')))
+  const terrain=terrainKnownWithin(state.world.terrain,state.mappedAreas,2.65,friendlyTerritoryForAssets(state.world.friendlyTerritory,state.playerAssets))
+  return validateBomberOrder(squadron,formationField(state.playerAssets,squadron.id),state.enemyAssets,state.playerAssets.find(asset=>asset.id===squadron.plannedRecoveryFieldId&&(asset.kind==='base'||asset.kind==='fob')),terrain)
 }
 
 const distance=(a:Point,b:Point)=>Math.hypot(a[0]-b[0],a[1]-b[1])
@@ -130,7 +134,7 @@ function build(template:MissionId,ingress:Point[],patternScale:number,cpuSearchS
   return [...ingress,...searchSweep(target,forward,side,2.2*patternScale,2*patternScale)]
 }
 
-function valid(route:Point[],base:Point,maxDistance:number,bounds:RouteBounds){return route.every(point=>within(point,bounds))&&missionDistance(route,base)<=maxDistance+.001}
+function valid(route:Point[],base:Point,maxDistance:number,bounds:RouteBounds,terrain?:TerrainMap){return route.every(point=>within(point,bounds))&&routeDistanceForBasing(route,terrain)<=maxDistance+.001}
 
 function prefixAtRatio(route:Point[],ratio:number):Point[]{
   if(route.length<2)return route
@@ -146,18 +150,18 @@ function prefixAtRatio(route:Point[],ratio:number):Point[]{
   return prefix
 }
 
-export function generateRouteTemplate({template,ingress,maxDistance,bounds,cpuSearchSweep=false}:{template:MissionId;ingress:Point[];maxDistance:number;bounds:RouteBounds;cpuSearchSweep?:boolean}):RouteGenerationResult{
+export function generateRouteTemplate({template,ingress,maxDistance,bounds,cpuSearchSweep=false,terrain}:{template:MissionId;ingress:Point[];maxDistance:number;bounds:RouteBounds;cpuSearchSweep?:boolean;terrain?:TerrainMap}):RouteGenerationResult{
   const safeIngress=ingress.map(point=>clampPoint(point,bounds))
   const clampedIngress=safeIngress.some((point,index)=>point[0]!==ingress[index]?.[0]||point[1]!==ingress[index]?.[1])
   const base=safeIngress[0]??[0,0] as Point
   if(safeIngress.length<2)return {route:safeIngress,ingress:safeIngress,requestedIngress:ingress,adjustment:clampedIngress?'ingress-clamped':'none'}
   const initial=build(template,safeIngress,1,cpuSearchSweep)
-  if(valid(initial,base,maxDistance,bounds))return {route:initial,ingress:safeIngress,requestedIngress:ingress,adjustment:clampedIngress?'ingress-clamped':'none'}
+  if(valid(initial,base,maxDistance,bounds,terrain))return {route:initial,ingress:safeIngress,requestedIngress:ingress,adjustment:clampedIngress?'ingress-clamped':'none'}
 
   let low=.25,high=1
   for(let index=0;index<24;index++){
     const midpoint=(low+high)/2
-    if(valid(build(template,safeIngress,midpoint,cpuSearchSweep),base,maxDistance,bounds))low=midpoint
+    if(valid(build(template,safeIngress,midpoint,cpuSearchSweep),base,maxDistance,bounds,terrain))low=midpoint
     else high=midpoint
   }
   if(low>.25+.0001){
@@ -167,7 +171,7 @@ export function generateRouteTemplate({template,ingress,maxDistance,bounds,cpuSe
   for(let index=0;index<24;index++){
     const midpoint=(low+high)/2
     const shortened=prefixAtRatio(safeIngress,midpoint)
-    if(valid(build(template,shortened,.25,cpuSearchSweep),base,maxDistance,bounds))low=midpoint
+    if(valid(build(template,shortened,.25,cpuSearchSweep),base,maxDistance,bounds,terrain))low=midpoint
     else high=midpoint
   }
   const shortened=prefixAtRatio(safeIngress,low)

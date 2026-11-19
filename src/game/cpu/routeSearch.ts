@@ -1,6 +1,7 @@
 import { axialToPoint, HEX_RADIUS, snapToHex } from '../hex'
 import type { CoverageCircle } from '../equipmentRules'
-import type { Point } from '../types'
+import type { Point, TerrainMap } from '../types'
+import { segmentFuelCost } from '../terrain'
 
 export interface RouteThreat extends CoverageCircle {
   costPerUnit: number
@@ -8,7 +9,7 @@ export interface RouteThreat extends CoverageCircle {
 }
 export interface ThreatRouteRequest {
   from:Point; goals:Point[]; recovery:Point; maxDistance:number; threats:RouteThreat[]
-  maxWaypoints:number; expansionBudget:number
+  maxWaypoints:number; expansionBudget:number; terrain?:TerrainMap
 }
 export interface ThreatRouteResult {
   route:Point[]; distance:number; cost:number; expansions:number; optimal:boolean
@@ -53,12 +54,12 @@ export function threatExposure(a:Point,b:Point,threat:Omit<RouteThreat,'costPerU
   const interval = circleInterval(a,b,threat)
   return interval ? distance(a,b)*(interval[1]-interval[0]) : 0
 }
-export function threatSegmentCost(a:Point,b:Point,threats:RouteThreat[]):number {
-  return distance(a,b)+threats.reduce((n,t)=>n+threatExposure(a,b,t)*t.costPerUnit,0)
+export function threatSegmentCost(a:Point,b:Point,threats:RouteThreat[],terrain?:TerrainMap):number {
+  return segmentFuelCost(a,b,terrain)+threats.reduce((n,t)=>n+threatExposure(a,b,t)*t.costPerUnit,0)
 }
-export function threatRouteCost(route:Point[],recovery:Point,threats:RouteThreat[]):number {
+export function threatRouteCost(route:Point[],recovery:Point,threats:RouteThreat[],terrain?:TerrainMap):number {
   const path=[...route,recovery]
-  return path.slice(1).reduce((n,p,i)=>n+threatSegmentCost(path[i],p,threats),0)
+  return path.slice(1).reduce((n,p,i)=>n+threatSegmentCost(path[i],p,threats,terrain),0)
 }
 function append(path:Point[],point:Point):Point[] {
   if(distance(path.at(-1)!,point)<EPS)return path
@@ -77,17 +78,19 @@ function append(path:Point[],point:Point):Point[] {
 export function findThreatAwareRoute(request:ThreatRouteRequest):ThreatRouteResult|undefined {
   const {from,recovery,maxDistance,maxWaypoints,expansionBudget}=request
   const threats=request.threats.filter(t=>t.radius>0&&t.costPerUnit>0)
-  const goals=request.goals.filter(p=>distance(from,p)+distance(p,recovery)<=maxDistance+EPS)
+  const terrain=request.terrain
+  const fuel=(a:Point,b:Point)=>segmentFuelCost(a,b,terrain)
+  const goals=request.goals.filter(p=>fuel(from,p)+fuel(p,recovery)<=maxDistance+EPS)
   if(!goals.length||maxWaypoints<2)return undefined
-  const returnCosts=goals.map(p=>threatSegmentCost(p,recovery,threats))
-  const estimate=(p:Point)=>Math.min(...goals.map((g,i)=>distance(p,g)+returnCosts[i]))
+  const returnCosts=goals.map(p=>threatSegmentCost(p,recovery,threats,terrain))
+  const estimate=(p:Point)=>Math.min(...goals.map((g,i)=>fuel(p,g)+returnCosts[i]))
   let best:ThreatRouteResult|undefined
   const finish=(path:Point[],flown:number,cost:number):void=>{
     const point=path.at(-1)!
     goals.forEach((goal,i)=>{
-      const length=flown+distance(point,goal)+distance(goal,recovery),route=append(path,goal)
+      const length=flown+fuel(point,goal)+fuel(goal,recovery),route=append(path,goal)
       if(length>maxDistance+EPS||route.length>maxWaypoints)return
-      const value=cost+threatSegmentCost(point,goal,threats)+returnCosts[i]
+      const value=cost+threatSegmentCost(point,goal,threats,terrain)+returnCosts[i]
       if(!best||value<best.cost-EPS||Math.abs(value-best.cost)<=EPS&&length<best.distance-EPS)
         best={route,distance:length,cost:value,expansions:0,optimal:false}
     })
@@ -99,7 +102,7 @@ export function findThreatAwareRoute(request:ThreatRouteRequest):ThreatRouteResu
   const directions:[[number,number],...Array<[number,number]>]=[[1,0],[-1,0],[0,1],[0,-1],[1,-1],[-1,1]]
   const push=(q:number,r:number,path:Point[],flown:number,g:number):void=>{
     const p=axialToPoint(q,r)
-    if(path.length>maxWaypoints||flown+Math.min(...goals.map(goal=>distance(p,goal)+distance(goal,recovery)))>maxDistance+EPS)return
+    if(path.length>maxWaypoints||flown+Math.min(...goals.map(goal=>fuel(p,goal)+fuel(goal,recovery)))>maxDistance+EPS)return
     if(path.length===maxWaypoints&&goals.every(goal=>append(path,goal).length>maxWaypoints))return
     const f=g+estimate(p)
     if(best&&f>=best.cost-EPS)return
@@ -115,7 +118,7 @@ export function findThreatAwareRoute(request:ThreatRouteRequest):ThreatRouteResu
   const snapped=snapToHex(from),r=Math.round(snapped[1]/(1.5*HEX_RADIUS)),q=Math.round(snapped[0]/(Math.sqrt(3)*HEX_RADIUS)-r/2)
   for(const [dq,dr] of [[0,0],...directions]) {
     const p=axialToPoint(q+dq,r+dr)
-    push(q+dq,r+dr,append([from],p),distance(from,p),threatSegmentCost(from,p,threats))
+    push(q+dq,r+dr,append([from],p),fuel(from,p),threatSegmentCost(from,p,threats,terrain))
   }
   while(open.length&&expansions<expansionBudget) {
     open.sort((a,b)=>a.f-b.f||a.g-b.g||a.flown-b.flown||a.serial-b.serial)
@@ -126,7 +129,7 @@ export function findThreatAwareRoute(request:ThreatRouteRequest):ThreatRouteResu
     finish(label.path,label.flown,label.g)
     for(const [dq,dr] of directions) {
       const nq=label.q+dq,nr=label.r+dr,p=axialToPoint(nq,nr)
-      push(nq,nr,append(label.path,p),label.flown+distance(label.p,p),label.g+threatSegmentCost(label.p,p,threats))
+      push(nq,nr,append(label.path,p),label.flown+fuel(label.p,p),label.g+threatSegmentCost(label.p,p,threats,terrain))
     }
   }
   if(!best)return undefined

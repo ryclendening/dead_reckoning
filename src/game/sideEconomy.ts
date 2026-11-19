@@ -3,6 +3,7 @@ import { UPGRADE_CATALOG, modifiedStat, upgradeDefinition } from './upgrades'
 import { MAPPED_RADIUS } from './fog'
 import { FOB_MIN_CAPACITY, isOperationalAirfield } from './forwardBasing'
 import { friendlyTerritoryForAssets, territoryContains, territoryRegions } from './territory'
+import { groundFootprintIsClear } from './terrain'
 import { FORMATION_PRICES, LOGISTICS_COSTS, LOGISTICS_EFFECTS } from './economyRules'
 import { isOperationalSite, SAM_DEPLOYMENT_LIMIT } from './equipmentRules'
 export { LOGISTICS_COSTS, LOGISTICS_EFFECTS } from './economyRules'
@@ -64,6 +65,7 @@ export function validateAssetPlacement(state: SidePlanningContext, kind: Constru
   const limitReason = constructionLimitReason(constructionDeployment(state, definition))
   if (limitReason) return { valid: false, reason: limitReason }
   if (!placement || !Number.isFinite(placement[0]) || !Number.isFinite(placement[1])) return { valid: false, reason: 'SELECT A MAP LOCATION' }
+  if (!groundFootprintIsClear(placement,state.terrain,kind === 'fob' ? .9 : .55)) return { valid: false, reason: 'SITE MUST BE ON CLEAR, SURVEYED LAND' }
   if (state.opposingTerritory && territoryContains(placement,state.opposingTerritory)) return { valid: false, reason: 'SITE MUST BE OUTSIDE ENEMY TERRITORY' }
   const territory = friendlyTerritoryForAssets(state.territory,state.assets)
   const owned = territoryContains(placement,territory)

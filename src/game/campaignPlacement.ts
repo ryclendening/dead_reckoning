@@ -2,6 +2,7 @@ import { MAPPED_RADIUS } from './fog'
 import { markSetupAssetPlaced } from './campaignSetup'
 import type { MatchState, Point } from './types'
 import { territoryContains } from './territory'
+import { groundFootprintIsClear, terrainKnownWithin } from './terrain'
 
 export const INITIAL_PLACEMENT_SPACING = 1.15
 export const INITIAL_PLACEMENT_EDGE_MARGIN = .75
@@ -15,6 +16,8 @@ export function validateInitialPlacement(state: MatchState, assetId: string, poi
   if (!finitePoint(point)) return ['SELECT A MAP LOCATION']
   const edgeMargin = asset.kind === 'base' ? INITIAL_PLACEMENT_EDGE_MARGIN : .35
   if (!territoryContains(point!,state.world.friendlyTerritory,edgeMargin)) return ['PLACE INSIDE FRIENDLY TERRITORY']
+  const terrain=terrainKnownWithin(state.world.terrain,state.mappedAreas,2.65,state.world.friendlyTerritory)
+  if (!groundFootprintIsClear(point!,terrain,asset.kind==='base'||asset.kind==='fob'?1.1:.55)) return ['PLACE ON CLEAR, SURVEYED LAND']
   const selectedIds = state.setup ? state.setup.placedAssetIds : state.playerAssets.map(item => item.id)
   const tooClose = state.playerAssets.some(other => other.id !== assetId && selectedIds.includes(other.id) && distance(point!, other.position) < INITIAL_PLACEMENT_SPACING)
   if (tooClose) return ['TOO CLOSE TO ANOTHER FRIENDLY ASSET']

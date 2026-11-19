@@ -1,6 +1,7 @@
-import type { Asset, FormationRecoveryOutcome, Point, Squadron } from './types'
+import type { Asset, FormationRecoveryOutcome, Point, Squadron, TerrainMap } from './types'
+import { routeFuelCost } from './terrain'
 
-export interface BasingContext { playerAssets: Asset[]; squadrons: Squadron[] }
+export interface BasingContext { playerAssets: Asset[]; squadrons: Squadron[]; terrain?: TerrainMap }
 import { flightRangeFor } from './flightRules'
 
 export const AIRFIELD_LANDING_RADIUS = .6
@@ -10,7 +11,7 @@ export const MAX_RECOVERY_WAYPOINTS = 5
 export const isAirfield = (asset: Asset): boolean => asset.kind === 'base' || asset.kind === 'fob'
 export const isOperationalAirfield = (asset: Asset): boolean => isAirfield(asset) && asset.health > 0 && (asset.kind === 'base' || asset.operational !== false)
 export const distanceBetween = (a: Point, b: Point) => Math.hypot(a[0] - b[0], a[1] - b[1])
-export const routeDistanceForBasing = (route: Point[]) => route.slice(1).reduce((sum, point, index) => sum + distanceBetween(route[index], point), 0)
+export const routeDistanceForBasing = (route: Point[], terrain?: TerrainMap) => terrain ? routeFuelCost(route, terrain) : route.slice(1).reduce((sum, point, index) => sum + distanceBetween(route[index], point), 0)
 export const recoveryPath = (from: Point, field: Point, waypoints: Point[] = []): Point[] => [from, ...waypoints, field]
 
 export function normalizeFormationBasing(squadrons: Squadron[], assets: Asset[]): Asset[] {
@@ -110,8 +111,8 @@ export interface RouteBudget {
 export function deriveRouteBudget(state: BasingContext, formationId: string, route: Point[], routeIngress: Point[], maxDistance: number): RouteBudget | undefined {
   const view = deriveRecoveryPlanningView(state, formationId, route, maxDistance)
   if (!view) return undefined
-  const flownDistance = routeDistanceForBasing(view.normalizedRoute)
-  const ingressDistance = Math.min(routeDistanceForBasing(routeIngress), flownDistance)
+  const flownDistance = routeDistanceForBasing(view.normalizedRoute,state.terrain)
+  const ingressDistance = Math.min(routeDistanceForBasing(routeIngress,state.terrain), flownDistance)
   const formation=state.squadrons.find(item=>item.id===formationId)
   const unfinishedTransit=formation?.mission==='transit'&&!formation.plannedRecoveryFieldId
   const recoveryReserve = unfinishedTransit?0:Math.max(0, view.missionDistance - flownDistance)
@@ -130,11 +131,11 @@ export function deriveRouteBudget(state: BasingContext, formationId: string, rou
 
 export function nearestReachableAlternate(state: BasingContext, formationId: string, from: Point, remainingRange: number, excludedFieldId: string, claims?: Map<string, Set<string>>): Asset | undefined {
   return state.playerAssets.filter(isOperationalAirfield).filter(field => field.id !== excludedFieldId).filter(field => {
-    if (distanceBetween(from, field.position) > remainingRange + .001) return false
+    if (routeDistanceForBasing([from,field.position],state.terrain) > remainingRange + .001) return false
     if (field.kind === 'base') return true
     const occupants = claims?.get(field.id) ?? projectedOccupants(state, formationId).get(field.id) ?? new Set<string>()
     return occupants.has(formationId) || occupants.size < (field.capacity ?? FOB_MIN_CAPACITY)
-  }).sort((a, b) => distanceBetween(from, a.position) - distanceBetween(from, b.position) || a.id.localeCompare(b.id))[0]
+  }).sort((a, b) => routeDistanceForBasing([from,a.position],state.terrain) - routeDistanceForBasing([from,b.position],state.terrain) || a.id.localeCompare(b.id))[0]
 }
 
 export function deriveRecoveryPlanningView(state: BasingContext, formationId: string, route: Point[], maxDistance: number): RecoveryPlanningView | undefined {
@@ -146,14 +147,14 @@ export function deriveRecoveryPlanningView(state: BasingContext, formationId: st
   const intendedField = requestedField ?? launchField
   const normalizedRoute = route
   const landsOutbound = formation && transitDestination(formation, route, intendedField)
-  const flown = routeDistanceForBasing(normalizedRoute)
+  const flown = routeDistanceForBasing(normalizedRoute,state.terrain)
   const waypoints = formation?.recoveryWaypoints ?? []
   const recoveryRoute = !landsOutbound && normalizedRoute.length >= 2
     ? recoveryPath(normalizedRoute.at(-1)!, intendedField.position, waypoints)
     : []
   const validRecovery = waypoints.length === 0 || (recoveryRoute.length > 0
     && waypoints.length <= MAX_RECOVERY_WAYPOINTS && waypoints.every(point => point.every(Number.isFinite)))
-  const reserve = routeDistanceForBasing(recoveryRoute)
+  const reserve = routeDistanceForBasing(recoveryRoute,state.terrain)
   const missionDistance = flown + reserve
   const remainingRange = Math.max(0, maxDistance - flown)
   const alternateField = nearestReachableAlternate({ ...state, playerAssets: assets }, formationId, normalizedRoute.at(-1) ?? launchField.position, remainingRange, intendedField.id)

@@ -112,7 +112,7 @@ export function routeThreats(view:CpuPlanningView,role:Squadron['role'],formatio
   return threats
 }
 export function recoveryView(view: CpuPlanningView, order: Squadron, orders = view.cpu.formations) {
-  return deriveRecoveryPlanningView({ playerAssets: view.assets, squadrons: orders.map(s=>s.id===order.id?order:s) }, order.id, order.route, flightRangeFor(order))
+  return deriveRecoveryPlanningView({ playerAssets: view.assets, squadrons: orders.map(s=>s.id===order.id?order:s), terrain:view.context.terrain }, order.id, order.route, flightRangeFor(order))
 }
 export function hold(view: CpuPlanningView, formation: Squadron): Squadron {
   const field=formationField(view.assets,formation.id)
@@ -126,13 +126,14 @@ function alternatives(from: Point, to: Point, offsets: number[]): Point[][] {
  * this planning decision, including isolated purchase copies; no saved map. */
 function searched(view:CpuPlanningView,from:Point,goals:Point[],role:Squadron['role'],work:RouteWork,formation:Squadron):Point[]|undefined {
   const threats=routeThreats(view,role,formation)
-  if(!threats.length)return undefined
-  const key=JSON.stringify([from,goals,role,flightRangeFor(formation),flightSpeedFor(formation),threats])
+  const terrain=view.context.terrain
+  if(!threats.length&&!terrain?.cells.some(cell=>cell.kind==='mountain'))return undefined
+  const key=JSON.stringify([from,goals,role,flightRangeFor(formation),flightSpeedFor(formation),threats,terrain&&[terrain.originX,terrain.originZ,terrain.cellSize,terrain.width,terrain.height,terrain.cells.filter(cell=>cell.kind==='mountain').map(cell=>cell.index)]])
   const cache=work.routeCache??=new Map()
   if(cache.has(key))return cache.get(key)?.route
   const budget=Math.max(0,CPU_PROFILES[view.cpu.difficulty].expansions-work.expansions)
   if(!budget)return undefined
-  const result=findThreatAwareRoute({from,goals,recovery:from,maxDistance:flightRangeFor(formation),maxWaypoints:7,threats,expansionBudget:budget})
+  const result=findThreatAwareRoute({from,goals,recovery:from,maxDistance:flightRangeFor(formation),maxWaypoints:7,threats,expansionBudget:budget,terrain})
   work.expansions+=result?.expansions??0
   cache.set(key,result)
   return result?.route
@@ -150,7 +151,7 @@ export function missionOrders(view: CpuPlanningView, formation: Squadron, missio
   const scoutingReturn=mission==='transit'&&!transitField
   const paths=scoutingReturn?ingress.flatMap(path=>{const length=Math.max(.01,distance(from,station)),side:Point=[-(station[1]-from[1])/length,(station[0]-from[0])/length];return [-7,-4,4,7].map(offset=>[...path,[(from[0]+station[0])/2+side[0]*offset,(from[1]+station[1])/2+side[1]*offset] as Point,from])}):ingress
   const orders=paths.flatMap(path=> {
-    const route=mission==='base-strike'||mission==='transit'?path:generateRouteTemplate({template:mission,cpuSearchSweep:true,ingress:path,maxDistance:budget,bounds:{minX:Math.min(from[0],station[0])-8,maxX:Math.max(from[0],station[0])+8,minZ:Math.min(from[1],station[1])-8,maxZ:Math.max(from[1],station[1])+8}}).route
+    const route=mission==='base-strike'||mission==='transit'?path:generateRouteTemplate({template:mission,cpuSearchSweep:true,ingress:path,maxDistance:budget,bounds:{minX:Math.min(from[0],station[0])-8,maxX:Math.max(from[0],station[0])+8,minZ:Math.min(from[1],station[1])-8,maxZ:Math.max(from[1],station[1])+8},terrain:view.context.terrain}).route
     const order:Squadron={...formation,mission,route,routeIngress:path,sortieOrdered:true,plannedRecoveryFieldId:transitField?.id,protectedTargetId:undefined,strikeTargetId:undefined,protectedPoint:mission==='defensive-cap'?[...station]:undefined}
     const recovery=recoveryView(view,order)
     if(!recovery?.valid||recovery.missionDistance>budget+.001){work.rejected.push(recovery?.reason??'No recovery field');return []}
@@ -234,13 +235,13 @@ export function strikeOrders(view: CpuPlanningView, fighter: Squadron, target: C
   const from=field.position, length=distance(from,target.position), angle=Math.atan2(from[1]-target.position[1],from[0]-target.position[0])
   const releases:Point[]=length<=BASE_STRIKE_RANGE?[[from[0]+(target.position[0]-from[0])*.02,from[1]+(target.position[1]-from[1])*.02]]:CPU_PROFILES[view.cpu.difficulty].releases.map(a=>[target.position[0]+Math.cos(angle+a)*BASE_STRIKE_RANGE,target.position[1]+Math.sin(angle+a)*BASE_STRIKE_RANGE])
   if(length<.01)releases[0]=[from[0]+.05,from[1]]
-  const all:Squadron[]=releases.flatMap(p=>missionOrders(view,fighter,'base-strike',p,work)).map(o=>({...o,strikeTargetId:target.id})).filter(o=>validateStrikeGeometry(o,field,target)===undefined)
+  const all:Squadron[]=releases.flatMap(p=>missionOrders(view,fighter,'base-strike',p,work)).map(o=>({...o,strikeTargetId:target.id})).filter(o=>validateStrikeGeometry(o,field,target,recoveryView(view,fighter)?.intendedField,view.context.terrain)===undefined)
   const path=searched(view,from,releases,fighter.role,work,fighter)
   let optimized:Squadron|undefined
   if(path) {
     const order:Squadron={...fighter,mission:'base-strike',route:path,routeIngress:path,strikeTargetId:target.id,sortieOrdered:true,protectedTargetId:undefined,protectedPoint:undefined,plannedRecoveryFieldId:field.id}
     const recovery=recoveryView(view,order)
-    if(recovery?.valid&&validateStrikeGeometry(order,field,target)===undefined){optimized={...order,route:recovery.normalizedRoute};all.push(optimized)}
+    if(recovery?.valid&&validateStrikeGeometry(order,field,target,recovery.intendedField,view.context.terrain)===undefined){optimized={...order,route:recovery.normalizedRoute};all.push(optimized)}
     else work.rejected.push(recovery?.reason??'A* route failed canonical strike validation')
   }
   const ranked = rankRoutes(view, all, work)

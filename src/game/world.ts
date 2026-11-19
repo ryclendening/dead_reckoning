@@ -1,6 +1,8 @@
 import type { BoundarySegment, CampaignWorld, FriendlyTerritory, Point, WorldBounds, WorldEdge } from './types'
 import { territoryBounds, territoryContains } from './territory'
 import { campaignStart } from './campaignLayout'
+import { campaignEnemyStart } from './campaignLayout'
+import { generateTerrainMap } from './terrain'
 
 export const CAMPAIGN_WORLD_BOUNDS:WorldBounds={minX:-14,maxX:14,minZ:-18,maxZ:18}
 export const PRESENTATION_APRON=6
@@ -28,7 +30,9 @@ const edgeLimits=(edge:WorldEdge,bounds:WorldBounds):[number,number]=>edge==='ea
 export function generateCampaignWorld(seed:number,randomize=true):CampaignWorld{
   const start=START_ANCHORS[seededIndex(seed,START_ANCHORS.length)]
   const center=randomize?campaignStart(seed,CAMPAIGN_WORLD_BOUNDS):[...start.center] as Point
-  return {seed,...(randomize?{layoutVersion:1 as const}:{}),bounds:{...CAMPAIGN_WORLD_BOUNDS},presentationBounds:{minX:CAMPAIGN_WORLD_BOUNDS.minX-PRESENTATION_APRON,maxX:CAMPAIGN_WORLD_BOUNDS.maxX+PRESENTATION_APRON,minZ:CAMPAIGN_WORLD_BOUNDS.minZ-PRESENTATION_APRON,maxZ:CAMPAIGN_WORLD_BOUNDS.maxZ+PRESENTATION_APRON},startRegionId:randomize?`campaign-${seed}`:start.id,friendlyTerritory:{center,radius:START_TERRITORY_RADIUS}}
+  const enemyCenter=randomize?campaignEnemyStart(seed,CAMPAIGN_WORLD_BOUNDS,center):undefined
+  const terrain=randomize?generateTerrainMap(seed,CAMPAIGN_WORLD_BOUNDS,[center,...(enemyCenter?[enemyCenter]:[])]):undefined
+  return {seed,...(randomize?{layoutVersion:2 as const}:{}),bounds:{...CAMPAIGN_WORLD_BOUNDS},presentationBounds:{minX:CAMPAIGN_WORLD_BOUNDS.minX-PRESENTATION_APRON,maxX:CAMPAIGN_WORLD_BOUNDS.maxX+PRESENTATION_APRON,minZ:CAMPAIGN_WORLD_BOUNDS.minZ-PRESENTATION_APRON,maxZ:CAMPAIGN_WORLD_BOUNDS.maxZ+PRESENTATION_APRON},startRegionId:randomize?`campaign-${seed}`:start.id,friendlyTerritory:{center,radius:START_TERRITORY_RADIUS},...(terrain?{terrain}:{})}
 }
 
 /** Forward-compatible placement utility; it does not enable multiplayer mechanics. */

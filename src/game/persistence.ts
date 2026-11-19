@@ -43,14 +43,25 @@ function validWorld(value: unknown): boolean {
   const bounds = value.bounds
   const presentation = value.presentationBounds
   const territory = value.friendlyTerritory
+  const terrain = value.terrain
   return finite(value.seed) && text(value.startRegionId)
-    && (value.layoutVersion === undefined || value.layoutVersion === 1)
+    && (value.layoutVersion === undefined || value.layoutVersion === 1 || value.layoutVersion === 2)
     && [bounds.minX, bounds.maxX, bounds.minZ, bounds.maxZ, presentation.minX, presentation.maxX, presentation.minZ, presentation.maxZ].every(finite)
     && finite(bounds.minX) && finite(bounds.maxX) && finite(bounds.minZ) && finite(bounds.maxZ)
     && bounds.minX < bounds.maxX && bounds.minZ < bounds.maxZ
     && point(territory.center) && finite(territory.radius) && territory.radius > 0
     && (territory.regions === undefined || Array.isArray(territory.regions) && territory.regions.every(region =>
-      record(region) && text(region.id) && (region.kind === 'home' || region.kind === 'fob') && point(region.center) && finite(region.radius) && region.radius > 0))
+        record(region) && text(region.id) && (region.kind === 'home' || region.kind === 'fob') && point(region.center) && finite(region.radius) && region.radius > 0))
+    && (terrain === undefined || record(terrain) && terrain.version === 1
+      && (terrain.archetype===undefined||['coast','highlands','islands'].includes(String(terrain.archetype)))
+      && finite(terrain.cellSize) && terrain.cellSize > 0
+      && finite(terrain.originX) && finite(terrain.originZ)
+      && Number.isInteger(terrain.width) && (terrain.width as number) > 0
+      && Number.isInteger(terrain.height) && (terrain.height as number) > 0
+      && Array.isArray(terrain.cells) && terrain.cells.length <= (terrain.width as number) * (terrain.height as number)
+      && new Set(terrain.cells.map(cell=>record(cell)?cell.index:undefined)).size===terrain.cells.length
+      && terrain.cells.every(cell => record(cell) && Number.isInteger(cell.index) && (cell.index as number)>=0 && (cell.index as number)<(terrain.width as number)*(terrain.height as number) && finite(cell.x) && finite(cell.z) && ['land','water','mountain'].includes(String(cell.kind))))
+    && (value.layoutVersion !== 2 || terrain !== undefined)
 }
 
 function validSquadron(value: unknown): value is Squadron {

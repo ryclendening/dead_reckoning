@@ -9,17 +9,28 @@ export type ReinforcementType = 'alert-cap' | 'replacement-flight'
 export type WorldEdge = 'north' | 'east' | 'south' | 'west'
 
 export interface WorldBounds { minX:number; maxX:number; minZ:number; maxZ:number }
+export type TerrainKind = 'land' | 'water' | 'mountain'
+export type GeographyArchetype = 'coast' | 'highlands' | 'islands'
+export interface TerrainCell { index:number; x:number; z:number; kind:TerrainKind }
+export interface TerrainMap {
+  version:1
+  /** Omitted from cropped knowledge snapshots so the unseen layout type is not disclosed. */
+  archetype?:GeographyArchetype
+  cellSize:number; originX:number; originZ:number; width:number; height:number; cells:TerrainCell[]
+}
 export interface BoundarySegment { edge:WorldEdge; coordinate:number; from:number; to:number }
 export interface TerritoryRegion { id:string; kind:'home'|'fob'; center:Point; radius:number }
 export interface FriendlyTerritory { center:Point; radius:number; regions?:TerritoryRegion[] }
 export interface CampaignWorld {
   seed:number
   /** Absent on legacy saves and deterministic tactical fixtures. */
-  layoutVersion?:1
+  layoutVersion?:1|2
   bounds:WorldBounds
   presentationBounds:WorldBounds
   startRegionId:string
   friendlyTerritory:FriendlyTerritory
+  /** Absent on legacy saves and deterministic tactical fixtures. */
+  terrain?:TerrainMap
 }
 
 export interface Squadron {

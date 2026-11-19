@@ -89,7 +89,7 @@ function fighterActions(view: CpuPlanningView, work: RouteWork, fighter: Squadro
       return
     }
     const orders=cpu.formations.map(f=>f.id===order.id?order:f.id===reconOrder.id?reconOrder:hold(view,f)),ids=new Set(orders.filter(o=>o.sortieOrdered!==false).map(o=>o.id))
-    const check=validateRecoveryPackage({playerAssets:view.assets,squadrons:orders},flightRangeFor,ids)
+    const check=validateRecoveryPackage({playerAssets:view.assets,squadrons:orders,terrain:view.context.terrain},flightRangeFor,ids)
     if(!check.valid){work.rejected.push(`${id}: ${check.reason}`);return}
     const protectedRisk=protectedRisks(view,orders,riskOf,forecasts.launchRisk),returnConfidence=(o:Squadron)=>Math.max(0,1-protectedRisk(o)/Math.max(25,(o.strength??100)+20))
     const loss=(o:Squadron)=>forecasts.paths(o).reduce((n,f)=>n+f.probability*Math.min(o.aircraft,protectedRisk(f.order)/100*o.maxAircraft),0)
@@ -205,10 +205,10 @@ export function bomberActions(view:CpuPlanningView,work:RouteWork,bomber:Squadro
     order={...order,bombingTargets:assignments.map(assignment=>({
       ...assignment,routeIndex:order.route.findIndex(point=>distance(point,sequence.find(site=>site.id===assignment.targetId)!.position)<.001),
     }))}
-    if((order.bombingTargets??[]).some(assignment=>assignment.routeIndex<1)||validateBomberOrder(order,field,known,recovery.intendedField))continue
+    if((order.bombingTargets??[]).some(assignment=>assignment.routeIndex<1)||validateBomberOrder(order,field,known,recovery.intendedField,view.context.terrain))continue
     const orders=view.cpu.formations.map(formation=>formation.id===bomber.id?order:hold(view,formation))
     const active=new Set([bomber.id])
-    const valid=validateRecoveryPackage({playerAssets:view.assets,squadrons:orders},flightRangeFor,active)
+    const valid=validateRecoveryPackage({playerAssets:view.assets,squadrons:orders,terrain:view.context.terrain},flightRangeFor,active)
     if(!valid.valid){work.rejected.push(valid.reason??'Bomber package failed shared recovery validation');continue}
     const damage=sequence.reduce((sum,site)=>sum+Math.min(site.health,groundAttackDamage(bomber,site.kind)),0)
     const base=view.cpu.sites.find(site=>site.kind==='base'&&site.health>0)
@@ -272,7 +272,7 @@ export function generateActions(view:CpuPlanningView,work:RouteWork):TacticalPac
         const coverage=estimateEscortCoverage({escortRoute:escort.route,protectedRoute,escortSpeed:flightSpeedFor(escort),protectedSpeed:flightSpeedFor(bomberOrder),recoveryPoint:field.position,maxDistance:flightRangeFor(escort)})
         if(!coverage.recoveryFeasible||coverage.percent<20)continue
         const orders=candidate.orders.map(order=>order.id===fighter.id?escort:order)
-        const valid=validateRecoveryPackage({playerAssets:view.assets,squadrons:orders},flightRangeFor,new Set(orders.filter(order=>order.sortieOrdered!==false).map(order=>order.id)))
+        const valid=validateRecoveryPackage({playerAssets:view.assets,squadrons:orders,terrain:view.context.terrain},flightRangeFor,new Set(orders.filter(order=>order.sortieOrdered!==false).map(order=>order.id)))
         if(!valid.valid)continue
         bomberEscorts.push({...candidate,id:`${candidate.id}:escort:${fighter.id}`,summary:`${fighter.callsign} escorts ${bomber.callsign} on the bombing run.`,orders,
           predicted:{...candidate.predicted,expectedAircraftLoss:candidate.predicted.expectedAircraftLoss*(1-coverage.percent/100*.35),
@@ -330,7 +330,7 @@ export function generateActions(view:CpuPlanningView,work:RouteWork):TacticalPac
   for(const key of keys)for(const a of shortlist(libraries[0],fighters[0],key))for(const b of secondShortlists.get(key)!) {
     const orders=a.orders.map(o=>o.id===fighters[1].id?b.orders.find(f=>f.id===o.id)!:o)
     const ids=new Set(orders.filter(o=>o.sortieOrdered!==false).map(o=>o.id))
-    if(!validateRecoveryPackage({playerAssets:view.assets,squadrons:orders},flightRangeFor,ids).valid)continue
+    if(!validateRecoveryPackage({playerAssets:view.assets,squadrons:orders,terrain:view.context.terrain},flightRangeFor,ids).valid)continue
     const protectedRisk=protectedRisks(view,orders,risk,forecasts.launchRisk),confidence=(o:Squadron)=>Math.max(0,1-protectedRisk(o)/Math.max(25,(o.strength??100)+20))
     const loss=(o:Squadron)=>forecasts.paths(o).reduce((n,f)=>n+f.probability*Math.min(o.aircraft,protectedRisk(f.order)/100*o.maxAircraft),0)
     const attacks=[a.baseAttack,b.baseAttack].filter((v):v is BaseAttackEstimate=>!!v)

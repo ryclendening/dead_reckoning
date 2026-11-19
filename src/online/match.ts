@@ -11,6 +11,8 @@ import { OPENING_LOGISTICS, OPENING_RESERVES } from '../game/openingForces'
 import { generateRouteTemplate, templatesForRole, validateBomberOrderForPlayer, validateGroundStrikeOrder } from '../game/routeTemplates'
 import type { MatchState, Point, Squadron } from '../game/types'
 import { createStartingKnowledge, generateCampaignWorld } from '../game/world'
+import { terrainKnownWithin } from '../game/terrain'
+import { friendlyTerritoryForAssets } from '../game/territory'
 import type { OnlineAction, OnlineOrder, OnlineView } from './protocol'
 
 export type SeatIndex = 0 | 1
@@ -71,7 +73,8 @@ export function playerView(game: OnlineMatch, index: SeatIndex): OnlineView {
     match: {
       ...match, seed: 0,
       world: { seed: 0, startRegionId: 'online', friendlyTerritory: world.friendlyTerritory,
-        bounds: world.presentationBounds, presentationBounds: world.presentationBounds },
+        bounds: world.presentationBounds, presentationBounds: world.presentationBounds,
+        terrain:terrainKnownWithin(world.terrain,match.mappedAreas,2.65,friendlyTerritoryForAssets(world.friendlyTerritory,match.playerAssets)) },
     },
     matchId: game.id,
     revision: seat.revision,
@@ -88,6 +91,7 @@ function matchingRoute(a: Point[], b: Point[]) {
 function validateOrderGeometry(match: MatchState, squadron: Squadron) {
   const field = formationField(match.playerAssets, squadron.id)
   const { presentationBounds: bounds } = match.world
+  const terrain=terrainKnownWithin(match.world.terrain,match.mappedAreas,2.65,friendlyTerritoryForAssets(match.world.friendlyTerritory,match.playerAssets))
   const { mission, routeIngress, route, protectedTargetId, protectedPoint } = squadron
   if (!field || !isOperationalAirfield(field) || distanceBetween(route[0], field.position) > .001 ||
       distanceBetween(routeIngress[0], field.position) > .001) return 'ROUTE MUST START AT AN OPERATIONAL LAUNCH FIELD'
@@ -102,7 +106,7 @@ function validateOrderGeometry(match: MatchState, squadron: Squadron) {
   if (bomberError) return bomberError
   if (mission === 'bomb') return matchingRoute(route, routeIngress) ? undefined : 'BOMBING ROUTE MUST MATCH THE FLIGHT PATH'
 
-  const normalize = (path: Point[]) => deriveRecoveryPlanningView(match, squadron.id, path, flightRangeFor(squadron))?.normalizedRoute
+  const normalize = (path: Point[]) => deriveRecoveryPlanningView({...match,terrain}, squadron.id, path, flightRangeFor(squadron))?.normalizedRoute
   if (protectedTargetId) {
     const target = match.squadrons.find(item => item.id === protectedTargetId)
     const targetField = match.playerAssets.find(asset => asset.id === target?.plannedRecoveryFieldId)
@@ -128,7 +132,7 @@ function validateOrderGeometry(match: MatchState, squadron: Squadron) {
     return matchingRoute(route, routeIngress) ? undefined : 'RECON ROUTE MUST MATCH THE PLOTTED WAYPOINTS'
   }
 
-  const generated = generateRouteTemplate({ template: mission, ingress: routeIngress, maxDistance: flightRangeFor(squadron), bounds })
+  const generated = generateRouteTemplate({ template: mission, ingress: routeIngress, maxDistance: flightRangeFor(squadron), bounds, terrain })
   const expected = normalize(generated.route)
   if (!expected || !matchingRoute(route, expected)) return 'ROUTE MUST FOLLOW THE ASSIGNED MISSION PATTERN'
   if (mission === 'defensive-cap' && protectedPoint && distanceBetween(protectedPoint, routeIngress.at(-1)!) > .1) {
@@ -160,7 +164,7 @@ function lockOrders(match: MatchState, orders: OnlineOrder[]): MatchState {
     }
   })
   if (byId.size) throw new OnlineError('Unknown formation.')
-  const planned = { ...match, squadrons }
+  const planned = { ...match, squadrons, terrain:terrainKnownWithin(match.world.terrain,match.mappedAreas,2.65,friendlyTerritoryForAssets(match.world.friendlyTerritory,match.playerAssets)) }
   const validation = validateRecoveryPackage(planned, flightRangeFor, new Set(orders.map(order => order.id)))
   if (!validation.valid) throw new OnlineError(validation.reason ?? 'Invalid recovery package.')
 
