@@ -1,7 +1,8 @@
 import { describe, expect, it } from 'vitest'
 import { CAMPAIGN_WORLD_BOUNDS,createStartingKnowledge,deriveKnownEnvelope,derivePlanningEnvelope,generateCampaignWorld } from './world'
 import { generateRouteTemplate, templatesForRole } from './routeTemplates'
-import type { Point } from './types'
+import { routeFuelCost, terrainKindAt } from './terrain'
+import type { Point, TerrainMap } from './types'
 
 const base:Point=[-7.8,11.2]
 const farTarget:Point=[8.8,-12.8]
@@ -61,6 +62,21 @@ describe('route templates',()=>{
       expect(missionDistance(result.route)).toBeLessThanOrEqual(maxDistance+.001)
       expect(result.adjustment).not.toBe('none')
     }
+  })
+
+  it('keeps a Protect point in uncharted space when a smaller patrol can return home',()=>{
+    const launch:Point=[0,0],station:Point=[7,0]
+    const terrain:TerrainMap={version:1,cellSize:.75,originX:0,originZ:0,width:3,height:1,cells:[
+      {index:0,x:0,z:0,kind:'land'},
+      {index:1,x:.75,z:0,kind:'land'},
+      {index:2,x:1.5,z:0,kind:'mountain'},
+    ]}
+    const result=generateRouteTemplate({template:'defensive-cap',ingress:[launch,station],
+      maxDistance:40,bounds:CAMPAIGN_WORLD_BOUNDS,terrain})
+    expect(terrainKindAt(station,terrain)).toBeUndefined()
+    expect(result.ingress).toEqual([launch,station])
+    expect(result.adjustment).toBe('pattern-shrunk')
+    expect(routeFuelCost([...result.route,launch],terrain)).toBeLessThanOrEqual(40.001)
   })
 
   it('fits every role template to knowledge-derived bounds from all four start regions',()=>{

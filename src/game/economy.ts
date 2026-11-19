@@ -8,7 +8,11 @@ import { sidePlanningContext, applySideContext } from './sideContext'
 import * as shared from './sideEconomy'
 export { LOGISTICS_COSTS, LOGISTICS_EFFECTS } from './economyRules'
 export { FOB_INITIAL_CAPACITY, FOB_PLACEMENT_SPACING, FOB_PLACEMENT_MAX_TERRITORY_GAP, PROCUREMENT_CATALOG, AIRFIELD_UPGRADE_CATALOG, economyTargetsEqual, findMatchingEconomyQuote, createEconomyState } from './sideEconomy'
-export const validateAssetPlacement = (s: MatchState, k: ConstructibleAssetKind, p: Point | undefined) => shared.validateAssetPlacement(sidePlanningContext(s, 'player'), k, p)
+export function constructionPlacementValidator(state: MatchState, kind: ConstructibleAssetKind) {
+  const context = sidePlanningContext(state, 'player')
+  return shared.constructionPlacementValidator(context, kind)
+}
+export const validateAssetPlacement = (s: MatchState, k: ConstructibleAssetKind, p: Point | undefined) => constructionPlacementValidator(s, k)(p)
 export const validateFobPlacement = (s: MatchState, p: Point | undefined) => validateAssetPlacement(s, 'fob', p)
 export const economyQuotesFor = (s: MatchState, t: EconomyTarget) => shared.economyQuotesFor(sidePlanningContext(s, 'player'), t)
 export const economyAttentionTargets = (s: MatchState) => shared.economyAttentionTargets(sidePlanningContext(s, 'player'))

@@ -156,7 +156,20 @@ void main(){
 const fogFragmentShader=`uniform sampler2D uPersistentMask;uniform sampler2D uLiveMask;uniform vec4 uWorldBounds;varying vec2 vUv;
 float hash21(vec2 p){return fract(sin(dot(p,vec2(127.1,311.7)))*43758.5453);}
 float valueNoise(vec2 p){vec2 i=floor(p),f=fract(p);f=f*f*(3.0-2.0*f);float a=hash21(i),b=hash21(i+vec2(1.0,0.0)),c=hash21(i+vec2(0.0,1.0)),d=hash21(i+vec2(1.0,1.0));return mix(mix(a,b,f.x),mix(c,d,f.x),f.y);}
-void main(){float persistent=texture2D(uPersistentMask,vUv).r;float live=texture2D(uLiveMask,vUv).r;float knowledge=max(persistent,live);float mapped=smoothstep(0.0,0.6,knowledge);float observed=smoothstep(0.6,1.0,knowledge);vec2 world=vec2(mix(uWorldBounds.x,uWorldBounds.y,vUv.x),mix(uWorldBounds.w,uWorldBounds.z,vUv.y));float noise=(valueNoise(world*0.285)+0.45*valueNoise(world*1.25))/1.45-0.5;float alpha=mix(0.54,0.22,mapped);alpha=mix(alpha,0.025,observed);alpha+=noise*mix(0.022,0.012,mapped)*(1.0-observed);vec3 color=mix(vec3(0.1059,0.1451,0.1137),vec3(0.1686,0.2039,0.1647),mapped);gl_FragColor=vec4(color,clamp(alpha,0.0,0.62));}`
+void main(){
+  float persistent=texture2D(uPersistentMask,vUv).r;
+  float live=texture2D(uLiveMask,vUv).r;
+  float knowledge=max(persistent,live);
+  float mapped=smoothstep(0.0,0.6,knowledge);
+  float observed=smoothstep(0.6,1.0,knowledge);
+  vec2 world=vec2(mix(uWorldBounds.x,uWorldBounds.y,vUv.x),mix(uWorldBounds.w,uWorldBounds.z,vUv.y));
+  float noise=(valueNoise(world*0.285)+0.45*valueNoise(world*1.25))/1.45-0.5;
+  float alpha=mix(0.38,0.14,mapped);
+  alpha=mix(alpha,0.025,observed);
+  alpha+=noise*mix(0.052,0.018,mapped)*(1.0-observed);
+  vec3 color=mix(vec3(0.19,0.22,0.20),vec3(0.20,0.24,0.22),mapped);
+  gl_FragColor=vec4(color,clamp(alpha,0.0,0.48));
+}`
 const makeFogTexture=(data:Uint8Array,width:number,height:number)=>{const texture=new THREE.DataTexture(data,width,height,THREE.RedFormat,THREE.UnsignedByteType);texture.minFilter=THREE.LinearFilter;texture.magFilter=THREE.LinearFilter;texture.wrapS=THREE.ClampToEdgeWrapping;texture.wrapT=THREE.ClampToEdgeWrapping;texture.generateMipmaps=false;return texture}
 const FogOfWar=memo(function FogOfWar({geometry,mappedAreas,observations,presentationBounds,friendlyTerritory}:{geometry:THREE.BufferGeometry;mappedAreas:Point[];observations:MapObservation[];presentationBounds:WorldBounds;friendlyTerritory:FriendlyTerritory}){
   const size=useMemo(()=>deriveFogMaskSize(presentationBounds),[presentationBounds])
@@ -859,7 +872,11 @@ function BattlefieldScene({squadrons,assets,playerAssets,mappedAreas,terrain,pre
     const next=fixedEnd?[...draft.current.slice(0,-1),point,draft.current.at(-1)!]:[...draft.current,point]
     applyDraft(next)
   }
-  const mapMove=(e:ThreeEvent<PointerEvent>)=>{if(phase==='adapt'&&construction){const hit=e.ray.intersectPlane(groundPlane,new THREE.Vector3());setConstructionHover(snapToHex(hit?[hit.x,hit.z]:[e.point.x,e.point.z]))}}
+  const mapMove=(event:ThreeEvent<PointerEvent>)=>{
+    if(phase!=='adapt'||!construction||construction.placement)return
+    const next=snapToHex(mapPoint(event))
+    setConstructionHover(current=>current?.[0]===next[0]&&current?.[1]===next[1]?current:next)
+  }
   const editableWaypoints=editingReturn?(recoveryRoute??[]).slice(1,-1).map((position,index)=>({position,routeIndex:index+1,label:`R${index+1}`,release:false})):editingInbound&&selected.mission==='bomb'?(editPath??[]).slice(1,-1).map((position,index)=>({position,routeIndex:index+1,label:`I${index+1}`,release:false})):selected.mission==='base-strike'?selected.routeIngress.slice(1).map((position,index,array)=>({position,routeIndex:index+1,label:index===array.length-1?'S':String(index+1),release:index===array.length-1})):selected.mission==='bomb'?[]:selected.routeIngress.slice(1,fixedTransitEnd?-1:6).map((position,index)=>({position,routeIndex:index+1,label:String(index+1),release:false}))
   return <LightweightAircraft value={lightweightAircraft}>
     <CameraRig phase={phase} friendlyTerritory={resolvedTerritory} planningBounds={resolvedPlanningBounds} presentationBounds={resolvedPresentationBounds} focusPoint={cameraFocus} focusRequestKey={focusRequestKey} followKey={followId} poseMemory={poseMemory}/>

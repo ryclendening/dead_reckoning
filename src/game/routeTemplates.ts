@@ -134,7 +134,10 @@ function build(template:MissionId,ingress:Point[],patternScale:number,cpuSearchS
   return [...ingress,...searchSweep(target,forward,side,2.2*patternScale,2*patternScale)]
 }
 
-function valid(route:Point[],base:Point,maxDistance:number,bounds:RouteBounds,terrain?:TerrainMap){return route.every(point=>within(point,bounds))&&routeDistanceForBasing(route,terrain)<=maxDistance+.001}
+function valid(route: Point[], base: Point, maxDistance: number, bounds: RouteBounds, terrain?: TerrainMap) {
+  return route.every(point => within(point, bounds)) &&
+    routeDistanceForBasing([...route, base], terrain) <= maxDistance + .001
+}
 
 function prefixAtRatio(route:Point[],ratio:number):Point[]{
   if(route.length<2)return route
@@ -159,12 +162,12 @@ export function generateRouteTemplate({template,ingress,maxDistance,bounds,cpuSe
   if(valid(initial,base,maxDistance,bounds,terrain))return {route:initial,ingress:safeIngress,requestedIngress:ingress,adjustment:clampedIngress?'ingress-clamped':'none'}
 
   let low=.25,high=1
-  for(let index=0;index<24;index++){
-    const midpoint=(low+high)/2
-    if(valid(build(template,safeIngress,midpoint,cpuSearchSweep),base,maxDistance,bounds,terrain))low=midpoint
-    else high=midpoint
-  }
-  if(low>.25+.0001){
+  if(valid(build(template,safeIngress,low,cpuSearchSweep),base,maxDistance,bounds,terrain)){
+    for(let index=0;index<24;index++){
+      const midpoint=(low+high)/2
+      if(valid(build(template,safeIngress,midpoint,cpuSearchSweep),base,maxDistance,bounds,terrain))low=midpoint
+      else high=midpoint
+    }
     return {route:build(template,safeIngress,low,cpuSearchSweep),ingress:safeIngress,requestedIngress:ingress,adjustment:clampedIngress?'ingress-clamped':'pattern-shrunk'}
   }
   low=0;high=1

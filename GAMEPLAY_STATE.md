@@ -41,6 +41,7 @@ The nominal sortie window is 22 simulated seconds. Execution continues while rec
 - New campaigns use a deterministic, saved terrain layout selected from coast, highlands, and islands. Starting territories have clear deployment footprints; seeded starting positions and opposing bases vary with the campaign seed. Existing saves and deterministic tactical fixtures without a terrain snapshot retain their original flat geography and do not reroll.
 - Water and mountains block initial asset placement and construction. Airfields require a larger clear land footprint than other sites. Placement uses only surveyed or owned terrain; unknown terrain is not assumed clear.
 - The battlefield draws surveyed terrain as a continuous 3D relief surface with rugged mountain ridges, sloped shores, beaches, and coastal shallows. Fog follows that surface. The relief is visual, and waypoint and placement coordinates use the tactical map plane.
+- A light veil leaves surveyed relief readable outside current observation. Unexplored ground uses a neutral map surface. Enemy contacts follow sensor visibility separately.
 - Aircraft cross water at normal fuel cost and cross mountains at 1.5 times the normal fuel cost, without a speed change. Planning estimates only known mountain crossings; execution consumes fuel against the actual terrain and can force recovery or fuel exhaustion.
 - The CPU receives only its surveyed terrain plus its owned territory. Online player views omit the seed and full terrain grid and include only surveyed or owned cells. During a completed online round, newly recovered terrain is available with the round result rather than revealed at its exact observation time.
 
@@ -306,6 +307,10 @@ Available fixtures:
 ## Running Change Log
 
 This log keeps only current net changes. Superseded intermediate states belong in git history.
+
+### 2026-11-19
+
+- Fixed patrol sizing to reserve return fuel before accepting the on-station pattern, including Protect points in fog. Deployment and construction previews reuse surveyed terrain across candidate hexes. Lightened fog over the battlefield so mapped relief stays readable between sorties.
 
 ### 2026-11-18
 

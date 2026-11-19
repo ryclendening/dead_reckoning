@@ -1,4 +1,4 @@
-import type { Asset, ConstructibleAssetKind, EconomyActionId, EconomyActionQuote, EconomyCommand, EconomyEffect, EconomyState, EconomyTarget, LogisticsStatementEntry, Role, Squadron } from './types'
+import type { Asset, ConstructibleAssetKind, EconomyActionId, EconomyActionQuote, EconomyCommand, EconomyEffect, EconomyState, EconomyTarget, LogisticsStatementEntry, Point, Role, Squadron } from './types'
 import { UPGRADE_CATALOG, modifiedStat, upgradeDefinition } from './upgrades'
 import { MAPPED_RADIUS } from './fog'
 import { FOB_MIN_CAPACITY, isOperationalAirfield } from './forwardBasing'
@@ -60,23 +60,29 @@ function constructionLimitReason(deployment: ReturnType<typeof constructionDeplo
 }
 
 export interface FobPlacementValidation { valid: boolean; reason?: string }
-export function validateAssetPlacement(state: SidePlanningContext, kind: ConstructibleAssetKind, placement: [number, number] | undefined): FobPlacementValidation {
+export function constructionPlacementValidator(state: SidePlanningContext, kind: ConstructibleAssetKind): (placement: Point | undefined) => FobPlacementValidation {
   const definition = PROCUREMENT_CATALOG.find(item => item.kind === kind)
   const limitReason = constructionLimitReason(constructionDeployment(state, definition))
-  if (limitReason) return { valid: false, reason: limitReason }
-  if (!placement || !Number.isFinite(placement[0]) || !Number.isFinite(placement[1])) return { valid: false, reason: 'SELECT A MAP LOCATION' }
-  if (!groundFootprintIsClear(placement,state.terrain,kind === 'fob' ? .9 : .55)) return { valid: false, reason: 'SITE MUST BE ON CLEAR, SURVEYED LAND' }
-  if (state.opposingTerritory && territoryContains(placement,state.opposingTerritory)) return { valid: false, reason: 'SITE MUST BE OUTSIDE ENEMY TERRITORY' }
+  if (limitReason) return () => ({ valid: false, reason: limitReason })
   const territory = friendlyTerritoryForAssets(state.territory,state.assets)
-  const owned = territoryContains(placement,territory)
-  if (kind !== 'fob' && !owned) return { valid: false, reason: 'SITE MUST BE INSIDE FRIENDLY TERRITORY' }
-  const persistentlyKnown = owned || state.mappedAreas.some(area => pointDistance(placement, area) <= MAPPED_RADIUS)
-  if (!persistentlyKnown) return { valid: false, reason: 'SITE MUST BE IN RECOVERED TERRITORY' }
-  if (kind === 'fob' && !territoryRegions(territory).some(region => pointDistance(placement, region.center) <= region.radius + FOB_PLACEMENT_MAX_TERRITORY_GAP + 1e-7)) {
-    return { valid: false, reason: `FOB MUST BE WITHIN ${FOB_PLACEMENT_MAX_TERRITORY_GAP} UNITS OF FRIENDLY TERRITORY EDGE` }
+  const regions = territoryRegions(territory)
+  return placement => {
+    if (!placement || !Number.isFinite(placement[0]) || !Number.isFinite(placement[1])) return { valid: false, reason: 'SELECT A MAP LOCATION' }
+    if (state.opposingTerritory && territoryContains(placement,state.opposingTerritory)) return { valid: false, reason: 'SITE MUST BE OUTSIDE ENEMY TERRITORY' }
+    const owned = territoryContains(placement,territory)
+    if (kind !== 'fob' && !owned) return { valid: false, reason: 'SITE MUST BE INSIDE FRIENDLY TERRITORY' }
+    const persistentlyKnown = owned || state.mappedAreas.some(area => pointDistance(placement, area) <= MAPPED_RADIUS)
+    if (!persistentlyKnown) return { valid: false, reason: 'SITE MUST BE IN RECOVERED TERRITORY' }
+    if (kind === 'fob' && !regions.some(region => pointDistance(placement, region.center) <= region.radius + FOB_PLACEMENT_MAX_TERRITORY_GAP + 1e-7)) {
+      return { valid: false, reason: `FOB MUST BE WITHIN ${FOB_PLACEMENT_MAX_TERRITORY_GAP} UNITS OF FRIENDLY TERRITORY EDGE` }
+    }
+    if (!groundFootprintIsClear(placement,state.terrain,kind === 'fob' ? .9 : .55)) return { valid: false, reason: 'SITE MUST BE ON CLEAR, SURVEYED LAND' }
+    if (state.assets.some(asset => pointDistance(placement, asset.position) < FOB_PLACEMENT_SPACING)) return { valid: false, reason: 'SITE TOO CLOSE TO AN EXISTING ASSET' }
+    return { valid: true }
   }
-  if (state.assets.some(asset => pointDistance(placement, asset.position) < FOB_PLACEMENT_SPACING)) return { valid: false, reason: 'SITE TOO CLOSE TO AN EXISTING ASSET' }
-  return { valid: true }
+}
+export function validateAssetPlacement(state: SidePlanningContext, kind: ConstructibleAssetKind, placement: Point | undefined): FobPlacementValidation {
+  return constructionPlacementValidator(state, kind)(placement)
 }
 export const validateFobPlacement = (state: SidePlanningContext, placement: [number, number] | undefined) => validateAssetPlacement(state, 'fob', placement)
 

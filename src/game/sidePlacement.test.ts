@@ -23,8 +23,10 @@ describe.each(['player', 'cpu'] as const)('%s territory construction', side => {
     const mappedAreas: Point[] = [forward, gap, [8, 0], [12, 0]]
     const playerCenter: Point = side === 'player' ? [0, 0] : [-20, 0]
     const enemyBase = { ...base, id: 'e-base', position: (side === 'cpu' ? [0, 0] : [-20, 0]) as Point }
+    const terrain = initial.world.terrain!
     return { ...initial, phase: 'adapt', logistics: 100, playerAssets: side === 'player' ? assets : [{ ...base, position: playerCenter }], mappedAreas,
-      world: { ...initial.world, friendlyTerritory: { center: playerCenter, radius: 4.5 } },
+      world: { ...initial.world, friendlyTerritory: { center: playerCenter, radius: 4.5 },
+        terrain: { ...terrain, cells: terrain.cells.map(cell => ({ ...cell, kind: 'land' })) } },
       enemyAssets: side === 'cpu' ? [enemyBase, fob] : [enemyBase],
       cpu: { ...initial.cpu!, logistics: 100, mappedAreas } }
   }
@@ -65,6 +67,17 @@ describe.each(['player', 'cpu'] as const)('%s territory construction', side => {
     expect(sidePlanningContext(built, side).assets.at(-1)).toMatchObject({ kind: 'fob', position: gap })
     expect(validate(state, 'fob', [-8, 0]).valid).toBe(false)
     expect(validate(state, 'fob', [12, 0])).toMatchObject({ valid: false, reason: 'FOB MUST BE WITHIN 7 UNITS OF FRIENDLY TERRITORY EDGE' })
+  })
+
+  it('rejects terrain that is underwater inside otherwise legal territory', () => {
+    const state = fixture()
+    const placement: Point = [0, 3]
+    expect(validate(state, 'sam', placement).valid).toBe(true)
+    const terrain = state.world.terrain!
+    state.world.terrain = { ...terrain, cells: terrain.cells.map(cell =>
+      Math.hypot(cell.x - placement[0], cell.z - placement[1]) <= 1 ? { ...cell, kind: 'water' } : cell) }
+    expect(validate(state, 'sam', placement)).toEqual({ valid: false, reason: 'SITE MUST BE ON CLEAR, SURVEYED LAND' })
+    expect(execute(state, { actionId: 'build-sam', target, placement })).toBe(state)
   })
 
   if (side === 'cpu') it('restricts planner SAM candidates to owned circles and removes disabled FOB coverage', () => {
