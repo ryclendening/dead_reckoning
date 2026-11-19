@@ -73,7 +73,7 @@ describe('Resupply',()=>{
     expect(catalog).not.toContain('BUILD SAM')
   })
 
-  it('lists ground construction when Ground is selected',()=>{
+  it('pages ground construction while keeping the category controls visible',()=>{
     const quotes=economyQuotesFor(state(),{kind:'campaign',id:'campaign'})
     const catalog=renderToStaticMarkup(<PurchaseCatalog
       category="ground" quotes={quotes} busy={false} onCategoryChange={noop} onChoose={noop} onClose={noop}
@@ -81,12 +81,9 @@ describe('Resupply',()=>{
     expect(catalog).toContain('aria-pressed="true">Ground</button>')
     expect(catalog).toContain('BUILD FOB')
     expect(catalog).toContain('BUILD DECOY')
-    expect(catalog).toContain('BUILD AAA')
-    expect(catalog).toContain('BUILD SAM')
-    expect(catalog).toContain('BUILD RADAR')
-    expect(catalog).toMatch(/BUILD SAM[^<]*<\/b><small>1\/3 operational<\/small>/)
-    expect(catalog).toMatch(/BUILD RADAR[^<]*<\/b><small>1\/2 operational<\/small>/)
-    expect(catalog).toContain('$180M</strong>')
+    expect(catalog).toContain('aria-label="Next purchases page"')
+    expect(catalog).toContain('1 / 3')
+    expect(catalog).not.toContain('BUILD SAM')
     expect(catalog).not.toContain('Buy fighter formation')
     expect(catalog).not.toContain('Buy recon formation')
   })

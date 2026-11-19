@@ -26,6 +26,6 @@ describe('campaign setup panel', () => {
     const markup = renderToStaticMarkup(<CampaignSetupPanel online match={match} onContinue={() => {}} />)
 
     expect(markup).toContain('4/4 placed')
-    expect(markup).toContain('class="campaign-setup-continue">Lock deployment')
+    expect(markup).toContain('class="phase-primary">Lock deployment')
   })
 })

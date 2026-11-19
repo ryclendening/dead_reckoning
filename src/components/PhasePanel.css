@@ -1,0 +1,298 @@
+/* Phase and selection changes leave the battlefield and panel in the same slots. */
+.game-frame:is(.phase-deploy, .phase-plan, .phase-debrief, .phase-adapt, .phase-execute) {
+  display: flex;
+  flex-direction: column;
+  height: 100dvh;
+  min-height: 0;
+}
+
+.game-frame .match-header { flex: 0 0 auto; }
+
+.battlefield-workspace {
+  display: flex;
+  flex: 1 1 0;
+  flex-direction: column;
+  min-height: 0;
+}
+
+.game-frame .battlefield-workspace > .map-wrap {
+  flex: 1 1 0;
+  height: auto;
+  min-width: 0;
+  min-height: 0;
+  max-height: none;
+}
+
+.battlefield-workspace > .phase-panel {
+  --panel-header: 40px;
+  --panel-footer: 44px;
+  --panel-gap: 6px;
+  position: relative;
+  inset: auto;
+  z-index: 14;
+  flex: 0 0 calc(300px + env(safe-area-inset-bottom));
+  display: grid;
+  grid-template-rows: var(--panel-header) minmax(0, 1fr) var(--panel-footer);
+  gap: var(--panel-gap);
+  min-width: 0;
+  min-height: 0;
+  padding: 8px max(8px, env(safe-area-inset-right)) calc(8px + env(safe-area-inset-bottom)) max(8px, env(safe-area-inset-left));
+  border: 0;
+  border-top: 2px solid #60968a;
+  background: #101914;
+  color: #e1ece0;
+  box-shadow: 0 -6px 20px #0006;
+}
+
+.phase-panel-heading, .phase-panel-tabs,
+.phase-panel .adapt-build-heading, .phase-panel .adapt-drawer-title {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 5px;
+  min-width: 0;
+  margin: 0;
+}
+
+.phase-panel-heading h2, .phase-panel-content h2 {
+  margin: 0;
+  font: 800 19px/1.1 'Barlow Condensed', sans-serif;
+}
+
+.phase-panel-copy, .phase-panel .procure-instruction {
+  margin: 0;
+  color: #bccbbd;
+  font: 600 12px/1.25 Inter, sans-serif;
+}
+
+.phase-panel :is(button, select) { color-scheme: dark; }
+.phase-panel :is(button, select):focus-visible { outline: 2px solid var(--cyan); outline-offset: -2px; }
+.phase-panel button:disabled { opacity: .52; cursor: default; }
+
+.phase-panel :is(.phase-panel-heading, .phase-panel-tabs, .phase-panel-footer, .panel-pager) > button,
+.phase-panel :is(.adapt-based-picker, .planning-roster-heading select) {
+  min-width: 0;
+  min-height: 36px;
+  padding: 3px 8px;
+  border: 1px solid #455a4e;
+  background: #19251e;
+  color: #e1ece0;
+  font: 700 15px/1.05 'Barlow Condensed', sans-serif;
+  letter-spacing: normal;
+  cursor: pointer;
+}
+
+.phase-panel :is(.phase-panel-heading, .phase-panel-tabs, .phase-panel-footer) > button { height: 100%; }
+.phase-panel :is(button, select):is([aria-pressed="true"], [aria-expanded="true"]) { border-color: #72aca1; background: #25443a; }
+.phase-panel-tabs > button { flex: 1; }
+
+.phase-panel-footer, .phase-panel .planning-route-actions {
+  display: flex;
+  align-items: stretch;
+  gap: 5px;
+  height: var(--panel-footer);
+  margin: 0;
+}
+
+.phase-panel .phase-panel-footer > :is(.phase-primary, .adapt-next, .shelf-primary) {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  min-width: min(108px, 32%);
+  margin-inline-start: auto;
+  border: 1px solid #78a596;
+  background: #26463c;
+  color: #eef5ec;
+  text-align: center;
+}
+
+.phase-panel-footer > :is(.phase-primary, .adapt-next, .shelf-primary) svg { flex: 0 0 14px; width: 14px; }
+.phase-panel .online-commit-first > .shelf-primary { margin-inline-start: 0; }
+.phase-panel .phase-panel-footer > .phase-panel-copy { align-self: center; }
+.phase-panel-content { display: flex; flex-direction: column; min-width: 0; min-height: 0; }
+.phase-panel-pages { display: flex; flex-direction: column; flex: 1; gap: 5px; min-height: 0; }
+.phase-panel-list { display: grid; gap: 4px; min-width: 0; }
+
+.panel-pager {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  gap: 10px;
+  margin-top: auto;
+  color: #bccbbd;
+  font: 700 13px 'Barlow Condensed', sans-serif;
+}
+
+.phase-panel .panel-pager button { display: grid; place-items: center; width: 40px; min-height: 32px; }
+.panel-pager svg { width: 16px; height: 16px; }
+
+.phase-panel .command-sheet, .phase-panel .resupply-content {
+  grid-row: 1 / 3;
+  display: grid;
+  grid-template-rows: var(--panel-header) minmax(0, 1fr);
+  gap: var(--panel-gap);
+  min-width: 0;
+  min-height: 0;
+}
+
+.phase-panel .command-sheet {
+  grid-row: 1 / -1;
+  grid-template-rows: var(--panel-header) minmax(0, 1fr) var(--panel-footer);
+  position: static;
+  touch-action: none;
+  user-select: none;
+  height: auto;
+  max-height: none;
+  padding: 0;
+  background: none;
+  border: 0;
+  box-shadow: none;
+  overflow: visible;
+}
+
+.phase-panel .planning-aircraft-nav { grid-template-columns: 40px minmax(0, 1fr) 40px 76px; }
+.phase-panel .planning-pane-content { justify-content: flex-start; gap: 5px; }
+.phase-panel .planning-pane-caption { display: grid; gap: 2px; }
+.phase-panel .planning-route-actions > button { flex: 1; }
+.phase-panel .planning-route-actions > .phase-primary { flex: 0 1 auto; }
+.phase-panel .planning-capsule { align-items: stretch; }
+.phase-panel .planning-base-toggle { display: block; padding: 0 5px; }
+.phase-panel .command-sheet .recon-posture button { min-height: 32px; }
+.phase-panel .shelf-route { grid-auto-flow: column; grid-auto-columns: minmax(0, 1fr); grid-template-columns: none; }
+.phase-panel .mission-effect { align-self: start; }
+.phase-panel .planning-roster-heading label { display: flex; align-items: center; gap: 5px; min-width: 0; }
+.phase-panel .planning-roster-heading svg { width: 15px; color: var(--cyan); flex: none; }
+.phase-panel .planning-roster-heading select { width: 100%; }
+.phase-panel .planning-roster-heading select:disabled { appearance: none; border-color: transparent; background: none; }
+
+.phase-panel .formation-roster-select {
+  grid-template-columns: 18px minmax(0, 1fr) 30px 48px;
+  min-height: 38px;
+  padding: 3px 8px;
+  border: 1px solid #3a4e42;
+  background: #19251e;
+}
+.phase-panel .formation-roster-select.active { border-color: #72aca1; background: #20362e; }
+.phase-panel .formation-roster-select span b { font-size: 15px; }
+.phase-panel .formation-roster-select span small, .phase-panel .formation-roster-select > strong { font-size: 11px; }
+.phase-panel .formation-roster-select > small { color: #a8c1ae; font: 700 12px 'Barlow Condensed', sans-serif; }
+
+.phase-panel .adapt-drawer {
+  grid-row: 1 / -1;
+  display: grid;
+  grid-template-rows: var(--panel-header) minmax(0, 1fr);
+  gap: var(--panel-gap);
+  min-width: 0;
+  min-height: 0;
+  padding: 0;
+  border: 0;
+  background: none;
+}
+.phase-panel .adapt-drawer-title > b { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.phase-panel .adapt-drawer-title > button, .phase-panel .adapt-build-heading > button { width: 40px; height: 100%; }
+
+.phase-panel .adapt-actions { grid-template-columns: minmax(0, 1fr); gap: 4px; margin-top: 0; }
+.phase-panel .adapt-actions > button { min-height: 40px; padding: 5px 8px; }
+.phase-panel .adapt-actions small, .phase-panel .adapt-actions em { margin-top: 1px; font-size: 12px; line-height: 1.2; }
+.phase-panel .resupply-purchase-tabs { height: 100%; }
+.phase-panel .resupply-purchase-tabs button { min-height: 0; }
+.phase-panel .resupply-controls { align-items: stretch; }
+.phase-panel .adapt-balance { align-self: center; }
+.phase-panel .adapt-balance b { font-size: clamp(15px, 4vw, 19px); }
+.phase-panel .adapt-based-picker { width: 100%; min-height: 32px; margin: 5px 0; }
+.phase-panel .adapt-selection progress { display: block; flex: none; width: 100%; height: 4px; accent-color: var(--cyan); }
+.phase-panel .adapt-site-status { margin-top: 3px; }
+.phase-panel .adapt-placement-drawer .campaign-placement-confirm { justify-content: end; margin-top: 8px; }
+
+.debrief-summary .debrief-overview { display: grid; align-content: start; gap: 5px; }
+.debrief-summary .debrief-campaign { display: grid; grid-auto-flow: column; grid-auto-columns: 1fr; margin: 0; gap: 4px; }
+.debrief-summary .debrief-metrics, .debrief-summary .debrief-message { margin: 0; }
+.debrief-summary .debrief-metrics > div {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  min-height: 30px;
+  padding: 3px 4px;
+}
+.debrief-summary .debrief-metrics strong { font-size: 20px; line-height: 1; }
+.debrief-summary .debrief-metrics span { font-size: 9px; line-height: 1.1; }
+.debrief-summary .debrief-cash { padding: 4px 8px; font-size: 11px; line-height: 1.2; }
+.debrief-summary .debrief-cash > header { padding-bottom: 3px; }
+.debrief-summary .debrief-cash > header strong { font-size: 16px; }
+.debrief-summary .debrief-cash dl { gap: 2px; margin-top: 3px; }
+.debrief-summary .debrief-cash dt small { font-size: 10px; }
+.debrief-summary .debrief-highlights, .debrief-summary .debrief-orders, .debrief-summary .debrief-details { margin: 0; padding: 0; border: 0; }
+.debrief-summary .debrief-map-key {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 3px;
+  margin: 0 0 5px;
+  font-size: 13px;
+}
+.debrief-summary .debrief-site { padding: 6px 7px; border: 1px solid #3a4e42; background: #19251e; }
+.debrief-summary .debrief-site-reports > span { font-size: 14px; overflow-wrap: anywhere; }
+.debrief-summary .debrief-orders h2 { margin-bottom: 4px; }
+.debrief-summary .debrief-orders .phase-panel-list > p,
+.debrief-summary .debrief-details .phase-panel-list > * {
+  margin: 0;
+  padding: 5px 8px;
+  border: 1px solid #3a4e42;
+  background: #19251e;
+  font: 600 14px/1.15 'Barlow Condensed', sans-serif;
+}
+.debrief-summary .debrief-details .phase-panel-list { margin-top: 5px; }
+.debrief-summary .debrief-details .phase-panel-list > button { display: flex; align-items: center; justify-content: space-between; min-height: 36px; }
+.debrief-summary .debrief-details .phase-panel-list svg { width: 15px; height: 15px; }
+.phase-panel [hidden] { display: none; }
+
+.phase-panel .campaign-setup-options { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.phase-panel.campaign-setup-float header h2 { font-size: 19px; }
+.phase-panel .campaign-setup-copy { margin-top: 0; }
+.phase-panel.online-wait-panel { grid-template-rows: auto auto 1fr; align-content: start; }
+.phase-panel.online-wait-panel p { align-self: start; }
+
+@media (min-width: 700px) {
+  .game-frame:is(.phase-deploy, .phase-plan, .phase-debrief, .phase-adapt, .phase-execute) { height: calc(100dvh - 44px); }
+}
+
+@media (orientation: landscape) and (max-height: 500px) {
+  .app-shell:has(.game-frame:is(.phase-deploy, .phase-plan, .phase-debrief, .phase-adapt, .phase-execute)) { padding: 0; }
+  .game-frame:is(.phase-deploy, .phase-plan, .phase-debrief, .phase-adapt, .phase-execute) {
+    --landscape-panel-width: clamp(326px, 48%, 420px);
+    width: 100%;
+    height: 100dvh;
+  }
+  .battlefield-workspace { flex-direction: row; }
+  .battlefield-workspace > .phase-panel {
+    flex-basis: var(--landscape-panel-width);
+    border-top: 0;
+    border-left: 2px solid #60968a;
+    padding-bottom: max(8px, env(safe-area-inset-bottom));
+  }
+}
+
+@media (orientation: landscape) and (max-height: 360px) {
+  .battlefield-workspace > .phase-panel {
+    --panel-header: 34px;
+    --panel-footer: 36px;
+    --panel-gap: 4px;
+    padding-block: 5px max(5px, env(safe-area-inset-bottom));
+  }
+  .game-frame:is(.phase-plan, .phase-debrief, .phase-adapt) > .pvp-base-health {
+    position: absolute;
+    inset: auto calc(var(--landscape-panel-width) + 8px) 8px 8px;
+    z-index: 7;
+    gap: 2px 8px;
+    font-size: 11px;
+    pointer-events: none;
+  }
+  .phase-panel .planning-aircraft-nav button { min-height: 34px; }
+  .phase-panel .planning-route-legs button { min-height: 28px; }
+  .phase-panel .planning-fuel { gap: 2px; padding: 3px 5px; }
+  .phase-panel .command-sheet .recon-posture button { min-height: 28px; }
+  .debrief-summary .debrief-overview { gap: 4px; }
+  .debrief-summary .debrief-cash > header strong { font-size: 15px; }
+  .debrief-summary .debrief-cash dt small { font-size: 9px; }
+}

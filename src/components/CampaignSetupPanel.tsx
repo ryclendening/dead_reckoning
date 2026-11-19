@@ -17,22 +17,24 @@ export function CampaignSetupPanel({ match, onContinue, placementId, onSelectPla
   const placedCount = SETUP_REQUIRED_ASSET_IDS.filter(id => setup.placedAssetIds.includes(id)).length
   const allPlaced = placedCount === SETUP_REQUIRED_ASSET_IDS.length
 
-  return <section className="campaign-setup-float" aria-label="Site placement">
-    <header><h2>Place your sites</h2><span>{placedCount}/{SETUP_REQUIRED_ASSET_IDS.length} placed</span></header>
-    <p className="campaign-setup-copy">Select a site. Tap a highlighted hex.</p>
-    <div className="campaign-setup-options">
-      {SETUP_REQUIRED_ASSET_IDS.map(id => {
-        const placed = setup.placedAssetIds.includes(id)
-        const label = setupAssetLabel(id)
-        return <button type="button" key={id} className={`campaign-setup-option${placed ? ' placed' : ''}`}
-          aria-label={placed ? `${label}, placed` : label} aria-pressed={placementId === id} onClick={() => onSelectPlacement?.(id)}>
-          <b>{label}</b>{placed ? <Check aria-hidden="true"/> : null}
-        </button>
-      })}
+  return <section className="phase-panel campaign-setup-float" aria-label="Site placement">
+    <header className="phase-panel-heading"><h2>Place your sites</h2><span>{placedCount}/{SETUP_REQUIRED_ASSET_IDS.length} placed</span></header>
+    <div className="phase-panel-content">
+      <p className="campaign-setup-copy">Select a site. Tap a highlighted hex.</p>
+      <div className="campaign-setup-options">
+        {SETUP_REQUIRED_ASSET_IDS.map(id => {
+          const placed = setup.placedAssetIds.includes(id)
+          const label = setupAssetLabel(id)
+          return <button type="button" key={id} className={`campaign-setup-option${placed ? ' placed' : ''}`}
+            aria-label={placed ? `${label}, placed` : label} aria-pressed={placementId === id} onClick={() => onSelectPlacement?.(id)}>
+            <b>{label}</b>{placed ? <Check aria-hidden="true"/> : null}
+          </button>
+        })}
+      </div>
+      {errors.length ? <p className="campaign-setup-error" role="alert">{errors[0]}</p> : null}
     </div>
-    {errors.length ? <p className="campaign-setup-error" role="alert">{errors[0]}</p> : null}
-    <button type="button" className="campaign-setup-continue" disabled={!allPlaced || errors.length > 0} onClick={onContinue}>
+    <div className="phase-panel-footer"><button type="button" className="phase-primary" disabled={!allPlaced || errors.length > 0} onClick={onContinue}>
       {online ? 'Lock deployment' : 'Begin planning'} <ChevronRight aria-hidden="true"/>
-    </button>
+    </button></div>
   </section>
 }

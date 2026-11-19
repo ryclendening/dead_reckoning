@@ -3,4 +3,5 @@ import { createRoot } from 'react-dom/client'
 import App from './App'
 import './styles.css'
 import './strategic.css'
+import './components/PhasePanel.css'
 createRoot(document.getElementById('root')!).render(<StrictMode><App /></StrictMode>)

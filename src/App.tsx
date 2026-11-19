@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { AlertTriangle, ChevronRight, FastForward, LocateFixed, RotateCcw, ShieldCheck, Zap } from 'lucide-react'
 import { Battlefield, type CameraPoseSnapshot } from './components/Battlefield'
 import { AircraftInspector, AssetInspector } from './components/UnitInspector'
+import { PanelPages } from './components/PanelPages'
 import { CampaignSetupPanel } from './components/CampaignSetupPanel'
 import { CampaignMenu } from './components/CampaignMenu'
 import { fetchOnlineMatch, OnlineInviteCode, OnlineRequestError, sendOnlineCommand } from './components/OnlineClient'
@@ -28,7 +29,7 @@ import { normalizeMatch } from './game/persistence'
 import { protectTargetSelectionFor } from './game/missionResponsibility'
 import { isBomberTargeting, isGroundStrikeTargeting, planBombingTarget, planGroundStrike, removeBombingTarget } from './game/groundStrikePlanning'
 import { aircraftInspectionAt } from './game/unitCards'
-import { debriefMapSites, primaryDebriefEvent } from './game/debriefMap'
+import { debriefMapSites } from './game/debriefMap'
 import { DebriefLegend, DebriefSymbol } from './components/DebriefSymbols'
 import { missionOrderDebrief } from './game/missionDebrief'
 export { normalizeMatch }
@@ -754,6 +755,7 @@ export default function App(){
       </div>:null}
       {onlineInvite&&!onlineView?.joined ? <OnlineInviteCode key={onlineInvite} code={onlineInvite}/> : null}
       {(onlineCommandError||onlineError)?<div className="online-command-error" role="alert"><span>{onlineCommandError??onlineError}</span><button type="button" disabled={onlineCommandBusy} onClick={retryOnline}>RETRY</button></div>:null}
+      <div className="battlefield-workspace">
       <div className="map-wrap"><Battlefield cameraMemory={cameraMemory} squadrons={planningSquadrons} assets={replayMatch.enemyAssets} playerAssets={match.phase==='deploy'&&match.setup?replayMatch.playerAssets.filter(asset=>SETUP_REQUIRED_ASSET_IDS.includes(asset.id as typeof SETUP_REQUIRED_ASSET_IDS[number])&&(match.setup!.placedAssetIds.includes(asset.id)||asset.id===placementId)):replayMatch.playerAssets} mappedAreas={match.mappedAreas} terrain={visibleTerrain} discoveredBoundaries={match.discoveredBoundaries} presentationBounds={match.world.presentationBounds} planningBounds={activeMapPlanningBounds} friendlyTerritory={friendlyTerritory} selectedId={match.selectedId} followId={followId} focusPoint={focusPoint} focusRequestKey={cameraFocusRequestKey} placementId={placementId} positionedPlacementIds={match.setup?.placedAssetIds} showDefenseCoverage={showDefenseCoverage} groundAssetsProjected={Boolean(projectedGround)} onPlacementSelect={id=>{if(!onlineView?.locked&&!onlineCommandBusy)setPlacementId(id)}} planningBaseId={activePlanningBaseId} executionBaseId={executionBaseId} planningRecoveryFieldId={match.phase==='plan'&&recoveryView&&selectedLaunchField&&recoveryView.intendedField.id!==selectedLaunchField.id?recoveryView.intendedField.id:undefined} plannedFormationIds={displayedOrderIds} routeOrigin={selectedLaunchField?.position} editingReturn={editingReturn} editingInbound={editingInbound} recoveryRoute={recoveryView?.recoveryRoute} onReturnWaypoints={setReturnWaypoints} routePlanningEnabled={!waitingOnPlan&&planningStep==='route'&&!editingBombingRun} lockedPlan={waitingOnPlan} showMissionPreview={waitingOnPlan?Boolean(selected.sortieOrdered):planningStep==='route'||planningStep==='target'&&selected.mission==='bomb'&&Boolean(selected.bombingTargets?.length)} selectingGroundTarget={pickingGroundTarget} onGroundTargetSelect={selectGroundTarget} selectedAssetId={selectedAssetId} inspectedFlightId={inspectedFlightId} onAssetInspect={inspectAsset} onFlightInspect={inspectFlight} selectingProtectTarget={!waitingOnPlan&&selectingProtectTarget} escortPreview={protectTarget?{targetId:protectTarget.id}:undefined} phase={visiblePhase} progress={executionProgress} activeEvent={executionEvent} executionResult={executionResult??(match.phase==='debrief'||match.phase==='adapt'?match.lastResult:undefined)} packageReview={false} economySelectionId={economyTarget.kind==='campaign'?undefined:economyTarget.id} onPlanningBaseSelect={selectPlanningBase} onPlanningFormationSelect={selectPlanningFormation} onPlanningProtectTarget={selectProtectAsset} onPlanningProtectPoint={selectProtectPoint} onPlanningProtectFlight={selectProtectFlight} onPlanningRecoverySelect={routeToAirfield} onExecutionBaseSelect={selectExecutionBase} onEconomySelect={id=>selectEconomyTarget({kind:'asset',id},false)} onEconomyFormationSelect={id=>selectEconomyTarget({kind:'squadron',id},false)} construction={match.phase==='adapt'&&procurementMode==='placing'&&procurementDefinition?{kind:procurementDefinition.kind,placement:procurementPlacement,isValid:validProcurementPoint,onStage:stageProcurementPlacement}:undefined} isPlacementValid={validInitialPoint} onRoute={setRoute} onPlace={match.phase==='deploy'&&(onlineSession||match.setup?.stage==='place'||match.setup?.stage==='review'||!match.setup)?stageInitialPlacement:()=>{}}/>
         {match.phase!=='adapt'&&inspectedAsset?<AssetInspector asset={inspectedAsset} sites={inspectionSites} enemy={inspectingEnemy} phase={visiblePhase} result={inspectionResult} seconds={inspectionSeconds} onClose={()=>setSelectedAssetId(undefined)}/>:inspectedAircraft?<AircraftInspector {...inspectedAircraft} onClose={()=>setInspectedFlightId(undefined)}/>:null}
         {visiblePhase!=='deploy'&&visiblePhase!=='debrief' ? <div className="map-tools" aria-label="Map tools">
@@ -766,25 +768,30 @@ export default function App(){
         {visiblePhase==='execute'?<ExecutionOverlay progress={executionProgress} speed={speed} onSpeed={()=>setSpeed(s=>s===1?2:1)} match={replayMatch} result={executionResult} selectedId={match.selectedId} followId={followId} onSelectFormation={selectFormation} onClearFollow={()=>setFollowId(undefined)} onAirfield={focusAirfield}/>:null}
       </div>
       {visiblePhase==='execute'&&executionBaseId?<ExecutionChitRail squadrons={match.squadrons} bases={replayMatch.playerAssets} result={executionResult} progress={executionProgress} activeBaseId={executionBaseId} selectedId={match.selectedId} followId={followId} threatenedIds={new Set((executionResult?.threatAlerts??[]).filter(alert=>alert.time<=inspectionSeconds&&!acknowledgedThreatIds.has(alert.id)).map(alert=>alert.unitId))} onSelect={selectFormation}/>:null}
-      {match.phase==='deploy'&&onlineSession&&onlineView?.locked?<section className="online-wait-panel"><small>DEPLOYMENT LOCKED</small><strong>{onlineView.opponentLocked?'BOTH DEPLOYMENTS LOCKED':'WAITING FOR OPPONENT TO LOCK'}</strong><p>Your opening package is fixed for this match.</p></section>:match.phase==='deploy'&&match.setup?<CampaignSetupPanel match={match} online={Boolean(onlineSession)} placementId={placementId} onSelectPlacement={id=>{if(!onlineView?.locked&&!onlineCommandBusy)setPlacementId(id)}} onContinue={()=>onlineSession?void sendOnlineAction({type:'lock-deploy'}):advanceCampaignSetup()}/>:match.phase==='deploy'?<DeploymentPanel assets={match.playerAssets} selectedId={placementId} onSelect={setPlacementId} locked={Boolean(onlineView?.locked||onlineCommandBusy)} online={Boolean(onlineSession)} onLock={()=>onlineSession?void sendOnlineAction({type:'lock-deploy'}):setMatch(m=>({...m,phase:'plan'}))}/>:null}
-      {match.phase==='plan'&&waitingOnPlan?<section className="online-wait-panel" aria-label="Read-only plan"><strong>{onlineView?.locked?'Orders locked':onlineCommandBusy?'Locking orders…':'Checking submitted orders'}</strong><p>{onlineView?.locked?'Tap an aircraft to review its orders.':'Your submitted routes are frozen.'}</p></section>:null}
+      {match.phase==='deploy'&&onlineSession&&onlineView?.locked?<section className="phase-panel online-wait-panel"><small>DEPLOYMENT LOCKED</small><strong>{onlineView.opponentLocked?'BOTH DEPLOYMENTS LOCKED':'WAITING FOR OPPONENT TO LOCK'}</strong><p>Your opening package is fixed for this match.</p></section>:match.phase==='deploy'&&match.setup?<CampaignSetupPanel match={match} online={Boolean(onlineSession)} placementId={placementId} onSelectPlacement={id=>{if(!onlineView?.locked&&!onlineCommandBusy)setPlacementId(id)}} onContinue={()=>onlineSession?void sendOnlineAction({type:'lock-deploy'}):advanceCampaignSetup()}/>:match.phase==='deploy'?<DeploymentPanel assets={match.playerAssets} selectedId={placementId} onSelect={setPlacementId} locked={Boolean(onlineView?.locked||onlineCommandBusy)} online={Boolean(onlineSession)} onLock={()=>onlineSession?void sendOnlineAction({type:'lock-deploy'}):setMatch(m=>({...m,phase:'plan'}))}/>:null}
+      {match.phase==='plan'&&waitingOnPlan?<section className="phase-panel online-wait-panel" aria-label="Read-only plan"><strong>{onlineView?.locked?'Orders locked':onlineCommandBusy?'Locking orders…':'Checking submitted orders'}</strong><p>{onlineView?.locked?'Tap an aircraft to review its orders.':'Your submitted routes are frozen.'}</p></section>:null}
       {match.phase==='plan'&&!waitingOnPlan?<CommandShelf squadrons={match.squadrons} bases={match.playerAssets} activeBaseId={activePlanningBaseId} rosterMode={planningRosterMode} squadron={selected} routeNotice={routeNotice} routeBudget={routeBudget} protectSummary={protectSummary} editingReturn={editingReturn} editingInbound={editingInbound} editingBombingRun={editingBombingRun} cpuPlanning={cpuPlanningRound===match.round} onRouteLegChange={canEditReturn&&!selectingProtectTarget?leg=>{setEditReturn(leg==='return'||leg==='outbound');setEditBombingRun(leg==='run');setRouteNotice(undefined)}:undefined} onSelect={selectPlanningFormation} onBaseSelect={selectPlanningBase} onRosterMode={mode=>{setPlanningRosterMode(mode);if(mode!=='closed'){setPlanningStep('idle');setSelectingProtectTarget(false)}}} onMission={selectMission} onPickProtectTarget={()=>{setSelectingProtectTarget(true);setRouteNotice(undefined)}} onProtectFlight={selectProtectFlight} onReconPosture={setReconPosture} onUndoWaypoint={undoWaypoint} onRecoverHome={()=>routeToAirfield('p-base',true)} onClear={()=>{setRouteNotice(undefined);if(selectingProtectTarget)setSelectingProtectTarget(false);else if(editingReturn)setReturnWaypoints([]);else if(editingInbound){const first=selected.bombingTargets?.[0];const target=first&&selected.route[first.routeIndex];if(target)setRoute([selected.route[0],target])}else setRoute([])}} onBack={()=>{setPlanningStep('mission');setSelectingProtectTarget(false);setRouteNotice(undefined)}} onCommit={()=>commit(planningStep==='route')} step={planningStep} onClose={()=>{if(planningStep==='target'&&selected.mission==='bomb'){setPlanningStep(selected.bombingTargets?.length?'route':'mission');return}if(planningStep==='route'&&selected.route.length>=2&&!selectingProtectTarget&&!confirmPlanningOrder(selected))return;setPlanningStep('idle');setSelectingProtectTarget(false)}} reviewedIds={reviewedIds} reviewedCount={reviewedCount} totalCount={viableFormationIds.length} groundTargets={groundTargets} onChangeGroundTarget={changeGroundTarget} onInspectGroundTarget={inspectAsset} onSelectBombTargets={()=>{setPlanningStep('target');setRouteNotice(undefined)}} strikeUnlocked={groundTargets.length>0} strikeDisabledReason="RECOVER GROUND TARGET INTELLIGENCE FIRST" selectingProtectTarget={selectingProtectTarget} onlineLock={Boolean(onlineSession)} allowEmptyCommit/>:null}
       {match.phase==='debrief'&&match.lastResult&&!replayActive?<Debrief match={match} onFocus={point=>{setFollowId(undefined);setFocusPoint([...point] as Point)}} onResupply={enterResupply} pending={onlineCommandBusy}/>:null}
       {match.phase==='adapt'?<ResupplyPanel match={match} busy={onlineCommandBusy} cpuAdapting={cpuAdaptingRound===match.round} nextRoundDisabled={cpuAdaptingRound===match.round} selectedTarget={economyTarget} onSelectTarget={selectEconomyTarget} onCloseTarget={()=>selectEconomyTarget({kind:'campaign',id:'campaign'})} onPurchase={purchaseEconomy} onNextRound={nextRound} procurementMode={procurementMode} procurementActionId={procurementActionId} onProcurementMode={changeProcurementMode} onProcurementAction={selectProcurementAction} hasPlacementPreview={Boolean(procurementPlacement)} onConfirmPlacement={confirmProcurementPlacement} onCancelPlacement={()=>setProcurementPlacement(undefined)}/>:null}
+      </div>
       {(match.phase==='victory'||match.phase==='defeat'||match.phase==='draw')?<EndState victory={match.phase==='victory'} round={match.round} outcome={campaignOutcome(match)} onRestart={()=>setMenuOpen(true)}/>:null}
     </div>
   </main>
 }
 
 function DeploymentPanel({assets,selectedId,onSelect,onLock,locked=false,online=false}:{assets:Asset[];selectedId:string;onSelect:(id:string)=>void;onLock:()=>void;locked?:boolean;online?:boolean}){
-  return <section className="deployment-panel" aria-label="Site placement">
-    <div className="deployment-head"><h2>Place your sites</h2></div>
-    <p>{locked?'Waiting for the other player.':'Select a site. Tap a highlighted hex.'}</p>
+  return <section className="phase-panel deployment-panel" aria-label="Site placement">
+    <header className="phase-panel-heading"><h2>Place your sites</h2></header>
+    <div className="phase-panel-content">
+    <p className="phase-panel-copy">{locked?'Waiting for the other player.':'Select a site. Tap a highlighted hex.'}</p>
     <div className="asset-picker">{assets.map(asset=><button type="button" key={asset.id} disabled={locked}
       aria-pressed={asset.id===selectedId} className={asset.id===selectedId?'active':''} onClick={()=>onSelect(asset.id)}>
       <b>{asset.kind==='base'?'MAIN AIRFIELD':asset.kind.toUpperCase()}</b>
     </button>)}</div>
-    <button type="button" className="commit" disabled={locked} onClick={onLock}>{online?'Lock deployment':'Begin planning'} <span aria-hidden="true">››</span></button>
+    </div>
+    <div className="phase-panel-footer"><button type="button" className="phase-primary" disabled={locked} onClick={onLock}>
+      {online?'Lock deployment':'Begin planning'} <ChevronRight/>
+    </button></div>
   </section>
 }
 
@@ -810,6 +817,7 @@ function baseHealthChange(health:number,damage:number){
 }
 
 export function Debrief({match,onFocus,onResupply,pending=false}:{match:MatchState;onFocus:(point:Point)=>void;onResupply:()=>void;pending?:boolean}){
+  const [view,setView]=useState<'Summary'|'Highlights'|'Orders'|'Details'>('Summary')
   const result=match.lastResult!
   const outcome=campaignOutcome(match)
   const message=outcome?campaignOutcomeMessage(outcome):undefined
@@ -820,36 +828,51 @@ export function Debrief({match,onFocus,onResupply,pending=false}:{match:MatchSta
   const enemyBase=match.enemyAssets.find(asset=>asset.kind==='base'&&asset.intel==='confirmed'&&!asset.hidden)
   const orders=missionOrderDebrief(match,result)
   const sites=useMemo(()=>debriefMapSites(result),[result])
-  return <section className="debrief briefing debrief-summary" aria-label="After action summary">
-    <div className="debrief-content">
-    <header><div><small>MISSION COMPLETE</small><h2>AFTER ACTION</h2></div>{message?<strong className="debrief-outcome">{message.title}</strong>:null}</header>
+  return <section className="phase-panel debrief-summary" aria-label="After action summary">
+    <div className="phase-panel-tabs" role="group" aria-label="After action views">
+      {(['Summary','Highlights','Orders','Details'] as const).map(tab=>
+        <button type="button" key={tab} aria-pressed={view===tab} onClick={()=>setView(tab)}>{tab}</button>)}
+    </div>
+    <div className="phase-panel-content debrief-overview" hidden={view!=='Summary'}>
     {isCampaign(match)?<div className="debrief-campaign" role="group" aria-label="Base health">
       <span className={result.baseDamage>0?'base-damaged':undefined}>HOME BASE <b>{baseHealthChange(match.playerBaseHealth,result.baseDamage)}</b></span>
       {enemyBase?<span className={result.enemyBaseDamage>0?'base-damaged':undefined}>ENEMY BASE <b>{baseHealthChange(enemyBase.health,result.enemyBaseDamage)}</b></span>:result.enemyBaseDamage>0?<span>ENEMY BASE DAMAGE <b>−{Math.round(result.enemyBaseDamage)} HP</b></span>:null}
     </div>:null}
-    {message?<p className="debrief-message">{message.message}</p>:null}
+    {message?<p className="debrief-message" title={message.title}>{message.message}</p>:null}
     <div className="debrief-metrics"><div><strong>{result.friendlyLosses}</strong><span>FRIENDLY LOST</span></div><div><strong>{result.enemyLosses}</strong><span>ENEMY LOST · CONFIRMED</span></div><div><strong>{intel.length}</strong><span>INTEL RECOVERED</span></div></div>
     <section className="debrief-cash" aria-label="Cash earned this round">
       <header><b>Cash earned this round</b><strong>+{formatCash(total)}</strong></header>
       <dl>
         <div><dt>Round pay</dt><dd>+{formatCash(base-depotPay)}</dd></div>
         {depotPay>0?<div><dt>Supply Depot</dt><dd>+{formatCash(depotPay)}</dd></div>:null}
-        <div><dt>Recovered intelligence <small>{formatCash(LOGISTICS_EFFECTS.intelRecovery)} per new site</small></dt><dd>{intelIncome>0?'+':''}{formatCash(intelIncome)}</dd></div>
-        <div><dt>Confirmed enemy aircraft lost <small>{formatCash(LOGISTICS_EFFECTS.confirmedEnemyAircraft)} per aircraft</small></dt><dd>{enemyAircraft>0?'+':''}{formatCash(enemyAircraft)}</dd></div>
+        <div><dt>Recovered intel <small>{formatCash(LOGISTICS_EFFECTS.intelRecovery)} per new site</small></dt><dd>{intelIncome>0?'+':''}{formatCash(intelIncome)}</dd></div>
+        <div><dt>Confirmed enemy losses <small>{formatCash(LOGISTICS_EFFECTS.confirmedEnemyAircraft)} per aircraft</small></dt><dd>{enemyAircraft>0?'+':''}{formatCash(enemyAircraft)}</dd></div>
       </dl>
     </section>
-    <DebriefLegend/>
-    <p className="debrief-map-note">Reported locations only. Unlocated losses remain in the totals.</p>
-    <div className="debrief-highlights" aria-label="Round highlights"><small>ROUND HIGHLIGHTS · SELECT A SITE TO FOCUS</small>
-      {sites.length?sites.map(site=><button key={site.id} onClick={()=>onFocus([...site.position])} className={`debrief-site ${primaryDebriefEvent(site).side}`}>
-        <span className="debrief-site-number">{site.number}</span><DebriefSymbol kind={primaryDebriefEvent(site).kind}/>
-        <span className="debrief-site-reports">{site.events.map(event=><span key={event.id}><b>{event.title}</b><span>{event.detail}</span><time>{event.time.toFixed(1)}s</time></span>)}</span><ChevronRight/>
-      </button>):<p>No combat, aircraft losses, or new intelligence reported this round.</p>}
     </div>
-    {orders.length?<div className="debrief-orders" aria-label="Mission orders and results"><small>ORDERS & RESULTS</small>{orders.map(order=><p key={order.id}><b>{order.callsign} · {order.purpose}</b><span>{order.result}</span></p>)}</div>:null}
-    {losses.length||intel.length?<details className="debrief-details"><summary>VIEW FORMATION & INTEL DETAILS</summary><div>{losses.map(item=><p key={item.id}>{item.callsign}: {item.startAircraft} → {item.endAircraft} AIRCRAFT · {item.endStrength}% STRENGTH</p>)}{intel.map(asset=><button key={asset.id} onClick={()=>onFocus(asset.position)}>NEW INTEL · {asset.kind.toUpperCase()} · FOCUS MAP</button>)}</div></details>:null}
+    <div className="phase-panel-content debrief-highlights" aria-label="Round highlights" hidden={view!=='Highlights'}>
+      <DebriefLegend/>
+      {sites.length?<PanelPages pageSize={1} label="Highlights" className="phase-panel-list">
+        {sites.flatMap(site=>site.events.map(event=><button type="button" key={event.id} onClick={()=>onFocus([...site.position])} className={`debrief-site ${event.side}`}>
+          <span className="debrief-site-number">{site.number}</span><DebriefSymbol kind={event.kind}/>
+          <span className="debrief-site-reports"><span><b>{event.title}</b><span>{event.detail}</span><time>{event.time.toFixed(1)}s</time></span></span><ChevronRight/>
+        </button>))}
+      </PanelPages>:<p className="phase-panel-copy">No combat, aircraft losses, or new intelligence reported this round.</p>}
     </div>
-    <div className="debrief-actions"><button type="button" className="debrief-continue" disabled={pending} onClick={onResupply}>{pending?'LOADING…':message?'VIEW OUTCOME':'OPEN RESUPPLY'} <ChevronRight/></button></div>
+    <div className="phase-panel-content debrief-orders" aria-label="Mission orders and results" hidden={view!=='Orders'}>
+      <h2>Orders &amp; Results</h2>
+      {orders.length?<PanelPages pageSize={2} label="Orders" className="phase-panel-list">
+        {orders.map(order=><p key={order.id}><b>{order.callsign} · {order.purpose}</b><span>{order.result}</span></p>)}
+      </PanelPages>:<p className="phase-panel-copy">No sorties flown this round.</p>}
+    </div>
+    <div className="phase-panel-content debrief-details" aria-label="Formation and intelligence details" hidden={view!=='Details'}>
+      <p className="phase-panel-copy">Unlocated losses are included in the round totals.</p>
+      {losses.length||intel.length?<PanelPages pageSize={2} label="Details" className="phase-panel-list">
+        {[...losses.map(item=><p key={item.id}>{item.callsign}: {item.startAircraft} → {item.endAircraft} aircraft · {item.endStrength}% strength</p>),
+          ...intel.map(asset=><button type="button" key={asset.id} onClick={()=>onFocus(asset.position)}>New intel · {asset.kind} <LocateFixed/></button>)]}
+      </PanelPages>:<p className="phase-panel-copy">No friendly aircraft lost or new intelligence recovered.</p>}
+    </div>
+    <div className="phase-panel-footer"><button type="button" className="phase-primary" disabled={pending} onClick={onResupply}>{pending?'Loading…':message?'View outcome':'Open Resupply'} <ChevronRight/></button></div>
   </section>
 }
 
