@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 import { CAMPAIGN_ROUND_LIMIT } from './campaign'
 import { FORMATION_PRICES, LOGISTICS_EFFECTS } from './economyRules'
 import { createMatch } from './data'
+import { RADAR_BASE_RANGE } from './equipmentRules'
 import { projectOnlineGroundReplay } from './executionProjection'
 import { resolveOnlineRound } from './onlineSimulation'
 import type { MatchState, Point } from './types'
@@ -81,6 +82,9 @@ describe('authoritative online round adapter', () => {
       expect(projectOnlineGroundReplay(result,0)?.enemyAssets).toEqual([])
       expect(projectOnlineGroundReplay(result,0)?.playerAssets.find(asset=>asset.kind==='base')?.health).toBe(84)
       const radar=result.groundReplay!.enemySightings.find(sighting=>sighting.asset.kind==='radar')!
+      const observer=result.unitTracks.find(track=>track.unitId==='raven')!.frames.find(frame=>Math.abs(frame.time-radar.start)<1e-6)!
+      expect(Math.hypot(observer.position[0]-radar.asset.position[0],observer.position[1]-radar.asset.position[1]))
+        .toBeGreaterThan(RADAR_BASE_RANGE)
       expect(projectOnlineGroundReplay(result,radar.start)?.enemyAssets.find(asset=>asset.id==='opponent:p-radar')).toMatchObject({health:47,intel:'probable'})
       expect(projectOnlineGroundReplay(result,result.duration)?.enemyAssets).toEqual([])
       expect(state.enemyAssets.find(asset=>asset.id==='opponent:p-radar'), JSON.stringify({recovery:result.recoveryOutcomes,assets:state.enemyAssets})).toMatchObject({health:47,intel:'confirmed'})

@@ -2,13 +2,14 @@ import type { Point, Squadron } from '../types'
 import type { CpuPlanningView } from './planningView'
 import { distance } from './routes'
 import type { FlightForecast } from './recon'
+import { FIXED_ASSET_OBSERVATION_RANGE, groundObservationRange } from '../siteObservation'
 
 export function segmentDistance(p:Point,a:Point,b:Point):number {
   const dx=b[0]-a[0],dy=b[1]-a[1],length=dx*dx+dy*dy
   const t=length?Math.max(0,Math.min(1,((p[0]-a[0])*dx+(p[1]-a[1])*dy)/length)):0
   return distance(p,[a[0]+t*dx,a[1]+t*dy])
 }
-export function covers(route:Point[],p:Point,radius=3.8):boolean {
+export function covers(route:Point[],p:Point,radius=FIXED_ASSET_OBSERVATION_RANGE):boolean {
   return route.slice(1).some((b,i)=>segmentDistance(p,route[i],b)<=radius)
 }
 /** A small derived prior from public deployment geometry and recovered sites.
@@ -38,7 +39,12 @@ export function collectionScorer(view:CpuPlanningView,prior=searchPrior(view),fo
   const cache=new WeakMap<Squadron,boolean[]>()
   return (orders,confidence=()=>1)=>{
     const flying=orders.filter(o=>o.sortieOrdered!==false).map(o=>forecasts(o).map(f=>{
-      let mask=cache.get(f.order);if(!mask){mask=points.map(p=>covers(f.order.route,p.point));cache.set(f.order,mask)}
+      let mask=cache.get(f.order)
+      if(!mask){
+        const radius=groundObservationRange(f.order.role)
+        mask=points.map(p=>covers(f.order.route,p.point,radius))
+        cache.set(f.order,mask)
+      }
       return {mask,probability:f.probability*Math.max(0,Math.min(1,confidence(f.order)))}
     }))
     let value=0

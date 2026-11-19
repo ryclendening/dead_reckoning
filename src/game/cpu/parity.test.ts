@@ -11,6 +11,7 @@ import { cpuPlanningView, cpuReportAt, prepareCpuRound } from './planner'
 import { generateActions, estimateBaseAttack } from './actions'
 import { discoveryAttackValue } from './strategy'
 import { collectionScorer, covers } from './search'
+import { groundObservationRange } from '../siteObservation'
 import type { Squadron } from '../types'
 import type { CpuDifficulty } from './types'
 
@@ -109,7 +110,7 @@ describe('symmetric campaign rules',()=>{
       for(let mask=0;mask<8;mask++) {
         let probability=1
         for(let i=0;i<3;i++)probability*=mask&(1<<i)?probabilities[i]:1-probabilities[i]
-        const covered=points.filter(p=>orders.some((o,i)=>(mask&(1<<i))&&covers(o.route,p.point))).reduce((n,p)=>n+p.weight,0)
+        const covered=points.filter(p=>orders.some((o,i)=>(mask&(1<<i))&&covers(o.route,p.point,groundObservationRange(o.role)))).reduce((n,p)=>n+p.weight,0)
         exhaustive+=probability*covered/points.reduce((n,p)=>n+p.weight,0)
       }
       expect(collectionScorer(view,points)(orders,confidence)).toBeCloseTo(exhaustive*(refresh?.1:1),12)

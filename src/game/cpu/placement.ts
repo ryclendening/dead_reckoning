@@ -4,6 +4,7 @@ import { BASE_STRIKE_RANGE } from '../campaign'
 import { axialToPoint } from '../hex'
 import { validateAssetPlacement } from '../sideEconomy'
 import { formationField, isOperationalAirfield } from '../forwardBasing'
+import { RECON_GROUND_OBSERVATION_RANGE } from '../siteObservation'
 import type { ConstructibleAssetKind, Point } from '../types'
 import type { CpuPlanningView } from './planningView'
 import { distance, cpuRouteRisk, defenseDamageBy } from './routes'
@@ -85,7 +86,8 @@ export function defenseNetworkBenefits(view:CpuPlanningView,nextSites:readonly D
     const angle=t.bearing??Math.atan2(t.position[1]-view.home[1],t.position[0]-view.home[0])
     // A radial collect-and-return envelope is an uncertain opportunity, not a
     // claim that this aircraft saw home or will repeat its previous mission.
-    const route=radialRoute(view.home,angle,[20,3.8,20]),end=2*(20-3.8)/FLIGHT_SPEED.recon
+    const closest=Math.min(RECON_GROUND_OBSERVATION_RANGE,distance(t.position,view.home))
+    const route=radialRoute(view.home,angle,[20,closest,20]),end=2*(20-closest)/FLIGHT_SPEED.recon
     const strength=Math.max(25,Math.min(100,(t.strength??100)+25*Math.max(0,view.round-t.observedRound)))
     reconDenial+=(Math.min(strength,forecastDamage(after,route,FLIGHT_SPEED.recon,end))-Math.min(strength,forecastDamage(before,route,FLIGHT_SPEED.recon,end)))/strength/(1+view.round-t.observedRound)
   }
