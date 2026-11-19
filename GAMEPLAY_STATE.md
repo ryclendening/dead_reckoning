@@ -40,7 +40,7 @@ The nominal sortie window is 22 simulated seconds. Execution continues while rec
 
 - New campaigns use a deterministic, saved terrain layout selected from coast, highlands, and islands. Starting territories have clear deployment footprints; seeded starting positions and opposing bases vary with the campaign seed. Existing saves and deterministic tactical fixtures without a terrain snapshot retain their original flat geography and do not reroll.
 - Water and mountains block initial asset placement and construction. Airfields require a larger clear land footprint than other sites. Placement uses only surveyed or owned terrain; unknown terrain is not assumed clear.
-- The battlefield draws the full terrain layout as continuous 3D relief with mountain ridges, beaches, and coastal shallows. Fog dims the relief outside mapped and observed areas without concealing its shape. Waypoints and placement use the tactical map plane.
+- The battlefield draws the full terrain layout as continuous 3D relief with mountain ridges, beaches, and coastal shallows. Unexplored relief sits under dark, translucent mist. Surveyed ground is lightly shaded, and current observation and friendly territory are clear. Waypoints and placement use the tactical map plane.
 - Aircraft cross water at normal fuel cost and cross mountains at 1.5 times the normal fuel cost, without a speed change. Planning estimates only known mountain crossings; execution consumes fuel against the actual terrain and can force recovery or fuel exhaustion.
 - The CPU receives surveyed and owned terrain for its decisions. Both online players receive the same topography for display, with the seed and enemy placements kept private. Order and construction validation still use each side's surveyed and owned terrain.
 
@@ -307,6 +307,8 @@ Available fixtures:
 This log keeps only current net changes. Superseded intermediate states belong in git history.
 
 ### 2026-11-19
+
+- Increased the contrast of unexplored terrain with dark, feathered mist that keeps the underlying relief visible. Surveyed and currently observed areas read as separate shades.
 
 - Made mountains, shorelines, and islands visible beneath fog from the start of the campaign. Survey status still affects construction and fuel estimates. Enemy contacts remain gated by detection.
 

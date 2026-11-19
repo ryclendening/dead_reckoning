@@ -159,16 +159,16 @@ float valueNoise(vec2 p){vec2 i=floor(p),f=fract(p);f=f*f*(3.0-2.0*f);float a=ha
 void main(){
   float persistent=texture2D(uPersistentMask,vUv).r;
   float live=texture2D(uLiveMask,vUv).r;
-  float knowledge=max(persistent,live);
-  float mapped=smoothstep(0.0,0.6,knowledge);
-  float observed=smoothstep(0.6,1.0,knowledge);
+  float surveyed=smoothstep(0.0,0.6,persistent);
+  float clearArea=max(smoothstep(0.0,0.9,live),smoothstep(0.6,0.98,persistent));
   vec2 world=vec2(mix(uWorldBounds.x,uWorldBounds.y,vUv.x),mix(uWorldBounds.w,uWorldBounds.z,vUv.y));
-  float noise=(valueNoise(world*0.285)+0.45*valueNoise(world*1.25))/1.45-0.5;
-  float alpha=mix(0.31,0.14,mapped);
-  alpha=mix(alpha,0.025,observed);
-  alpha+=noise*mix(0.052,0.018,mapped)*(1.0-observed);
-  vec3 color=mix(vec3(0.19,0.22,0.20),vec3(0.20,0.24,0.22),mapped);
-  gl_FragColor=vec4(color,clamp(alpha,0.0,0.48));
+  float cloud=0.72*valueNoise(world*0.33)+0.28*valueNoise(world*1.1);
+  // Keep the uncharted shroud translucent so ridgelines and coasts still read.
+  float uncharted=0.65+(cloud-0.5)*0.14;
+  float surveyedShade=0.25+(cloud-0.5)*0.04;
+  float alpha=mix(mix(uncharted,surveyedShade,surveyed),0.0,clearArea);
+  vec3 mist=mix(vec3(0.045,0.063,0.083),vec3(0.13,0.16,0.19),cloud);
+  gl_FragColor=vec4(mist,alpha);
 }`
 const makeFogTexture=(data:Uint8Array,width:number,height:number)=>{const texture=new THREE.DataTexture(data,width,height,THREE.RedFormat,THREE.UnsignedByteType);texture.minFilter=THREE.LinearFilter;texture.magFilter=THREE.LinearFilter;texture.wrapS=THREE.ClampToEdgeWrapping;texture.wrapT=THREE.ClampToEdgeWrapping;texture.generateMipmaps=false;return texture}
 const FogOfWar=memo(function FogOfWar({geometry,mappedAreas,observations,presentationBounds,friendlyTerritory}:{geometry:THREE.BufferGeometry;mappedAreas:Point[];observations:MapObservation[];presentationBounds:WorldBounds;friendlyTerritory:FriendlyTerritory}){
