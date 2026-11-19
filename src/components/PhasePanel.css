@@ -54,7 +54,7 @@
   margin: 0;
 }
 
-.phase-panel-heading h2, .phase-panel-content h2 {
+.phase-panel-heading h2 {
   margin: 0;
   font: 800 19px/1.1 'Barlow Condensed', sans-serif;
 }
@@ -153,14 +153,12 @@
 
 .phase-panel .planning-aircraft-nav { grid-template-columns: 40px minmax(0, 1fr) 40px 76px; }
 .phase-panel .planning-pane-content { justify-content: flex-start; gap: 5px; }
-.phase-panel .planning-pane-caption { display: grid; gap: 2px; }
 .phase-panel .planning-route-actions > button { flex: 1; }
 .phase-panel .planning-route-actions > .phase-primary { flex: 0 1 auto; }
 .phase-panel .planning-capsule { align-items: stretch; }
 .phase-panel .planning-base-toggle { display: block; padding: 0 5px; }
 .phase-panel .command-sheet .recon-posture button { min-height: 32px; }
 .phase-panel .shelf-route { grid-auto-flow: column; grid-auto-columns: minmax(0, 1fr); grid-template-columns: none; }
-.phase-panel .mission-effect { align-self: start; }
 .phase-panel .planning-roster-heading label { display: flex; align-items: center; gap: 5px; min-width: 0; }
 .phase-panel .planning-roster-heading svg { width: 15px; color: var(--cyan); flex: none; }
 .phase-panel .planning-roster-heading select { width: 100%; }
@@ -233,7 +231,6 @@
 }
 .debrief-summary .debrief-site { padding: 6px 7px; border: 1px solid #3a4e42; background: #19251e; }
 .debrief-summary .debrief-site-reports > span { font-size: 14px; overflow-wrap: anywhere; }
-.debrief-summary .debrief-orders h2 { margin-bottom: 4px; }
 .debrief-summary .debrief-orders .phase-panel-list > p,
 .debrief-summary .debrief-details .phase-panel-list > * {
   margin: 0;

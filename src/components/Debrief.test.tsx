@@ -13,7 +13,7 @@ describe('mission debrief surface',()=>{
 
     expect(markup).toContain('HOME BASE <b>100 → 20 HP</b>')
     expect(markup.indexOf('100 → 20 HP')).toBeLessThan(markup.indexOf('FRIENDLY LOST'))
-    expect(markup.indexOf('100 → 20 HP')).toBeLessThan(markup.indexOf('Cash earned this round'))
+    expect(markup.indexOf('100 → 20 HP')).toBeLessThan(markup.indexOf('Round payout'))
     expect(markup.indexOf('100 → 20 HP')).toBeLessThan(markup.indexOf('Round highlights'))
   })
 
@@ -31,7 +31,7 @@ describe('mission debrief surface',()=>{
     expect(markup).toContain('Round map key')
     expect(markup).toContain('Round highlights')
     expect(markup).toContain('debrief-symbol')
-    expect(markup).toContain('Orders &amp; Results')
+    expect(markup).toContain('>Orders</button>')
     expect(markup).toContain('STRIKE UNSELECTED GROUND TARGET')
     expect(markup).toContain('SELECT A CONFIRMED GROUND TARGET')
   })

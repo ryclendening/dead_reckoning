@@ -119,12 +119,9 @@ export function ResupplyPanel({
 
   return <section className="phase-panel resupply-panel" aria-label="Resupply">
     <div className="resupply-content">
-      {procurementMode === 'closed' && !repairsOpen && !hasSelection ? <>
-        <header className="phase-panel-heading"><h2>Inspect forces</h2></header>
-        <div className="phase-panel-content">
-          <p className="phase-panel-copy">Select a site or formation on the map to inspect it.</p>
-        </div>
-      </> : null}
+      {procurementMode === 'closed' && !repairsOpen && !hasSelection ? <div className="phase-panel-heading">
+        <p className="phase-panel-copy">Tap a site or flight to inspect.</p>
+      </div> : null}
       {procurementMode === 'catalog' ? <PurchaseCatalog
         category={purchaseCategory} quotes={catalog} busy={busy} onCategoryChange={setPurchaseCategory}
         onChoose={choosePurchase} onClose={() => onProcurementMode('closed')}
@@ -133,13 +130,13 @@ export function ResupplyPanel({
       {procurementMode === 'placing' && placement ? <div className="adapt-drawer adapt-placement-drawer" aria-label="Place site">
         <header className="adapt-build-heading"><b>{placement.label} · {formatCash(placement.cost)}</b><button type="button" aria-label="Cancel placement" onClick={() => onProcurementMode('catalog')}><X/></button></header>
         <div className="phase-panel-content">
-          <p className="procure-instruction">{hasPlacementPreview ? 'Tap another hex to move the site.' : 'Tap a highlighted hex to place the site.'}</p>
+          <p className="procure-instruction">{hasPlacementPreview ? 'Tap another hex to move.' : 'Tap a highlighted hex.'}</p>
           {hasPlacementPreview ? <div className="campaign-placement-confirm"><button type="button" onClick={onCancelPlacement}>Clear site</button><button type="button" className="confirm" disabled={busy} onClick={onConfirmPlacement}>Confirm build <Check/></button></div> : null}
         </div>
       </div> : null}
 
       {repairsOpen ? <div className="adapt-drawer" aria-label="Formations needing repair">
-        <header className="adapt-build-heading"><b>Needs repair</b><button type="button" aria-label="Close repair list" onClick={() => setShowRepairs(false)}><X/></button></header>
+        <header className="adapt-build-heading"><b>Repairs</b><button type="button" aria-label="Close repair list" onClick={() => setShowRepairs(false)}><X/></button></header>
         <div className="phase-panel-content"><PanelPages pageSize={2} label="Repairs" className="adapt-actions">{repairTargets.map(target => {
           const aircraft = match.squadrons.find(item => item.id === target.id)
           const repair = economyQuotesFor(match, target).find(quote => quote.id.startsWith('repair-'))
@@ -169,7 +166,7 @@ export function ResupplyPanel({
               <p className="adapt-site-status">{friendlyAsset ? '' : 'Enemy · '}{assetData.status}</p></> : null}
             {selectedAsset ? <DefenseSiteDetails asset={selectedAsset} sites={friendlyAsset ? match.playerAssets : match.enemyAssets.filter(asset => !asset.hidden && asset.intel === 'confirmed')} enemy={!friendlyAsset}/> : null}
             {based.length ? <select className="adapt-based-picker" aria-label="Based formations" value="" onChange={event => chooseTarget({kind:'squadron',id:event.target.value})}>
-              <option value="" disabled>Based formations ({based.length})</option>
+              <option value="" disabled>Based here ({based.length})</option>
               {based.map(item => <option key={item.id} value={item.id}>{item.callsign} · {item.aircraft}/{item.maxAircraft}</option>)}
             </select> : null}
             {installed.map(upgrade => upgrade ? <p key={upgrade.id} className="adapt-installed"><Check/>{upgrade.label} installed</p> : null)}

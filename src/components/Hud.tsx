@@ -82,12 +82,12 @@ function PlanningFuel({budget,needsLanding,waypoints}:{budget:RouteBudget;needsL
   const legs=[{label:'Outbound',value:ingressDistance,kind:'outbound'},{label:'On station',value:patternDistance,kind:'pattern'},
     {label:'Return',value:recoveryReserve,kind:'return'}]
   return <div className="planning-fuel" aria-label="Fuel budget">
-    <div className="planning-fuel-header"><b>{remainingRange.toFixed(1)} fuel range left</b><span>{missionDistance.toFixed(1)} / {maxDistance} used</span></div>
+    <div className="planning-fuel-header"><b>{remainingRange.toFixed(1)} fuel left</b><span>{missionDistance.toFixed(1)} / {maxDistance} used</span></div>
     <div className="planning-fuel-meter" role="meter" aria-label="Fuel range used" aria-valuemin={0} aria-valuemax={maxDistance} aria-valuenow={Math.min(maxDistance,missionDistance)}>
       {legs.map(leg=><span key={leg.kind} className={leg.kind} style={{width:`${Math.min(100,leg.value/maxDistance*100)}%`}}/>)}
     </div>
     <div className="planning-fuel-legs">{legs.map(leg=><span key={leg.kind} className={leg.kind}>{leg.label} <b>{leg.value.toFixed(1)}</b></span>)}</div>
-    <div className="planning-fuel-footer"><small>{needsLanding?'Choose a landing field':`Landing at ${airfieldLabel(intendedField)}`}</small><small>{waypoints}</small></div>
+    <div className="planning-fuel-footer"><small>{needsLanding?'Pick a landing field':`Land at ${airfieldLabel(intendedField)}`}</small><small>{waypoints}</small></div>
   </div>
 }
 
@@ -135,16 +135,15 @@ export function CommandShelf({squadrons,bases,activeBaseId,rosterMode,squadron,r
     suppressSwipeClick.current=start.dragging
     if(start.dragging&&Math.abs(dx)>=48&&Math.abs(dx)>Math.abs(dy)*1.2)cycleAircraft(dx<0?1:-1)
   }
-  const routeTitle=squadron.role==='recon'&&squadron.mission==='search-area'?'Search Area route':'Build route'
-  const routeHelp=selectingProtectTarget?'Tap a site or map point to defend.'
-    :editingReturn?'Tap the map for return waypoints. Tap an airfield to land there.'
-    :editingBombingRun?'Dead reckoning between targets. This part of the route cannot be adjusted.'
-    :squadron.mission==='bomb'&&editingInbound?'Adjust the inbound route. Release points stay fixed.'
-    :squadron.mission==='bomb'?'Add inbound waypoints before the first strike. Release points stay fixed.'
-    :squadron.mission==='transit'?'Tap a friendly airfield to end Transit there.'
-    :squadron.mission==='base-strike'?'Tap to add waypoints. Drag S to move the release point.'
-    :squadron.mission==='defensive-cap'?(protectSummary??'Tap a site or map point to defend.')
-    :'Tap to add waypoints. Drag to move them.'
+  const paneLabel=step==='route'?`${templateFor(squadron.mission).label} route`:step==='target'?(squadron.mission==='bomb'?'Targets':'Target'):'Task'
+  const routeHelp=selectingProtectTarget?'Tap a site or point to defend.'
+    :editingReturn?'Tap to add waypoints or pick a landing field.'
+    :editingBombingRun?'Fixed legs between targets.'
+    :squadron.mission==='bomb'?'Add waypoints before the first release.'
+    :squadron.mission==='transit'?'Tap a friendly airfield to land.'
+    :squadron.mission==='base-strike'?'Tap for waypoints. Drag S to set release.'
+    :squadron.mission==='defensive-cap'?(protectSummary??'Tap a site or point to defend.')
+    :'Tap to add waypoints. Drag to move.'
   const transitField=bases.find(asset=>asset.id===squadron.plannedRecoveryFieldId)
   const transitEnd=Boolean(transitField&&transitDestination(squadron,squadron.routeIngress,transitField))
   const firstBombRouteIndex=squadron.bombingTargets?.[0]?.routeIndex??1
@@ -161,16 +160,15 @@ export function CommandShelf({squadrons,bases,activeBaseId,rosterMode,squadron,r
     {expanded?<div className={`command-sheet ${step}-step`} role="region" aria-roledescription="carousel" aria-label="Aircraft orders" onPointerDown={handlePointerDown} onPointerMove={handlePointerMove} onPointerUp={handlePointerUp} onPointerCancel={()=>{swipeStart.current=undefined}} onClickCapture={event=>{if(suppressSwipeClick.current){event.preventDefault();event.stopPropagation();suppressSwipeClick.current=false}}}>
       <nav className="planning-aircraft-nav" aria-label="Aircraft navigation">
         <button type="button" className="planning-aircraft-arrow" aria-label="Previous aircraft" disabled={aircraftIds.length<2} onClick={()=>cycleAircraft(-1)}><ChevronLeft/></button>
-        <div className="planning-aircraft-identity" aria-live="polite"><b>{squadron.callsign}</b><small>{cpuPlanning?'CPU PREPARING ORDERS…':`${step==='route'?routeTitle:squadron.role.toUpperCase()} · ${aircraftIndex+1} / ${aircraftIds.length}`}</small></div>
+        <div className="planning-aircraft-identity" aria-live="polite"><b>{squadron.callsign}</b><small>{cpuPlanning?'CPU PREPARING ORDERS…':`${paneLabel} · ${aircraftIndex+1} / ${aircraftIds.length}`}</small></div>
         <button type="button" className="planning-aircraft-arrow" aria-label="Next aircraft" disabled={aircraftIds.length<2} onClick={()=>cycleAircraft(1)}><ChevronRight/></button>
-        <button type="button" className="planning-change-task" disabled={step==='mission'||!onBack} onClick={onBack}>Change task</button>
+        <button type="button" className="planning-change-task" hidden={step==='mission'||!onBack} onClick={onBack}>Change task</button>
       </nav>
       <div className="planning-pane-content">
-        <div className="planning-pane-caption">
-          {step!=='route'?<h2 className="planning-title">{step==='target'?'Choose target':'Choose task'}</h2>:null}
-          {routeNotice?<p className="planning-route-notice" role="status">{routeNotice}</p>:step!=='mission'?<p className="planning-help">{step==='target'?squadron.mission==='bomb'?'Tap confirmed enemy sites in flight order. Up to three payloads.':'Tap a confirmed enemy site on the map.':routeHelp}</p>:null}
-        </div>
-        {step==='target'&&squadron.mission==='bomb'?<p className="phase-panel-copy">{bombingTargetCount} / 3 targets selected</p>:null}
+        {routeNotice?<p className="planning-route-notice" role="status">{routeNotice}</p>:step!=='mission'?<p className="planning-help">
+          {step==='target'?squadron.mission==='bomb'?'Tap up to 3 confirmed sites in strike order.':'Tap a confirmed enemy site.':routeHelp}
+        </p>:null}
+        {step==='target'&&squadron.mission==='bomb'?<p className="phase-panel-copy">{bombingTargetCount} / 3 targets</p>:null}
         {step==='route'?<div className="planning-route-body">
           <div className="planning-route-data">
             {onRouteLegChange?<div className={`planning-route-legs${squadron.mission==='bomb'?' bomb-legs':''}`} role="group" aria-label="Route leg">
@@ -199,12 +197,11 @@ export function CommandShelf({squadrons,bases,activeBaseId,rosterMode,squadron,r
               <button type="button" onClick={onChangeGroundTarget}>Change</button>
               <button type="button" onClick={()=>onInspectGroundTarget?.(selectedGroundTarget.id)}>Inspect</button>
             </div> : null}
-            {squadron.mission==='bomb'?<div className="bomb-target-summary"><span>{bombingTargetCount} / 3 TARGETS SELECTED</span><button type="button" onClick={onSelectBombTargets}>SELECT TARGETS</button></div>:null}
-            {!editingReturn&&squadron.role==='recon'&&squadron.mission==='search-area'?<div className="recon-posture" role="group" aria-label="Recon RTB condition"><span>RTB CONDITION</span><div>{(['aggressive','conservative'] as const).map(posture=><button key={posture} type="button" className={(squadron.reconPosture??'aggressive')===posture?'active':''} aria-pressed={(squadron.reconPosture??'aggressive')===posture} onClick={()=>onReconPosture?.(posture)}>{posture.toUpperCase()}</button>)}</div><small>{(squadron.reconPosture??'aggressive')==='conservative'?'RTB on fighter contact or SAM/AAA launch.':'Follow the route through threats.'}</small></div>:null}
+            {squadron.mission==='bomb'?<div className="bomb-target-summary"><span>{bombingTargetCount} / 3 targets</span><button type="button" onClick={onSelectBombTargets}>SELECT TARGETS</button></div>:null}
+            {!editingReturn&&squadron.role==='recon'&&squadron.mission==='search-area'?<div className="recon-posture" role="group" aria-label="Recon RTB condition"><span>RTB</span><div>{(['aggressive','conservative'] as const).map(posture=><button key={posture} type="button" className={(squadron.reconPosture??'aggressive')===posture?'active':''} aria-pressed={(squadron.reconPosture??'aggressive')===posture} onClick={()=>onReconPosture?.(posture)}>{posture.toUpperCase()}</button>)}</div><small>{(squadron.reconPosture??'aggressive')==='conservative'?'Return on fighter contact or SAM/AAA launch.':'Continue through threats.'}</small></div>:null}
           </div>
         </div>:null}
         {step==='mission'?<div className="shelf-route">{templatesForRole(squadron.role).filter(template=>template.id!=='base-strike').map(template=>{const MissionIcon=template.id==='defensive-cap'?Shield:template.id==='forward-patrol'?Sword:template.id==='bomb'?BombIcon:template.id==='search-area'?Eye:Map;return <button key={template.id} className={squadron.mission===template.id?'active':''} aria-label={template.label} aria-pressed={squadron.mission===template.id} onClick={()=>onMission(template.id)}><MissionIcon/><b>{template.shortLabel}</b></button>})}{squadron.role==='fighter'?<button className={squadron.mission==='base-strike'?'active':''} aria-label="Ground Strike" aria-pressed={squadron.mission==='base-strike'} disabled={!strikeUnlocked} title={!strikeUnlocked?strikeDisabledReason:'Choose a confirmed enemy ground target.'} onClick={()=>onMission('base-strike')}><Crosshair/><b>GROUND STRIKE</b></button>:null}</div>:null}
-        {step==='mission'?<p className="mission-effect">{squadron.mission==='forward-patrol'?'Pursue contacts near the route.':squadron.mission==='base-strike'?'Choose a confirmed ground target.':squadron.mission==='bomb'?'Select up to three confirmed sites in flight order.':squadron.mission==='transit'?'Fly to a friendly airfield.':squadron.role==='recon'?'Plot waypoints to map terrain and observe enemy sites.':'Defend a site, point, or flight.'}</p>:null}
       </div>
       <div className="planning-route-actions phase-panel-footer">
         {step==='route'&&!editingReturn&&squadron.mission!=='bomb'&&forwardBased&&onRecoverHome?<button type="button" onClick={onRecoverHome}>RECOVER HOME</button>:null}

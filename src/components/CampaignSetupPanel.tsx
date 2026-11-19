@@ -18,9 +18,9 @@ export function CampaignSetupPanel({ match, onContinue, placementId, onSelectPla
   const allPlaced = placedCount === SETUP_REQUIRED_ASSET_IDS.length
 
   return <section className="phase-panel campaign-setup-float" aria-label="Site placement">
-    <header className="phase-panel-heading"><h2>Place your sites</h2><span>{placedCount}/{SETUP_REQUIRED_ASSET_IDS.length} placed</span></header>
+    <header className="phase-panel-heading"><h2>Place sites</h2><span>{placedCount}/{SETUP_REQUIRED_ASSET_IDS.length} placed</span></header>
     <div className="phase-panel-content">
-      <p className="campaign-setup-copy">Select a site. Tap a highlighted hex.</p>
+      <p className="campaign-setup-copy">Pick a site. Tap a marked hex.</p>
       <div className="campaign-setup-options">
         {SETUP_REQUIRED_ASSET_IDS.map(id => {
           const placed = setup.placedAssetIds.includes(id)

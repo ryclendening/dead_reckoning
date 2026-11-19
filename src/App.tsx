@@ -781,9 +781,9 @@ export default function App(){
 
 function DeploymentPanel({assets,selectedId,onSelect,onLock,locked=false,online=false}:{assets:Asset[];selectedId:string;onSelect:(id:string)=>void;onLock:()=>void;locked?:boolean;online?:boolean}){
   return <section className="phase-panel deployment-panel" aria-label="Site placement">
-    <header className="phase-panel-heading"><h2>Place your sites</h2></header>
+    <header className="phase-panel-heading"><h2>Place sites</h2></header>
     <div className="phase-panel-content">
-    <p className="phase-panel-copy">{locked?'Waiting for the other player.':'Select a site. Tap a highlighted hex.'}</p>
+    <p className="phase-panel-copy">{locked?'Waiting for the other player.':'Pick a site. Tap a marked hex.'}</p>
     <div className="asset-picker">{assets.map(asset=><button type="button" key={asset.id} disabled={locked}
       aria-pressed={asset.id===selectedId} className={asset.id===selectedId?'active':''} onClick={()=>onSelect(asset.id)}>
       <b>{asset.kind==='base'?'MAIN AIRFIELD':asset.kind.toUpperCase()}</b>
@@ -841,7 +841,7 @@ export function Debrief({match,onFocus,onResupply,pending=false}:{match:MatchSta
     {message?<p className="debrief-message" title={message.title}>{message.message}</p>:null}
     <div className="debrief-metrics"><div><strong>{result.friendlyLosses}</strong><span>FRIENDLY LOST</span></div><div><strong>{result.enemyLosses}</strong><span>ENEMY LOST · CONFIRMED</span></div><div><strong>{intel.length}</strong><span>INTEL RECOVERED</span></div></div>
     <section className="debrief-cash" aria-label="Cash earned this round">
-      <header><b>Cash earned this round</b><strong>+{formatCash(total)}</strong></header>
+      <header><b>Round payout</b><strong>+{formatCash(total)}</strong></header>
       <dl>
         <div><dt>Round pay</dt><dd>+{formatCash(base-depotPay)}</dd></div>
         {depotPay>0?<div><dt>Supply Depot</dt><dd>+{formatCash(depotPay)}</dd></div>:null}
@@ -857,20 +857,18 @@ export function Debrief({match,onFocus,onResupply,pending=false}:{match:MatchSta
           <span className="debrief-site-number">{site.number}</span><DebriefSymbol kind={event.kind}/>
           <span className="debrief-site-reports"><span><b>{event.title}</b><span>{event.detail}</span><time>{event.time.toFixed(1)}s</time></span></span><ChevronRight/>
         </button>))}
-      </PanelPages>:<p className="phase-panel-copy">No combat, aircraft losses, or new intelligence reported this round.</p>}
+      </PanelPages>:<p className="phase-panel-copy">No combat, losses, or new intel.</p>}
     </div>
     <div className="phase-panel-content debrief-orders" aria-label="Mission orders and results" hidden={view!=='Orders'}>
-      <h2>Orders &amp; Results</h2>
       {orders.length?<PanelPages pageSize={2} label="Orders" className="phase-panel-list">
         {orders.map(order=><p key={order.id}><b>{order.callsign} · {order.purpose}</b><span>{order.result}</span></p>)}
-      </PanelPages>:<p className="phase-panel-copy">No sorties flown this round.</p>}
+      </PanelPages>:<p className="phase-panel-copy">No sorties this round.</p>}
     </div>
     <div className="phase-panel-content debrief-details" aria-label="Formation and intelligence details" hidden={view!=='Details'}>
-      <p className="phase-panel-copy">Unlocated losses are included in the round totals.</p>
       {losses.length||intel.length?<PanelPages pageSize={2} label="Details" className="phase-panel-list">
         {[...losses.map(item=><p key={item.id}>{item.callsign}: {item.startAircraft} → {item.endAircraft} aircraft · {item.endStrength}% strength</p>),
           ...intel.map(asset=><button type="button" key={asset.id} onClick={()=>onFocus(asset.position)}>New intel · {asset.kind} <LocateFixed/></button>)]}
-      </PanelPages>:<p className="phase-panel-copy">No friendly aircraft lost or new intelligence recovered.</p>}
+      </PanelPages>:<p className="phase-panel-copy">No friendly losses or new intel.</p>}
     </div>
     <div className="phase-panel-footer"><button type="button" className="phase-primary" disabled={pending} onClick={onResupply}>{pending?'Loading…':message?'View outcome':'Open Resupply'} <ChevronRight/></button></div>
   </section>

@@ -19,6 +19,8 @@ describe('phase help in the match header', () => {
     expect(deploy).not.toMatch(/<dialog[^>]* open(?:=|>| )/)
     expect(plan).toContain('aria-label="Help for Planning"')
     expect(plan).toContain('Outbound travel, the mission pattern, and the return all use fuel')
+    expect(plan).toContain('Bomb selects up to three sites in drop order.')
+    expect(plan).toContain('Forward Patrol pursues contacts in its corridor.')
     expect(plan).not.toContain('both players')
   })
 })
@@ -120,8 +122,8 @@ describe('mission planning shelf', () => {
       step="mission" onClose={noop} reviewedIds={new Set()} reviewedCount={0} totalCount={4}
     />)
 
-    expect(markup).toContain('Choose task')
-    expect(markup).not.toContain('Build route')
+    expect(markup).toContain('>Task ·')
+    expect(markup).not.toContain('Protect route')
     expect(markup).toContain('FORWARD PATROL')
     expect(markup).not.toContain('CLEAR ROUTE')
     expect(markup).not.toContain('class="route-budget"')
@@ -145,7 +147,7 @@ describe('mission planning shelf', () => {
     />)
     expect(missionMarkup).toContain('BOMB')
     expect(missionMarkup).toContain('TRANSIT')
-    expect(routeMarkup).toContain('1 / 3 TARGETS SELECTED')
+    expect(routeMarkup).toContain('1 / 3 targets')
     expect(routeMarkup).toContain('SELECT TARGETS')
     expect(routeMarkup).not.toContain('RADAR ONE')
     expect(routeMarkup).not.toContain('REMOVE')
@@ -160,7 +162,7 @@ describe('mission planning shelf', () => {
       onRosterMode={noop} onMission={noop} onPickProtectTarget={noop} onProtectFlight={noop} onClear={noop} onCommit={noop}
       step="route" onClose={noop} reviewedIds={new Set([match.squadrons.find(item=>item.role==='recon')!.id])} reviewedCount={1} totalCount={4} selectingProtectTarget
     />)
-    expect(markup).toContain('Tap a site or map point to defend.')
+    expect(markup).toContain('Tap a site or point to defend.')
     expect(markup).toContain('DEFEND AREA')
     expect(markup).toContain('ESCORT FLIGHT')
     expect(markup).toContain('RAVEN 3')
@@ -195,10 +197,10 @@ describe('mission planning shelf', () => {
       step="route" onClose={noop} reviewedIds={new Set()} reviewedCount={0} totalCount={4}
     />)
 
-    expect(markup).toContain('Search Area route')
+    expect(markup).toContain('Recon route')
     expect(markup).not.toContain('planning-capsule')
     expect(markup).toContain('aria-label="Next aircraft"')
-    expect(markup).not.toContain('Choose task')
+    expect(markup).not.toContain('>Task ·')
     expect(markup).not.toContain('DEEP PROBE')
     expect(markup).not.toContain('CUSTOM RECON')
   })

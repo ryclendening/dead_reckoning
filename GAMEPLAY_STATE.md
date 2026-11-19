@@ -308,7 +308,7 @@ This log keeps only current net changes. Superseded intermediate states belong i
 
 ### 2026-11-19
 
-- Standardized the Deploy, Plan, Debrief, and Resupply panel footprint. The roster, route editor, purchases, repairs, and reports switch in place, keeping the map stable. Page controls and Debrief tabs keep longer lists reachable without vertical scrolling.
+- Standardized the Deploy, Plan, Debrief, and Resupply panel footprint. The roster, route editor, purchases, repairs, and reports switch in place, keeping the map stable. Page controls and Debrief tabs keep longer lists reachable without vertical scrolling. Shorter prompts and shared labels remove duplicate headings from these views. The phase help covers task behavior, targeting, build confirmation, and Debrief details.
 
 - Increased the contrast of unexplored terrain with dark, feathered mist that keeps the underlying relief visible. Surveyed and currently observed areas read as separate shades.
 

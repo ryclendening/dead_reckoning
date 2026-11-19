@@ -17,7 +17,9 @@ const help: Record<PlayPhase, { title: string; tips: [string, string][]; online?
   plan: {
     title: 'Planning',
     tips: [
-      ['Choose a task', 'Tap an aircraft to choose a task. Recon flies the waypoints you plot. Ground Strike requires recovered intelligence on the target.'],
+      ['Fighter tasks', 'Protect defends a site, point, or friendly flight with confirmed orders. Forward Patrol pursues contacts in its corridor. Transit moves a flight to a friendly airfield.'],
+      ['Ground targets', 'Strike and Bomb require confirmed enemy sites. Ground Strike selects one target. Drag S to move its release point inside the marked circle. Bomb selects up to three sites in drop order. Legs between drops are fixed.'],
+      ['Recon and recovery', 'Recon flies the route you plot. Aggressive continues through threats. Conservative returns when it sees a fighter or a SAM or AAA battery fires at it.'],
       ['Spot ground sites', `Recon spots sites within ${RECON_GROUND_OBSERVATION_RANGE} map units and can pick up an operating radar beyond its coverage. Fighters and bombers spot sites within ${FIXED_ASSET_OBSERVATION_RANGE} units.`],
       ['Budget fuel', 'You can add up to five waypoints per leg. Outbound travel, the mission pattern, and the return all use fuel. Shorten a leg if a waypoint exceeds the budget.'],
       ['Choose where to land', 'Tap a friendly airfield on Return, or tap it on Outbound during Transit. Tapping a FOB while planning Protect makes it the defended site.'],
@@ -35,14 +37,14 @@ const help: Record<PlayPhase, { title: string; tips: [string, string][]; online?
   debrief: {
     title: 'Debrief',
     tips: [
-      ['Review the round', 'Select a numbered highlight to focus its location. Orders & Results explains what happened to each mission.'],
+      ['Review the round', 'Tap a numbered highlight to focus its map location. Orders shows each mission’s result. Details lists friendly losses and new intel. The totals include losses without a reported location.'],
       ['Read your payout', 'Round pay, recovered site intelligence, and confirmed enemy aircraft losses appear separately. A Supply Depot adds to round pay.'],
     ],
   },
   adapt: {
     title: 'Resupply',
     tips: [
-      ['Spend your cash', 'Use Buy to add aircraft or build sites. Select the main airfield to see its upgrade options.'],
+      ['Purchase and build', 'Buy lists aircraft and ground sites. To build, tap a marked hex and select Confirm build. You can move the preview to another marked hex before confirming. Select the main airfield for upgrades.'],
       ['Check repairs', 'Use Repairs or select a damaged formation to restore strength. Ground site damage persists. SAM missiles replenish each round.'],
       ['Prepare to launch', 'You can plan the next round even with no aircraft. A forward base holds up to two formations.'],
     ],

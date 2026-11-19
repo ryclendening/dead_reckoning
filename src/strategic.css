@@ -52,7 +52,15 @@
   font: 500 14px/1.5 Inter, sans-serif;
 }
 .phase-help-dialog::backdrop { background: #050907bf; }
-.phase-help-dialog header { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.phase-help-dialog header {
+  position: sticky;
+  top: 0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  background: #111b16;
+}
 .phase-help-dialog h2 { margin: 0; font: 700 22px/1.15 "Barlow Condensed", sans-serif; }
 .phase-help-dialog dl { display: grid; gap: 10px; margin: 12px 0 0; }
 .phase-help-dialog dt { font-weight: 700; }
@@ -166,8 +174,7 @@
 .command-sheet .planning-route-actions button:disabled { opacity: .48; cursor: default; }
 .command-sheet .planning-aircraft-identity b { font-size: 17px; }
 .command-sheet .planning-aircraft-identity small { font-size: 11px; }
-.command-sheet .planning-title { font-size: 16px; line-height: 1.15; }
-.command-sheet .planning-help, .command-sheet .mission-effect, .command-sheet .shelf-range {
+.command-sheet .planning-help, .command-sheet .shelf-range {
   max-height: none;
   white-space: normal;
   font: 600 12px/1.25 Inter, sans-serif;

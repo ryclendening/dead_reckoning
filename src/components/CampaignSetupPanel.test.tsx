@@ -9,7 +9,7 @@ describe('campaign setup panel', () => {
     match.setup!.placedAssetIds = ['p-radar']
     const markup = renderToStaticMarkup(<CampaignSetupPanel match={match} placementId="p-radar" onContinue={() => {}} />)
 
-    expect(markup).toContain('Select a site. Tap a highlighted hex.')
+    expect(markup).toContain('Pick a site. Tap a marked hex.')
     expect(markup).toContain('1/4 placed')
     expect(markup).toContain('aria-label="RADAR, placed" aria-pressed="true"')
     expect(markup).toContain('MAIN AIRFIELD')
