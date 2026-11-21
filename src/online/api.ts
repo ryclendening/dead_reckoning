@@ -1,3 +1,4 @@
+import { validProtectRadius } from '../game/missionResponsibility'
 import { resolveOnlineRound } from '../game/onlineSimulation'
 import { MAX_RECOVERY_WAYPOINTS } from '../game/forwardBasing'
 import type { EconomyActionId, Point } from '../game/types'
@@ -50,6 +51,8 @@ function parseOrder(value: unknown): OnlineOrder {
   const { mission, reconPosture } = item
   if (typeof mission !== 'string' || !missionPattern.test(mission)) invalid()
   if (reconPosture !== undefined && reconPosture !== 'aggressive' && reconPosture !== 'conservative') invalid()
+  const protectRadius = item.protectRadius
+  if (protectRadius !== undefined && !validProtectRadius(protectRadius)) throw new OnlineError('Invalid Protect radius.')
   const protectedTargetId = optionalId(item.protectedTargetId)
   const bombingTargets = item.bombingTargets
   if (bombingTargets !== undefined && (!Array.isArray(bombingTargets) || bombingTargets.length > 3 ||
@@ -70,6 +73,7 @@ function parseOrder(value: unknown): OnlineOrder {
     plannedRecoveryFieldId: identifier(item.plannedRecoveryFieldId),
     reconPosture,
     protectedTargetId,
+    protectRadius,
     protectedPoint: item.protectedPoint === undefined ? undefined : point(item.protectedPoint),
     strikeTargetId: optionalId(item.strikeTargetId),
     bombingTargets: (bombingTargets as unknown[] | undefined)?.map(target => {

@@ -1,3 +1,4 @@
+import { validProtectRadius } from '../game/missionResponsibility'
 import { campaignEnemyStart } from '../game/campaignLayout'
 import { placeInitialAsset, validateInitialPlacement } from '../game/campaignPlacement'
 import { confirmCampaignSetup, createCampaignSetupState, SETUP_FORMATION_IDS, SETUP_REQUIRED_ASSET_IDS } from '../game/campaignSetup'
@@ -8,7 +9,7 @@ import { flightRangeFor } from '../game/flightRules'
 import { deriveRecoveryPlanningView, distanceBetween, formationField, isOperationalAirfield, transitDestination, validateRecoveryPackage } from '../game/forwardBasing'
 import { snapToHex } from '../game/hex'
 import { OPENING_LOGISTICS, OPENING_RESERVES } from '../game/openingForces'
-import { generateRouteTemplate, templatesForRole, validateBomberOrderForPlayer, validateGroundStrikeOrder } from '../game/routeTemplates'
+import { generateRouteTemplate, protectOrbit, templatesForRole, validateBomberOrderForPlayer, validateGroundStrikeOrder } from '../game/routeTemplates'
 import type { MatchState, Point, Squadron } from '../game/types'
 import { createStartingKnowledge, generateCampaignWorld } from '../game/world'
 import { terrainKnownWithin } from '../game/terrain'
@@ -94,11 +95,15 @@ function validateOrderGeometry(match: MatchState, squadron: Squadron) {
   const field = formationField(match.playerAssets, squadron.id)
   const { presentationBounds: bounds } = match.world
   const terrain=terrainKnownWithin(match.world.terrain,match.mappedAreas,2.65,friendlyTerritoryForAssets(match.world.friendlyTerritory,match.playerAssets))
-  const { mission, routeIngress, route, protectedTargetId, protectedPoint } = squadron
+  const { mission, routeIngress, route, protectedTargetId, protectedPoint, protectRadius } = squadron
   if (!field || !isOperationalAirfield(field) || distanceBetween(route[0], field.position) > .001 ||
       distanceBetween(routeIngress[0], field.position) > .001) return 'ROUTE MUST START AT AN OPERATIONAL LAUNCH FIELD'
   if ([...route, ...routeIngress, ...(squadron.recoveryWaypoints ?? [])].some(([x, z]) => x < bounds.minX || x > bounds.maxX || z < bounds.minZ || z > bounds.maxZ)) {
     return 'ROUTE IS OUTSIDE THE PLANNING AREA'
+  }
+
+  if (protectRadius !== undefined && (mission !== 'defensive-cap' || protectedTargetId || !protectedPoint || !validProtectRadius(protectRadius))) {
+    return 'INVALID PROTECT RING'
   }
 
   const strikeError = validateGroundStrikeOrder(match, squadron)
@@ -135,7 +140,7 @@ function validateOrderGeometry(match: MatchState, squadron: Squadron) {
   }
 
   const generated = generateRouteTemplate({ template: mission, ingress: routeIngress, maxDistance: flightRangeFor(squadron), bounds, terrain })
-  const expected = normalize(generated.route)
+  const expected = normalize(protectRadius === undefined ? generated.route : protectOrbit(routeIngress, protectRadius))
   if (!expected || !matchingRoute(route, expected)) return 'ROUTE MUST FOLLOW THE ASSIGNED MISSION PATTERN'
   if (mission === 'defensive-cap' && protectedPoint && distanceBetween(protectedPoint, routeIngress.at(-1)!) > .1) {
     return 'PROTECT POINT MUST MATCH THE PLANNED STATION'
@@ -163,6 +168,7 @@ function lockOrders(match: MatchState, orders: OnlineOrder[]): MatchState {
       reconPosture: squadron.role === 'recon' ? order.reconPosture : undefined,
       protectedPoint: order.mission === 'defensive-cap' && !order.protectedTargetId ? order.protectedPoint : undefined,
       protectedTargetId: order.mission === 'defensive-cap' ? order.protectedTargetId : undefined,
+      protectRadius: order.protectRadius,
     }
   })
   if (byId.size) throw new OnlineError('Unknown formation.')

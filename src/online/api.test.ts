@@ -3,7 +3,7 @@ import { handleOnlineRequest, type MatchStore } from './api'
 import { applyOnlineAction, newOnlineMatch, playerView, type OnlineMatch } from './match'
 import { unpackDisplayTerrain } from './displayTerrain'
 import type { OnlineAction, OnlineEntry, OnlineOrder, OnlineResponse } from './protocol'
-import { generateRouteTemplate } from '../game/routeTemplates'
+import { generateRouteTemplate, protectOrbit } from '../game/routeTemplates'
 import { deriveRecoveryPlanningView } from '../game/forwardBasing'
 import { flightRangeFor } from '../game/flightRules'
 import { CAMPAIGN_ROUND_LIMIT } from '../game/campaign'
@@ -137,6 +137,14 @@ describe('invite-only online campaign API', () => {
     expect(result.seats[0].match.squadrons.find(formation=>formation.id===fighter.id)).toMatchObject({
       mission:'defensive-cap',route:generated.route,plannedRecoveryFieldId:'p-base',
     })
+    const drawnRadius=1.6
+    const drawnIngress:Point[]=[home.position,[home.position[0]+1,home.position[1]+1],fob.position]
+    const drawn:OnlineOrder={...protect,protectRadius:drawnRadius,routeIngress:drawnIngress,route:protectOrbit(drawnIngress,drawnRadius)}
+    const drawnMatch=structuredClone(game)
+    applyOnlineAction(drawnMatch,0,{type:'lock-plan',orders:[drawn]})
+    expect(drawnMatch.seats[0].match.squadrons.find(formation=>formation.id===fighter.id)?.protectRadius).toBe(drawnRadius)
+    expect(()=>applyOnlineAction(structuredClone(game),0,{type:'lock-plan',orders:[{...drawn,protectRadius:2}]}))
+      .toThrow('ROUTE MUST FOLLOW THE ASSIGNED MISSION PATTERN')
     const route=[home.position,fob.position]
     const transit:OnlineOrder={id:fighter.id,mission:'transit',route,routeIngress:route,plannedRecoveryFieldId:home.id}
     expect(()=>applyOnlineAction(game,0,{type:'lock-plan',orders:[transit]})).toThrow('TRANSIT MUST END AT THE SELECTED AIRFIELD')

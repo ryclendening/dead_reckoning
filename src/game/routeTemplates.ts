@@ -23,15 +23,16 @@ export const ROUTE_TEMPLATES:RouteTemplateDefinition[]=[
 export const templatesForRole=(role:Role)=>ROUTE_TEMPLATES.filter(template=>template.roles.includes(role))
 export const templateFor=(id:MissionId)=>ROUTE_TEMPLATES.find(template=>template.id===id)??ROUTE_TEMPLATES[0]
 
-export function buildGroundStrikeRoute(state:MatchState,squadronId:string,targetId?:string):Point[]|undefined{
+export function buildGroundStrikeRoute(state:MatchState,squadronId:string,targetId?:string,waypoints:Point[]=[]):Point[]|undefined{
   const squadron=state.squadrons.find(item=>item.id===squadronId),target=selectedStrikeTarget(state,targetId)
   if(!squadron||squadron.role!=='fighter'||squadron.aircraft<=0||!target)return undefined
   const launch=formationField(state.playerAssets,squadron.id)
   if(!launch||launch.health<=0||launch.operational===false)return undefined
-  const origin=launch.position,d=distance(origin,target.position),releaseRange=groundAttackProfile(squadron).releaseRange
+  const origin=launch.position,approach=waypoints.slice(0,5),last=approach.at(-1)??origin
+  const d=distance(last,target.position),releaseRange=groundAttackProfile(squadron).releaseRange
   const travel=d<=releaseRange?Math.min(.25,d):d-(releaseRange-.1)
-  const release:Point=d>.001?[origin[0]+(target.position[0]-origin[0])*travel/d,origin[1]+(target.position[1]-origin[1])*travel/d]:[origin[0]+.05,origin[1]]
-  const route:Point[]=[[...origin],release]
+  const release:Point=d>.001?[last[0]+(target.position[0]-last[0])*travel/d,last[1]+(target.position[1]-last[1])*travel/d]:[last[0]+.05,last[1]]
+  const route:Point[]=[[...origin],...approach,release]
   const terrain=terrainKnownWithin(state.world.terrain,state.mappedAreas,2.65,friendlyTerritoryForAssets(state.world.friendlyTerritory,state.playerAssets))
   return routeDistanceForBasing([...route,origin],terrain)<=flightRangeFor(squadron)+.001?route:undefined
 }
@@ -121,12 +122,19 @@ function searchSweep(center:Point,forward:Point,side:Point,sideRadius:number,for
   return passes
 }
 
+export function protectOrbit(ingress:Point[],radius:number):Point[]{
+  const center=ingress.at(-1)
+  if(!center||ingress.length<2)return ingress
+  const {forward,side}=basis(ingress[0],center)
+  return [...ingress,...patrolLoop(center,forward,side,radius,radius)]
+}
+
 function build(template:MissionId,ingress:Point[],patternScale:number,cpuSearchSweep:boolean):Point[]{
   if(template==='base-strike'||template==='bomb'||template==='transit'||(template==='search-area'&&!cpuSearchSweep))return ingress
   const base=ingress[0]
   const target=ingress.at(-1)!
+  if(template==='defensive-cap')return protectOrbit(ingress,4.5*patternScale)
   const {forward,side}=basis(base,target)
-  if(template==='defensive-cap')return [...ingress,...patrolLoop(target,forward,side,4.5*patternScale,4.5*patternScale)]
   if(template==='forward-patrol'){
     const patrolCenter=add(target,scale(forward,.55*patternScale))
     return [...ingress,...patrolLoop(patrolCenter,forward,side,1.55*patternScale,.42*patternScale)]

@@ -40,7 +40,7 @@ export interface Squadron {
   /** Optional waypoints between the mission endpoint and the intended landing field. */
   recoveryWaypoints?: Point[]
   /** Optional site, map point, or friendly flight assigned to a Protect order. */
-  protectedTargetId?: string; protectedPoint?: Point
+  protectedTargetId?: string; protectedPoint?: Point; protectRadius?: number
   /** Explicit recovered enemy ground target; base-strike is the legacy Ground Strike mission ID. */
   strikeTargetId?: string
   /** Ordered ground targets and route waypoint indices for bomber releases. */

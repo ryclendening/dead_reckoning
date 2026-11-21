@@ -14,7 +14,7 @@ describe('mission debrief surface',()=>{
     expect(markup).toContain('HOME BASE <b>100 → 20 HP</b>')
     expect(markup.indexOf('100 → 20 HP')).toBeLessThan(markup.indexOf('FRIENDLY LOST'))
     expect(markup.indexOf('100 → 20 HP')).toBeLessThan(markup.indexOf('Round payout'))
-    expect(markup.indexOf('100 → 20 HP')).toBeLessThan(markup.indexOf('Round highlights'))
+    expect(markup.indexOf('100 → 20 HP')).toBeLessThan(markup.indexOf('Round events'))
   })
 
   it('shows strike purpose and concrete launch failure beside the existing summary',()=>{
@@ -28,10 +28,10 @@ describe('mission debrief surface',()=>{
     expect(markup).toContain('<dt>Round pay</dt><dd>+$80M</dd>')
     expect(markup).toContain('Recovered intel <small>$20M per new site</small></dt><dd>+$20M</dd>')
     expect(markup).toContain('Confirmed enemy losses <small>$10M per aircraft</small></dt><dd>+$10M</dd>')
-    expect(markup).toContain('Round map key')
-    expect(markup).toContain('Round highlights')
+    expect(markup).not.toContain('After action views')
+    expect(markup).toContain('Round events')
     expect(markup).toContain('debrief-symbol')
-    expect(markup).toContain('>Orders</button>')
+    expect(markup).toContain('>Orders</summary>')
     expect(markup).toContain('STRIKE UNSELECTED GROUND TARGET')
     expect(markup).toContain('SELECT A CONFIRMED GROUND TARGET')
   })

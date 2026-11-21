@@ -1,6 +1,9 @@
 import type { Point, Role, Squadron } from './types'
 
 export const DEFENSIVE_CAP_RESPONSIBILITY_RADIUS=4.5
+export const MIN_PROTECT_RADIUS=.75
+export const clampProtectRadius=(radius:number)=>Math.min(DEFENSIVE_CAP_RESPONSIBILITY_RADIUS,Math.max(MIN_PROTECT_RADIUS,radius))
+export const validProtectRadius=(radius:unknown):radius is number=>typeof radius==='number'&&Number.isFinite(radius)&&radius===clampProtectRadius(radius)
 export const DEFENSIVE_CAP_PURSUIT_BUFFER=.35
 export const FORWARD_PATROL_RESPONSIBILITY_HALF_WIDTH=2.5
 
@@ -44,7 +47,7 @@ export function fighterResponsibilityFor(squadron:Squadron,protectedPosition?:Po
   if(squadron.role!=='fighter')return undefined
   if(squadron.mission==='defensive-cap'){
     const center=protectedPosition??(squadron.protectedTargetId?undefined:squadron.protectedPoint??squadron.routeIngress.at(-1)??squadron.route.at(-1))
-    return center?{kind:'circle',center:[...center],radius:DEFENSIVE_CAP_RESPONSIBILITY_RADIUS}:undefined
+    return center?{kind:'circle',center:[...center],radius:squadron.protectRadius??DEFENSIVE_CAP_RESPONSIBILITY_RADIUS}:undefined
   }
   if(squadron.mission==='forward-patrol'&&squadron.route.length>=2){
     // The route's ingress ends at routeIngress.at(-1); only the patrol pattern

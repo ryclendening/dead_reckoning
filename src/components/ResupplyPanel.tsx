@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useId, useRef, useState } from 'react'
 import { Check, ChevronRight, X } from 'lucide-react'
 import { economyAttentionTargets, economyCommandForQuote, economyQuotesFor, findMatchingEconomyQuote } from '../game/economy'
 import { formatCash } from '../game/economyRules'
@@ -45,32 +45,41 @@ function PurchaseButton({ quote, onBuy, disabled }: { quote: EconomyActionQuote;
   </button>
 }
 
-export function PurchaseCatalog({ category, quotes, busy, onCategoryChange, onChoose, onClose }: {
+export function PurchaseCatalog({ category, quotes, busy, balance, onCategoryChange, onChoose, onClose }: {
   category: PurchaseCategory
   quotes: EconomyActionQuote[]
   busy: boolean
+  balance: number
   onCategoryChange: (category: PurchaseCategory) => void
   onChoose: (quote: EconomyActionQuote) => void
   onClose: () => void
 }) {
   const purchaseKind = category === 'aircraft' ? 'formation-purchase' : 'asset-construction'
 
-  return <section className="adapt-drawer resupply-catalog" aria-label="Purchase catalog">
-    <header className="adapt-build-heading">
-      <div className="resupply-purchase-tabs" role="group" aria-label="Purchase type">
-        <button type="button" aria-pressed={category === 'aircraft'} onClick={() => onCategoryChange('aircraft')}>Aircraft</button>
-        <button type="button" aria-pressed={category === 'ground'} onClick={() => onCategoryChange('ground')}>Ground</button>
-      </div>
-      <button type="button" aria-label="Close purchases" onClick={onClose}><X/></button>
+  const dialog = useRef<HTMLDialogElement>(null)
+  const title = useId()
+  useEffect(() => {
+    const store = dialog.current
+    store?.showModal()
+    return () => { store?.close() }
+  }, [])
+
+  return <dialog ref={dialog} className="resupply-store" aria-labelledby={title} onCancel={event => {event.preventDefault();onClose()}}>
+    <header className="store-heading">
+      <h2 id={title}>Resupply store</h2>
+      <strong aria-label="Cash balance">{formatCash(balance)}</strong>
+      <button type="button" aria-label="Close store" onClick={onClose}><X/></button>
     </header>
-    <div className="phase-panel-content">
-      <PanelPages key={category} pageSize={2} label="Purchases" className="adapt-actions">
-        {quotes.filter(quote => quote.effect.kind === purchaseKind).map(quote =>
-          <PurchaseButton key={quote.id} quote={quote} disabled={busy} onBuy={() => onChoose(quote)}/>
-        )}
-      </PanelPages>
+    <div className="resupply-purchase-tabs" role="group" aria-label="Purchase type">
+      <button type="button" aria-pressed={category === 'aircraft'} onClick={() => onCategoryChange('aircraft')}>Aircraft</button>
+      <button type="button" aria-pressed={category === 'ground'} onClick={() => onCategoryChange('ground')}>Ground</button>
     </div>
-  </section>
+    <div key={category} className="adapt-actions store-items">
+      {quotes.filter(quote => quote.effect.kind === purchaseKind).map(quote =>
+        <PurchaseButton key={quote.id} quote={quote} disabled={busy} onBuy={() => onChoose(quote)}/>
+      )}
+    </div>
+  </dialog>
 }
 
 export function ResupplyPanel({
@@ -117,13 +126,10 @@ export function ResupplyPanel({
     else buy(quote)
   }
 
-  return <section className="phase-panel resupply-panel" aria-label="Resupply">
+  return <section className={`phase-panel resupply-panel${procurementMode!=='placing'&&!hasSelection&&!repairsOpen?' resupply-bar':''}`} aria-label="Resupply">
     <div className="resupply-content">
-      {procurementMode === 'closed' && !repairsOpen && !hasSelection ? <div className="phase-panel-heading">
-        <p className="phase-panel-copy">Tap a site or flight to inspect.</p>
-      </div> : null}
       {procurementMode === 'catalog' ? <PurchaseCatalog
-        category={purchaseCategory} quotes={catalog} busy={busy} onCategoryChange={setPurchaseCategory}
+        category={purchaseCategory} quotes={catalog} busy={busy} balance={match.logistics} onCategoryChange={setPurchaseCategory}
         onChoose={choosePurchase} onClose={() => onProcurementMode('closed')}
       /> : null}
 

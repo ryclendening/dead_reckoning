@@ -1,3 +1,4 @@
+import { validProtectRadius } from './missionResponsibility'
 import { createCampaignDraft, createMatch } from './data'
 import { SETUP_FORMATION_IDS, SETUP_REQUIRED_ASSET_IDS } from './campaignSetup'
 import { campaignOutcome, campaignOutcomePhase } from './campaign'
@@ -268,6 +269,7 @@ export function normalizeMatch(input: unknown): MatchState {
     return {
       ...squadron,
       ...normalizeAircraftType(squadron),
+      protectRadius:squadron.mission==='defensive-cap'&&!squadron.protectedTargetId&&validProtectRadius(squadron.protectRadius)?squadron.protectRadius:undefined,
       routeIngress,
       strength: squadron.strength ?? Math.max(0, Math.min(100, squadron.aircraft / Math.max(1, squadron.maxAircraft) * 100)),
       morale: squadron.morale ?? Math.round(48 + squadron.readiness * 0.42),

@@ -1,5 +1,6 @@
 import { useId, useRef } from 'react'
 import type { Phase } from '../game/types'
+import { DebriefLegend } from './DebriefSymbols'
 import { RADAR_PLACEMENT_HELP } from './DefenseSiteDetails'
 import { FIXED_ASSET_OBSERVATION_RANGE, RECON_GROUND_OBSERVATION_RANGE } from '../game/siteObservation'
 
@@ -17,12 +18,12 @@ const help: Record<PlayPhase, { title: string; tips: [string, string][]; online?
   plan: {
     title: 'Planning',
     tips: [
-      ['Fighter tasks', 'Protect defends a site, point, or friendly flight with confirmed orders. Forward Patrol pursues contacts in its corridor. Transit moves a flight to a friendly airfield.'],
-      ['Ground targets', 'Strike and Bomb require confirmed enemy sites. Ground Strike selects one target. Drag S to move its release point inside the marked circle. Bomb selects up to three sites in drop order. Legs between drops are fixed.'],
-      ['Recon and recovery', 'Recon flies the route you plot. Aggressive continues through threats. Conservative returns when it sees a fighter or a SAM or AAA battery fires at it.'],
+      ['Fighter orders', 'Tap the map to plot a Forward Patrol. Tap a friendly airfield to finish the route as Transit. Hold a point and drag to size a Protect ring. Quick drags pan the map. Use Escort for a friendly flight with a confirmed order.'],
+      ['Ground targets', 'Tap a confirmed enemy site to finish a fighter’s approach as Ground Strike. Drag S inside the marked release circle to adjust. Bombers take up to three targets in tap order. Tap a selected site again to remove it.'],
+      ['Recon and recovery', 'Recon flies the route you plot. Aggressive continues through threats. Passive returns when it sees a fighter or a SAM or AAA battery fires at it.'],
       ['Spot ground sites', `Recon spots sites within ${RECON_GROUND_OBSERVATION_RANGE} map units and can pick up an operating radar beyond its coverage. Fighters and bombers spot sites within ${FIXED_ASSET_OBSERVATION_RANGE} units.`],
       ['Budget fuel', 'You can add up to five waypoints per leg. Outbound travel, the mission pattern, and the return all use fuel. Shorten a leg if a waypoint exceeds the budget.'],
-      ['Choose where to land', 'Tap a friendly airfield on Return, or tap it on Outbound during Transit. Tapping a FOB while planning Protect makes it the defended site.'],
+      ['Choose where to land', 'Tap a friendly airfield on Return to change recovery while keeping the mission. Bombers return to their launch field on new orders.'],
     ],
     online: 'Lock orders to commit your plan. Execution starts when both players have locked.',
   },
@@ -31,20 +32,20 @@ const help: Record<PlayPhase, { title: string; tips: [string, string][]; online?
     tips: [
       ['Follow the action', 'Select a flight to track it. Free look lets you pan the map. Use 1× or 2× to change playback speed.'],
       ['Read contacts', 'Radar can show a track before its aircraft type is identified. Newly spotted ground sites appear while an aircraft can observe them.'],
-      ['Watch for recovery', 'Conservative recon turns back when it sees an enemy fighter or comes under ground fire. Flights must land to bring their new intelligence home.'],
+      ['Watch for recovery', 'Passive recon turns back when it sees an enemy fighter or comes under ground fire. Flights must land to bring their new intelligence home.'],
     ],
   },
   debrief: {
     title: 'Debrief',
     tips: [
-      ['Review the round', 'Tap a numbered highlight to focus its map location. Orders shows each mission’s result. Details lists friendly losses and new intel. The totals include losses without a reported location.'],
+      ['Review the round', 'Scroll the event feed to review the round in time order. Tap a report to locate it on the map, or tap a stack on the map to fan out its icons. The totals include losses without a reported location.'],
       ['Read your payout', 'Round pay, recovered site intelligence, and confirmed enemy aircraft losses appear separately. A Supply Depot adds to round pay.'],
     ],
   },
   adapt: {
     title: 'Resupply',
     tips: [
-      ['Purchase and build', 'Buy lists aircraft and ground sites. To build, tap a marked hex and select Confirm build. You can move the preview to another marked hex before confirming. Select the main airfield for upgrades.'],
+      ['Purchase and build', 'Buy opens the full-screen store. To build, tap a marked hex and select Confirm build. You can move the preview to another marked hex before confirming. Select the main airfield for upgrades.'],
       ['Check repairs', 'Use Repairs or select a damaged formation to restore strength. Ground site damage persists. SAM missiles replenish each round.'],
       ['Prepare to launch', 'You can plan the next round even with no aircraft. A forward base holds up to two formations.'],
     ],
@@ -74,6 +75,7 @@ export function PhaseHelp({ phase, online }: { phase: Phase; online: boolean }) 
         {content.tips.map(([label, tip]) => <div key={label}><dt>{label}</dt><dd>{tip}</dd></div>)}
         {online && content.online ? <div><dt>Multiplayer</dt><dd>{content.online}</dd></div> : null}
       </dl>
+      {phase==='debrief'?<DebriefLegend/>:null}
     </dialog>
   </>
 }

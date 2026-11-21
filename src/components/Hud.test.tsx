@@ -19,8 +19,8 @@ describe('phase help in the match header', () => {
     expect(deploy).not.toMatch(/<dialog[^>]* open(?:=|>| )/)
     expect(plan).toContain('aria-label="Help for Planning"')
     expect(plan).toContain('Outbound travel, the mission pattern, and the return all use fuel')
-    expect(plan).toContain('Bomb selects up to three sites in drop order.')
-    expect(plan).toContain('Forward Patrol pursues contacts in its corridor.')
+    expect(plan).toContain('Bombers take up to three targets in tap order.')
+    expect(plan).toContain('Hold a point and drag to size a Protect ring.')
     expect(plan).not.toContain('both players')
   })
 })
@@ -69,170 +69,60 @@ describe('execution airfield chit rail', () => {
   })
 })
 
-describe('mission planning shelf', () => {
+describe('map-first planning shelf', () => {
   const noop = () => {}
+  const common = {
+    onSelect: noop,
+    onClear: noop, onCommit: noop, onClose: noop, reviewedIds: new Set<string>(), reviewedCount: 0, totalCount: 4,
+  }
 
-  it('puts PvP Lock orders in the leftmost slot', () => {
+  it('puts PvP Lock orders on the left', () => {
     const match = createMatch()
-    const markup = renderToStaticMarkup(<CommandShelf
-      squadrons={match.squadrons} bases={match.playerAssets} activeBaseId="p-base" rosterMode="closed"
-      squadron={match.squadrons[0]} onSelect={noop} onBaseSelect={noop}
-      onRosterMode={noop} onMission={noop} onClear={noop} onCommit={noop}
-      step="idle" onClose={noop} reviewedIds={new Set()} reviewedCount={0} totalCount={4} onlineLock allowEmptyCommit
-    />)
-    expect(markup).toMatch(/online-commit-first"><button[^>]*>.*Lock orders.*planning-base-toggle/s)
+    const markup = renderToStaticMarkup(<CommandShelf {...common} squadrons={match.squadrons}
+      squadron={match.squadrons[0]} step="idle" onlineLock allowEmptyCommit/>)
+    expect(markup).toMatch(/online-commit-first"><button[^>]*>.*Lock orders/s)
   })
 
   it('offers Commit round when no formation can launch', () => {
     const match = createMatch()
     const squadrons = match.squadrons.map(formation => ({ ...formation, aircraft: 0 }))
-    const markup = renderToStaticMarkup(<CommandShelf
-      squadrons={squadrons} bases={match.playerAssets} activeBaseId="p-base" rosterMode="closed"
-      squadron={squadrons[0]} onSelect={noop} onBaseSelect={noop}
-      onRosterMode={noop} onMission={noop} onClear={noop} onCommit={noop}
-      step="idle" onClose={noop} reviewedIds={new Set()} reviewedCount={0} totalCount={0} allowEmptyCommit
-    />)
+    const markup = renderToStaticMarkup(<CommandShelf {...common} squadrons={squadrons}
+      squadron={squadrons[0]} step="idle" totalCount={0} allowEmptyCommit/>)
     expect(markup).toContain('No aircraft available')
     expect(markup).toContain('class="shelf-primary">Commit round')
   })
 
-  it('shows the strike target and return controls together', () => {
+  it('offers map gestures and an escort picker for fighters', () => {
     const match = createMatch()
-    const target = { ...match.enemyAssets[0], name: 'TARGET RADAR' }
-    const fighter = { ...match.squadrons[0], mission: 'base-strike' as const, strikeTargetId: target.id }
-    const markup = renderToStaticMarkup(<CommandShelf
-      squadrons={match.squadrons} bases={match.playerAssets} activeBaseId="p-base" rosterMode="closed"
-      squadron={fighter} onSelect={noop} onBaseSelect={noop}
-      onRosterMode={noop} onMission={noop} onClear={noop} onCommit={noop}
-      step="route" onClose={noop} reviewedIds={new Set()} reviewedCount={0} totalCount={4}
-      onRouteLegChange={noop} editingReturn groundTargets={[target]}
-    />)
-    expect(markup).toContain('aria-pressed="true">Return')
-    expect(markup).toContain('CLEAR RETURN')
-    expect(markup).toContain('TARGET RADAR')
-  })
-
-  it('shows fighter task choices without a bottom route-advance button', () => {
-    const match = createMatch()
-    const fighter = match.squadrons.find(squadron => squadron.role === 'fighter')!
-    const markup = renderToStaticMarkup(<CommandShelf
-      squadrons={match.squadrons} bases={match.playerAssets} activeBaseId="p-base" rosterMode="closed"
-      squadron={fighter} onSelect={noop} onBaseSelect={noop}
-      onRosterMode={noop} onMission={noop} onClear={noop} onCommit={noop}
-      step="mission" onClose={noop} reviewedIds={new Set()} reviewedCount={0} totalCount={4}
-    />)
-
-    expect(markup).toContain('>Task ·')
-    expect(markup).not.toContain('Protect route')
-    expect(markup).toContain('FORWARD PATROL')
-    expect(markup).not.toContain('CLEAR ROUTE')
-    expect(markup).not.toContain('class="route-budget"')
-    expect(markup).not.toContain('CUSTOM RECON')
-    expect(markup).not.toMatch(/CONSERVATIVE|NEUTRAL|AGGRESSIVE|POSTURE/)
-  })
-
-  it('offers Bomb and Transit with a compact target count in the route editor',()=>{
-    const match=createMatch(),target={...match.enemyAssets[0],name:'RADAR ONE'}
-    const bomber={...match.squadrons[0],role:'bomber' as const,mission:'bomb' as const,aircraftTypeId:'bomber',bombingTargets:[{targetId:target.id,routeIndex:1}]}
-    const missionMarkup=renderToStaticMarkup(<CommandShelf
-      squadrons={[bomber]} bases={match.playerAssets} activeBaseId="p-base" rosterMode="closed"
-      squadron={bomber} onSelect={noop} onBaseSelect={noop} onRosterMode={noop} onMission={noop}
-      onClear={noop} onCommit={noop} step="mission" onClose={noop} reviewedIds={new Set()} reviewedCount={0} totalCount={1}
-    />)
-    const routeMarkup=renderToStaticMarkup(<CommandShelf
-      squadrons={[bomber]} bases={match.playerAssets} activeBaseId="p-base" rosterMode="closed"
-      squadron={bomber} onSelect={noop} onBaseSelect={noop} onRosterMode={noop} onMission={noop}
-      onClear={noop} onCommit={noop} step="route" onClose={noop} reviewedIds={new Set()} reviewedCount={0} totalCount={1}
-      onSelectBombTargets={noop}
-    />)
-    expect(missionMarkup).toContain('BOMB')
-    expect(missionMarkup).toContain('TRANSIT')
-    expect(routeMarkup).toContain('1 / 3 targets')
-    expect(routeMarkup).toContain('SELECT TARGETS')
-    expect(routeMarkup).not.toContain('RADAR ONE')
-    expect(routeMarkup).not.toContain('REMOVE')
-  })
-
-  it('explains site and escort selection while building a Protect route',()=>{
-    const match=createMatch()
-    const fighter=match.squadrons.find(squadron=>squadron.role==='fighter')!
-    const markup=renderToStaticMarkup(<CommandShelf
-      squadrons={match.squadrons} bases={match.playerAssets} activeBaseId="p-base" rosterMode="closed"
-      squadron={fighter} onSelect={noop} onBaseSelect={noop}
-      onRosterMode={noop} onMission={noop} onPickProtectTarget={noop} onProtectFlight={noop} onClear={noop} onCommit={noop}
-      step="route" onClose={noop} reviewedIds={new Set([match.squadrons.find(item=>item.role==='recon')!.id])} reviewedCount={1} totalCount={4} selectingProtectTarget
-    />)
-    expect(markup).toContain('Tap a site or point to defend.')
-    expect(markup).toContain('DEFEND AREA')
-    expect(markup).toContain('ESCORT FLIGHT')
+    const markup = renderToStaticMarkup(<CommandShelf {...common} squadrons={match.squadrons}
+      squadron={match.squadrons[0]} step="route" reviewedIds={new Set(['raven'])}/>)
+    expect(markup).toContain('planning-strip')
+    expect(markup).toContain('aria-label="Undo last waypoint"')
+    expect(markup).toContain('aria-label="Escort flight"')
     expect(markup).toContain('RAVEN 3')
-    expect(markup).not.toContain('GHOST 4')
-    expect(markup).toContain('aria-label="Next aircraft"')
-    expect(markup).not.toContain('class="shelf-primary"')
-    expect(markup).not.toContain('AREA SIZE')
+    expect(markup).not.toContain('Select targets')
+    expect(markup.match(/<select/g)).toHaveLength(1)
   })
 
-  it('keeps confirmed escort coverage visible in the collapsed order shelf',()=>{
-    const match=createMatch()
-    const fighter=match.squadrons.find(squadron=>squadron.role==='fighter')!
-    const markup=renderToStaticMarkup(<CommandShelf
-      squadrons={match.squadrons} bases={match.playerAssets} activeBaseId="p-base" rosterMode="closed"
-      squadron={fighter} onSelect={noop} onBaseSelect={noop}
-      onRosterMode={noop} onMission={noop} onClear={noop} onCommit={noop}
-      step="idle" onClose={noop} reviewedIds={new Set([fighter.id])} reviewedCount={1} totalCount={4}
-      protectSummary="ESCORT RECON 60% COVERED · 40% UNCOVERED"
-    />)
-
-    expect(markup).toContain('ESCORT RECON 60% COVERED · 40% UNCOVERED')
-    expect(markup).not.toContain('ORDERS READY · SELECT FLIGHTS OR COMMIT')
-  })
-
-  it('fixes reconnaissance formations to the Search Area mission', () => {
+  it('shows the two recon postures with Passive mapped to the saved conservative order', () => {
     const match = createMatch()
-    const recon = match.squadrons.find(squadron => squadron.role === 'recon')!
-    const markup = renderToStaticMarkup(<CommandShelf
-      squadrons={match.squadrons} bases={match.playerAssets} activeBaseId="p-base" rosterMode="closed"
-      squadron={recon} onSelect={noop} onBaseSelect={noop}
-      onRosterMode={noop} onMission={noop} onClear={noop} onCommit={noop}
-      step="route" onClose={noop} reviewedIds={new Set()} reviewedCount={0} totalCount={4}
-    />)
-
-    expect(markup).toContain('Recon route')
-    expect(markup).not.toContain('planning-capsule')
-    expect(markup).toContain('aria-label="Next aircraft"')
-    expect(markup).not.toContain('>Task ·')
-    expect(markup).not.toContain('DEEP PROBE')
-    expect(markup).not.toContain('CUSTOM RECON')
+    const recon = { ...match.squadrons.find(flight => flight.role === 'recon')!, reconPosture: 'conservative' as const }
+    const markup = renderToStaticMarkup(<CommandShelf {...common} squadrons={match.squadrons}
+      squadron={recon} step="route"/>)
+    expect(markup).toContain('aria-pressed="true">Passive')
+    expect(markup).toContain('aria-pressed="false">Aggressive')
+    expect(markup).not.toContain('<select')
   })
 
-  it('offers a direct home recovery order to recon staged at a FOB', () => {
+  it('keeps a bomber on target picking with a visible payload count', () => {
     const match = createMatch()
-    const recon = match.squadrons.find(squadron => squadron.role === 'recon')!
-    const fob: Asset = { id: 'p-fob-1', kind: 'fob', name: 'FOB ALPHA', position: [0, 0], intel: 'confirmed',
-      confidence: 100, health: 100, maxHealth: 100, hidden: false, struck: false, operational: true,
-      capacity: 2, basedFormationIds: [recon.id] }
-    const markup = renderToStaticMarkup(<CommandShelf
-      squadrons={match.squadrons} bases={[...match.playerAssets, fob]} activeBaseId={fob.id} rosterMode="closed"
-      squadron={recon} onSelect={noop} onBaseSelect={noop}
-      onRosterMode={noop} onMission={noop} onRecoverHome={noop} onClear={noop} onCommit={noop}
-      step="route" onClose={noop} reviewedIds={new Set()} reviewedCount={0} totalCount={4}
-    />)
-    expect(markup).toContain('RECOVER HOME')
-  })
-
-  it('keeps ground strike visible but disabled with the intelligence gate explained', () => {
-    const match = createMatch()
-    const fighter = match.squadrons.find(squadron => squadron.role === 'fighter')!
-    const markup = renderToStaticMarkup(<CommandShelf
-      squadrons={match.squadrons} bases={match.playerAssets} activeBaseId="p-base" rosterMode="closed"
-      squadron={fighter} onSelect={noop} onBaseSelect={noop}
-      onRosterMode={noop} onMission={noop} onClear={noop} onCommit={noop}
-      step="mission" onClose={noop} reviewedIds={new Set()} reviewedCount={0} totalCount={4}
-      campaign strikeDisabledReason="RECOVER GROUND TARGET INTELLIGENCE FIRST"
-    />)
-
-    expect(markup).toContain('GROUND STRIKE')
-    expect(markup).toContain('RECOVER GROUND TARGET INTELLIGENCE FIRST')
-    expect(markup).toContain('disabled=""')
+    const bomber = { ...match.squadrons[0], role: 'bomber' as const, mission: 'bomb' as const,
+      bombingTargets: [{ targetId: 'e-base', routeIndex: 1 }] }
+    const markup = renderToStaticMarkup(<CommandShelf {...common} squadrons={[bomber]}
+      squadron={bomber} step="route"/>)
+    expect(markup).toContain('planning-strip')
+    expect(markup).toContain('1 / 3 targets')
+    expect(markup).toContain('Clear targets')
+    expect(markup).not.toContain('Undo last waypoint')
   })
 })
