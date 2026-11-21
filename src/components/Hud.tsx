@@ -104,7 +104,7 @@ export function CommandShelf({
     :squadron.protectRadius!==undefined?`Protect · ${squadron.protectRadius.toFixed(1)} units`
     :squadron.protectedTargetId?'Escort'
     :hasRoute?templateFor(squadron.mission).label
-    :isFighter?'Tap waypoints · Hold & drag to Protect':'Tap to plot recon'
+    :isFighter?'Tap to plot patrol':'Tap to plot recon'
   const commitButton=reviewedCount>0||allowEmptyCommit
     ?<button type="button" className="shelf-primary" disabled={cpuPlanning} onClick={onCommit}>{cpuPlanning?'CPU orders…':onlineLock?'Lock orders':'Commit round'} <ChevronRight/></button>
     :null

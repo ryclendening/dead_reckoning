@@ -62,11 +62,16 @@ describe('mission responsibility',()=>{
     expect(fighterIsResponsibleFor(squadron,[7.501,4])).toBe(false)
   })
 
-  it('limits patrol responsibility to the station pattern and uses the visible edge as its leash',()=>{
-    const squadron=fighter('forward-patrol',[[0,0],[5,0],[5,1],[6,1]],[[0,0],[5,0]])
+  it('covers the outbound approach and station, with the same edge for an ongoing pursuit',()=>{
+    const squadron={
+      ...fighter('forward-patrol',[[0,0],[5,0],[5,1],[6,1]],[[0,0],[5,0]]),
+      recoveryWaypoints:[[0,8]] as Point[],
+    }
     const area=fighterResponsibilityFor(squadron)!
     expect(area.kind).toBe('corridor')
-    expect(fighterIsResponsibleFor(squadron,[1,0])).toBe(false)
+    expect(fighterIsResponsibleFor(squadron,[1,-2.5])).toBe(true)
+    expect(mayContinueMissionPursuit(squadron,[1,-2.51])).toBe(false)
+    expect(fighterIsResponsibleFor(squadron,[0,8])).toBe(false)
     expect(fighterIsResponsibleFor(squadron,[5,1])).toBe(true)
     expect(mayContinueMissionPursuit(squadron,[5,1+FORWARD_PATROL_RESPONSIBILITY_HALF_WIDTH-.01])).toBe(true)
     expect(mayContinueMissionPursuit(squadron,[5,1+FORWARD_PATROL_RESPONSIBILITY_HALF_WIDTH+.01])).toBe(false)

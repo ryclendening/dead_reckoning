@@ -1,6 +1,7 @@
 import {describe,expect,it} from 'vitest'
 import {createMatch,enemyBaseFor} from './data'
 import {resolveRound} from './engine'
+import {generateRouteTemplate} from './routeTemplates'
 import {createScenario} from './scenarios'
 import type {Point} from './types'
 
@@ -58,6 +59,23 @@ describe('mission-based aircraft behavior',()=>{
     const result=resolveRound(state)
     expect(result.contactIntervals.some(interval=>interval.observerId==='viper'&&interval.targetId==='red-fighter'&&interval.source==='visual')).toBe(true)
     expect(result.interceptPlans.some(plan=>plan.squadronId==='viper')).toBe(false)
+  })
+
+  it('intercepts a contact on the way to a plotted patrol station',()=>{
+    const state=createScenario('reaction-interrupt')
+    const base=state.playerAssets.find(asset=>asset.kind==='base')!.position
+    const enemy=enemyBaseFor(state.world)
+    const separation=Math.hypot(enemy[0]-base[0],enemy[1]-base[1])
+    const along=(distance:number):Point=>[base[0]+(enemy[0]-base[0])*distance/separation,base[1]+(enemy[1]-base[1])*distance/separation]
+    const patrol=generateRouteTemplate({template:'forward-patrol',ingress:[base,along(6),along(14)],maxDistance:40,bounds:state.world.bounds})
+    state.squadrons=state.squadrons.map(squadron=>squadron.id==='viper'
+      ?{...squadron,mission:'forward-patrol',route:patrol.route,routeIngress:patrol.ingress,sortieOrdered:true}
+      :{...squadron,sortieOrdered:false})
+
+    const result=resolveRound(state)
+    const firstIntercept=result.interceptPlans.find(plan=>plan.squadronId==='viper')
+    expect(firstIntercept?.targetId).toBe('red-recon')
+    expect(firstIntercept?.start).toBeLessThan(1.5)
   })
 
   it('breaks a CAP chase when the target leaves the defended area',()=>{

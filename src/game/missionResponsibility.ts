@@ -50,11 +50,8 @@ export function fighterResponsibilityFor(squadron:Squadron,protectedPosition?:Po
     return center?{kind:'circle',center:[...center],radius:squadron.protectRadius??DEFENSIVE_CAP_RESPONSIBILITY_RADIUS}:undefined
   }
   if(squadron.mission==='forward-patrol'&&squadron.route.length>=2){
-    // The route's ingress ends at routeIngress.at(-1); only the patrol pattern
-    // is the mission's responsibility area. Recovery is appended at execution.
-    const start=Math.max(0,Math.min(squadron.route.length-1,squadron.routeIngress.length-1))
-    const path=squadron.route.slice(start).map(point=>[...point] as Point)
-    return {kind:'corridor',path:path.length>1?path:squadron.route.map(point=>[...point] as Point),halfWidth:FORWARD_PATROL_RESPONSIBILITY_HALF_WIDTH}
+    // The committed route includes approach and station. Recovery is separate.
+    return {kind:'corridor',path:squadron.route,halfWidth:FORWARD_PATROL_RESPONSIBILITY_HALF_WIDTH}
   }
   return undefined
 }

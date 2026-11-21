@@ -20,7 +20,7 @@ describe('phase help in the match header', () => {
     expect(plan).toContain('aria-label="Help for Planning"')
     expect(plan).toContain('Outbound travel, the mission pattern, and the return all use fuel')
     expect(plan).toContain('Bombers take up to three targets in tap order.')
-    expect(plan).toContain('Hold a point and drag to size a Protect ring.')
+    expect(plan).toContain('Tap its last waypoint again to select it, then drag from it to size a Protect ring.')
     expect(plan).not.toContain('both players')
   })
 })

@@ -18,7 +18,7 @@ const help: Record<PlayPhase, { title: string; tips: [string, string][]; online?
   plan: {
     title: 'Planning',
     tips: [
-      ['Fighter orders', 'Tap the map to plot a Forward Patrol. Tap a friendly airfield to finish the route as Transit. Hold a point and drag to size a Protect ring. Quick drags pan the map. Use Escort for a friendly flight with a confirmed order.'],
+      ['Fighter orders', 'Tap the map to plot a patrol. Tap its last waypoint again to select it, then drag from it to size a Protect ring. Select P to resize the ring. Drag elsewhere to pan. Tap a friendly airfield for Transit or use Escort for a flight with a confirmed order.'],
       ['Ground targets', 'Tap a confirmed enemy site to finish a fighter’s approach as Ground Strike. Drag S inside the marked release circle to adjust. Bombers take up to three targets in tap order. Tap a selected site again to remove it.'],
       ['Recon and recovery', 'Recon flies the route you plot. Aggressive continues through threats. Passive returns when it sees a fighter or a SAM or AAA battery fires at it.'],
       ['Spot ground sites', `Recon spots sites within ${RECON_GROUND_OBSERVATION_RANGE} map units and can pick up an operating radar beyond its coverage. Fighters and bombers spot sites within ${FIXED_ASSET_OBSERVATION_RANGE} units.`],

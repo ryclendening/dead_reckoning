@@ -38,9 +38,13 @@ export function mapProtectOrder(state: MatchState, squadron: Squadron, center: P
   if (!field || !isOperationalAirfield(field) || squadron.role !== 'fighter') return
   if (!Number.isFinite(radius)) return
   const protectRadius = clampProtectRadius(radius)
-  const routeIngress = [field.position, ...approachWaypoints(squadron, state.playerAssets), center]
+  const approach = approachWaypoints(squadron, state.playerAssets)
+  const lastWaypoint = approach.at(-1)
+  if (lastWaypoint && distance(lastWaypoint, center) < .001) approach.pop()
+  const routeIngress = [field.position, ...approach, center]
   return {
     ...resetMapOrder(squadron, field.position), mission: 'defensive-cap', protectedPoint: center, protectRadius,
+    plannedRecoveryFieldId: squadron.plannedRecoveryFieldId, recoveryWaypoints: squadron.recoveryWaypoints,
     routeIngress, route: protectOrbit(routeIngress, protectRadius),
   }
 }

@@ -47,4 +47,17 @@ describe('map-first fighter orders', () => {
     })))
     expect(saved.squadrons.find(flight => flight.id === protect.id)?.protectRadius).toBe(1.8)
   })
+
+  it('promotes the last waypoint to the station and keeps recovery while resizing', () => {
+    const { state, fighter, approach, launch, point } = setup()
+    const center = approach.at(-1)!
+    const recoveryWaypoints = [point(1, 1)]
+    const protect = mapProtectOrder(state, { ...fighter, plannedRecoveryFieldId: 'p-base', recoveryWaypoints }, center, 1.8)!
+    expect(protect.routeIngress).toEqual([launch, ...approach])
+    const resized = mapProtectOrder(state, protect, center, 2.5)!
+    expect(resized.routeIngress).toEqual(protect.routeIngress)
+    expect(resized.protectRadius).toBe(2.5)
+    expect(resized.plannedRecoveryFieldId).toBe('p-base')
+    expect(resized.recoveryWaypoints).toEqual(recoveryWaypoints)
+  })
 })
