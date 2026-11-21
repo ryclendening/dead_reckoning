@@ -2,8 +2,9 @@ import { useState } from 'react'
 import { Check, ChevronRight, X } from 'lucide-react'
 import { economyAttentionTargets, economyCommandForQuote, economyQuotesFor, findMatchingEconomyQuote } from '../game/economy'
 import { formatCash } from '../game/economyRules'
+import { formationStatus } from '../game/formationStatus'
 import { upgradeDefinition } from '../game/upgrades'
-import { PanelPages } from './PanelPages'
+import { FormationChip } from './FormationChip'
 import { PurchaseCatalog, type PurchaseCategory } from './PurchaseCatalog'
 import { DefenseSiteDetails } from './DefenseSiteDetails'
 import { assetCardData } from '../game/unitCards'
@@ -57,17 +58,20 @@ export function ResupplyPanel({
   const catalog = economyQuotesFor(match, campaignTarget)
   const placement = catalog.find(quote => quote.id === procurementActionId && quote.effect.kind === 'asset-construction')
   const repairTargets = economyAttentionTargets(match)
+  const repairIds = new Set(repairTargets.map(target => target.id))
   const friendlyAsset = selectedTarget.kind === 'asset' ? match.playerAssets.find(asset => asset.id === selectedTarget.id) : undefined
   const selectedAsset = friendlyAsset ?? (selectedTarget.kind === 'asset'
     ? match.enemyAssets.find(asset => asset.id === selectedTarget.id && !asset.hidden && asset.intel !== 'unknown')
     : undefined)
   const assetData = selectedAsset ? assetCardData(selectedAsset, !friendlyAsset, 'adapt') : undefined
   const formation = selectedTarget.kind === 'squadron' ? match.squadrons.find(item => item.id === selectedTarget.id) : undefined
-  const based = friendlyAsset ? match.squadrons.filter(item => friendlyAsset.basedFormationIds?.includes(item.id) && item.aircraft > 0) : []
-  const installed = (formation?.upgrades ?? selectedAsset?.upgrades ?? []).map(upgradeDefinition)
+  const force = formation ? formationStatus(formation) : undefined
+  const repair = quotes.find(quote => quote.effect.kind === 'formation-strength')
+  const installed = (selectedAsset?.upgrades ?? []).map(upgradeDefinition)
   const pending = findMatchingEconomyQuote(quotes, upgradePending)
-  const hasSelection = procurementMode === 'closed' && Boolean(assetData || formation)
-  const repairsOpen = showRepairs && selectedTarget.kind === 'campaign' && procurementMode === 'closed'
+  const hasSelection = procurementMode === 'closed' && Boolean(assetData)
+  const repairsOpen = showRepairs && repairIds.size > 0 && selectedTarget.kind === 'campaign' && procurementMode === 'closed'
+  const flights = match.squadrons.filter(flight => flight.aircraft > 0 && (!repairsOpen || repairIds.has(flight.id)))
 
   function chooseTarget(target: EconomyTarget) {
     setShowRepairs(false)
@@ -89,7 +93,7 @@ export function ResupplyPanel({
     else buy(quote)
   }
 
-  return <section className={`phase-panel resupply-panel${procurementMode!=='placing'&&!hasSelection&&!repairsOpen?' resupply-bar':''}`} aria-label="Resupply">
+  return <section className={`phase-panel resupply-panel${procurementMode !== 'placing' && !hasSelection ? ' resupply-bar' : ''}`} aria-label="Resupply">
     <div className="resupply-content">
       {procurementMode === 'catalog' ? <PurchaseCatalog
         category={purchaseCategory} quotes={catalog} match={match} busy={busy} onCategoryChange={setPurchaseCategory}
@@ -104,22 +108,10 @@ export function ResupplyPanel({
         </div>
       </div> : null}
 
-      {repairsOpen ? <div className="adapt-drawer" aria-label="Formations needing repair">
-        <header className="adapt-build-heading"><b>Repairs</b><button type="button" aria-label="Close repair list" onClick={() => setShowRepairs(false)}><X/></button></header>
-        <div className="phase-panel-content"><PanelPages pageSize={2} label="Repairs" className="adapt-actions">{repairTargets.map(target => {
-          const aircraft = match.squadrons.find(item => item.id === target.id)
-          const repair = economyQuotesFor(match, target).find(quote => quote.id.startsWith('repair-'))
-          return <button type="button" key={target.id} onClick={() => chooseTarget(target)}>
-            <span><b>{aircraft?.callsign}</b><small>{repair?.detail}</small></span>
-            {repair ? <strong>{formatCash(repair.cost)}</strong> : null}
-          </button>
-        })}</PanelPages></div>
-      </div> : null}
-
-      {hasSelection ? <div className="adapt-drawer adapt-selection" aria-label="Selected system">
+      {hasSelection && assetData ? <div className="adapt-drawer adapt-selection" aria-label="Selected system">
         <header className="adapt-drawer-title">
-          <b>{assetData?.title ?? formation?.callsign}</b>
-          <small>{assetData ? `${Math.round(assetData.health)} / ${assetData.maxHealth} HP` : `${formation!.aircraft}/${formation!.maxAircraft} aircraft · ${Math.round(formation!.strength ?? 0)}%`}</small>
+          <b>{assetData.title}</b>
+          <small>{`${Math.round(assetData.health)} / ${assetData.maxHealth} HP`}</small>
           <button type="button" aria-label="Close selected system" onClick={() => { setUpgradePending(undefined); onCloseTarget() }}><X/></button>
         </header>
         <div className="phase-panel-content">
@@ -131,13 +123,9 @@ export function ResupplyPanel({
               <button type="button" className="confirm" disabled={busy || !pending.eligible} onClick={() => { buy(pending); setUpgradePending(undefined) }}>Confirm <Check/></button>
             </div>
           </> : <>
-            {assetData ? <><progress value={assetData.health} max={assetData.maxHealth} aria-label="Site health"/>
-              <p className="adapt-site-status">{friendlyAsset ? '' : 'Enemy · '}{assetData.status}</p></> : null}
+            <progress value={assetData.health} max={assetData.maxHealth} aria-label="Site health"/>
+            <p className="adapt-site-status">{friendlyAsset ? '' : 'Enemy · '}{assetData.status}</p>
             {selectedAsset ? <DefenseSiteDetails asset={selectedAsset} sites={friendlyAsset ? match.playerAssets : match.enemyAssets.filter(asset => !asset.hidden && asset.intel === 'confirmed')} enemy={!friendlyAsset}/> : null}
-            {based.length ? <select className="adapt-based-picker" aria-label="Based formations" value="" onChange={event => chooseTarget({kind:'squadron',id:event.target.value})}>
-              <option value="" disabled>Based here ({based.length})</option>
-              {based.map(item => <option key={item.id} value={item.id}>{item.callsign} · {item.aircraft}/{item.maxAircraft}</option>)}
-            </select> : null}
             {installed.map(upgrade => upgrade ? <p key={upgrade.id} className="adapt-installed"><Check/>{upgrade.label} installed</p> : null)}
             {quotes.length ? <div className="adapt-actions">{quotes.map(quote =>
               <PurchaseButton key={quote.id} quote={quote} disabled={busy} onBuy={() => chooseAction(quote)}/>
@@ -146,6 +134,22 @@ export function ResupplyPanel({
         </div>
       </div> : null}
     </div>
+    {procurementMode === 'closed' && !hasSelection && flights.length ? <div className="resupply-aircraft">
+      {formation && force ? <div className="formation-service" aria-label="Selected aircraft">
+        <div>
+          <b>{formation.callsign}</b>
+          <small>{force.aircraft}/{force.maxAircraft} aircraft{formation.status === 'trapped' ? ' · Trapped' : ''}</small>
+          <small>{repair?.detail ?? `${Math.round(formation.strength ?? force.aircraftFraction * 100)}% strength`}</small>
+        </div>
+        {repair ? <button type="button" className="formation-repair" disabled={busy || !repair.eligible}
+          onClick={() => buy(repair)}>Repair · {formatCash(repair.cost)}{repair.reason ? <small>{repair.reason}</small> : null}</button> : null}
+        <button type="button" className="formation-dismiss" aria-label="Close selected aircraft" onClick={() => chooseTarget(campaignTarget)}><X/></button>
+      </div> : null}
+      <nav className="resupply-flights" aria-label={repairsOpen ? 'Formations needing repair' : 'Aircraft'}>
+        {flights.map(flight => <FormationChip key={flight.id} flight={flight} cue={repairIds.has(flight.id) ? 'repair' : undefined}
+          selected={formation?.id === flight.id} onSelect={() => chooseTarget(formation?.id === flight.id ? campaignTarget : { kind: 'squadron', id: flight.id })}/>)}
+      </nav>
+    </div> : null}
     <div className="resupply-controls phase-panel-footer">
       <span className="adapt-balance" aria-label="Cash balance"><b>{formatCash(match.logistics)}</b></span>
       <button type="button" aria-expanded={procurementMode === 'catalog'} onClick={() => {
@@ -153,7 +157,7 @@ export function ResupplyPanel({
         setUpgradePending(undefined)
         onProcurementMode(procurementMode === 'catalog' ? 'closed' : 'catalog')
       }}>Buy</button>
-      {repairTargets.length ? <button type="button" aria-expanded={repairsOpen} onClick={() => {
+      {repairTargets.length ? <button type="button" aria-pressed={repairsOpen} onClick={() => {
         onCloseTarget()
         setUpgradePending(undefined)
         setShowRepairs(!repairsOpen)

@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { PhaseHelp } from './PhaseHelp'
+import { FormationChip } from './FormationChip'
 import { AlertTriangle, Bomb as BombIcon, Check, CheckCircle2, ChevronDown, ChevronLeft, ChevronRight, ChevronUp, CornerUpLeft, Crosshair, Eye, List, LocateFixed, RotateCcw, Route, Trash2, Undo2 } from 'lucide-react'
 import type { RouteBudget } from '../game/forwardBasing'
 import { formationStatus, recoveryReasonLabel } from '../game/formationStatus'
@@ -111,15 +112,8 @@ export function CommandShelf({
 
   return <section className="phase-panel planning-strip" aria-label="Planning command shelf">
     <nav className="planning-flights" aria-label="Aircraft">
-      {squadrons.map(flight=>{
-        const Icon=ROLE_ICONS[flight.role]
-        const planned=reviewedIds.has(flight.id)
-        const active=editing&&flight.id===squadron.id
-        return <button type="button" key={flight.id} data-role={flight.role} aria-label={`${flight.callsign}, ${planned?'planned':flight.role}`}
-          disabled={flight.aircraft<=0||flight.status==='trapped'} aria-pressed={active} onClick={()=>onSelect(flight.id)}>
-          <Icon/><span>{flight.callsign}</span>{planned?<Check aria-hidden="true"/>:null}
-        </button>
-      })}
+      {squadrons.map(flight => <FormationChip key={flight.id} flight={flight} cue={reviewedIds.has(flight.id) ? 'planned' : undefined}
+        disabled={flight.aircraft<=0||flight.status==='trapped'} selected={editing&&flight.id===squadron.id} onSelect={()=>onSelect(flight.id)}/>)}
     </nav>
     <div className="planning-strip-status" aria-live="polite">
       <span>{routeNotice??(editing?routeStatus:totalCount?`${reviewedCount} / ${totalCount} ready`:'No aircraft available')}</span>

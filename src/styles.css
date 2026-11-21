@@ -189,18 +189,6 @@
 .debrief-continue svg{width:13px;height:13px}
 
 /* Screen-facing planning markers anchored above each airfield. */
-.airfield-pip-anchor{display:flex;flex-direction:column;align-items:center;transform:translateY(-10px);pointer-events:none}
-.airfield-pip-list{display:flex;gap:3px;padding:3px;background:rgba(8,15,13,.92);border:1px solid #61736b;border-radius:4px;box-shadow:0 4px 14px rgba(0,0,0,.55);white-space:nowrap;pointer-events:auto}
-.airfield-pip{display:flex;align-items:center;gap:4px;min-height:24px;padding:2px 5px;border:1px solid #66786d;border-radius:3px;background:#202c28;color:#dce8dc;font:800 10px 'Barlow Condensed',sans-serif;letter-spacing:.35px;cursor:pointer;pointer-events:auto}
-.airfield-pip:hover,.airfield-pip:focus-visible{border-color:#7ceaf0;background:#29433f;outline:none}
-.airfield-pip.selected{border-color:#7ceaf0;box-shadow:inset 0 0 0 1px rgba(124,234,240,.45)}
-.airfield-pip.planned{border-color:#84c591;background:#20382b;color:#d9f4dc}
-.airfield-pip-role{display:grid;place-items:center;width:15px;height:15px;flex:none;border-radius:50%;background:#4baba9;color:#071514;font-size:10px;line-height:1}
-.airfield-pip.planned .airfield-pip-role{background:#9ee6a8}
-.airfield-pip-name{max-width:58px;overflow:hidden;text-overflow:ellipsis}
-.airfield-pip-check{color:#9ee6a8;font-size:12px;line-height:1}
-.airfield-pip-stem{position:relative;width:1px;height:16px;background:#9acfc1;box-shadow:0 0 4px #78cfbb}
-.airfield-pip-stem::after{content:'';position:absolute;left:-2px;bottom:0;width:5px;height:5px;border-radius:50%;background:#9acfc1}
 .route-step .waypoint-count{margin:4px 0 0;color:#72e8df;font:800 8px 'Barlow Condensed';letter-spacing:.65px}
 .planning-help{margin:0;color:#aebbaa;font:600 10px/1.4 Inter,sans-serif}.planning-route-actions{display:flex;gap:6px;margin-top:9px}.planning-route-actions button{min-height:30px;padding:0 9px;border:1px solid var(--line);background:#19221b;color:#b9c8ba;font:700 9px 'Barlow Condensed';letter-spacing:.5px}.mission-step .shelf-route{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:5px;overflow:visible}.mission-step .shelf-route button{display:flex;align-items:center;justify-content:center;gap:4px;min-width:0;min-height:43px;padding:5px 3px;white-space:normal;text-align:center}.mission-step .shelf-route button svg{width:15px;height:15px}.mission-step .shelf-route button b{font-size:9px}.mission-step .shelf-route button:disabled{opacity:.45}.mission-step .shelf-range{margin-top:6px}.mission-step .sheet-heading button:first-child{padding-inline:6px}
 .planning-target-action{margin-top:7px;min-height:30px;padding:0 9px;border:1px solid var(--line);background:#192b23;color:#d0e8d3;font:700 9px 'Barlow Condensed';letter-spacing:.5px}

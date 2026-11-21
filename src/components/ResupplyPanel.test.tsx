@@ -27,8 +27,7 @@ describe('Resupply',()=>{
     const airfield=render(match,{kind:'asset',id:'p-base'})
     expect(airfield).toContain('MAINTENANCE WING')
     expect(airfield).toContain('SUPPLY DEPOT')
-    expect(airfield).toContain('Based formations')
-    expect(airfield).toContain('VIPER 1')
+    expect(airfield).not.toContain('Based formations')
     expect(airfield).not.toContain('Repairs and replacements')
   })
 
@@ -53,10 +52,21 @@ describe('Resupply',()=>{
     expect(airfield).not.toContain('SUPPLY DEPOT')
     expect(airfield).toContain('Repairs <span>1</span>')
     const flight=render(match,{kind:'squadron',id:'viper'})
-    expect(flight).toContain('REPAIR FORMATION')
+    expect(flight).toContain('resupply-panel resupply-bar')
+    expect(flight).toContain('aria-label="Selected aircraft"')
+    expect(flight).toContain('aria-label="VIPER 1, repair available"')
     expect(flight).toContain('Strength 30 → 50 (+20)')
-    expect(flight).toContain('$10M</strong>')
-    expect(flight).not.toContain('UPGRADES')
+    expect(flight).toContain('Repair · $10M')
+    expect(flight).not.toContain('adapt-drawer')
+  })
+
+  it('keeps repair pricing and strength visible when the player cannot afford service', () => {
+    const match = state()
+    match.logistics = 0
+    match.squadrons = match.squadrons.map(flight => flight.id === 'viper' ? { ...flight, strength: 50 } : flight)
+    const flight = render(match, { kind: 'squadron', id: 'viper' })
+    expect(flight).toContain('Strength 50 → 75 (+25)')
+    expect(flight).toContain('class="formation-repair" disabled="">Repair · $20M')
   })
 
   it('allows planning with no aircraft and no cash',()=>{
