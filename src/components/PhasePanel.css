@@ -147,9 +147,9 @@
   box-shadow: none;
   pointer-events: none;
 }
-.battlefield-workspace > .planning-strip { grid-template-rows: 38px 27px var(--panel-footer); }
-.planning-strip button, .planning-strip select, .planning-strip .planning-flights { pointer-events: auto; }
-.planning-flights, .resupply-flights, .deployment-sites {
+.battlefield-workspace > .planning-strip { grid-template-rows: 27px var(--panel-footer); }
+.planning-strip button, .planning-strip select { pointer-events: auto; }
+.resupply-flights, .deployment-sites {
   display: flex;
   gap: 4px;
   min-width: 0;
@@ -174,7 +174,6 @@
   font: 800 12px 'Barlow Condensed', sans-serif;
   cursor: pointer;
 }
-.planning-flights .formation-chip { flex: 1 0 max(64px, calc((100% - 12px) / 4)); }
 :is(.formation-chip, .site-chip) > span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 :is(.formation-chip, .site-chip) svg { width: 12px; height: 12px; color: var(--cyan); flex: none; }
 .formation-chip[data-role="recon"] .formation-role { color: #9fddbe; }
@@ -443,11 +442,8 @@
     bottom: calc(4px + env(safe-area-inset-bottom));
   }
   .battlefield-workspace > .planning-strip {
-    grid-template: 27px var(--panel-footer) / minmax(0, 1fr) auto;
+    grid-template: var(--panel-footer) / minmax(0, 1fr) auto;
   }
-  .planning-strip-status { grid-area: 1 / 1 / 2 / -1; }
-  .planning-flights { grid-area: 2 / 1; }
-  .planning-strip-actions { grid-area: 2 / 2; }
 }
 
 @media (orientation: landscape) and (max-height: 360px) {

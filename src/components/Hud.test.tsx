@@ -72,9 +72,18 @@ describe('execution airfield chit rail', () => {
 describe('map-first planning shelf', () => {
   const noop = () => {}
   const common = {
-    onSelect: noop,
     onClear: noop, onCommit: noop, onClose: noop, reviewedIds: new Set<string>(), reviewedCount: 0, totalCount: 4,
   }
+
+  it('directs players to the airfield fan and keeps the bottom shelf for status and actions', () => {
+    const match = createMatch()
+    const markup = renderToStaticMarkup(<CommandShelf {...common} squadrons={match.squadrons}
+      squadron={match.squadrons[0]} step="idle" allowEmptyCommit/>)
+    expect(markup).toContain('Tap an airfield’s aircraft count')
+    expect(markup).toContain('0 / 4 ready')
+    expect(markup).toContain('Commit round')
+    expect(markup).not.toContain('formation-chip')
+  })
 
   it('puts PvP Lock orders on the left', () => {
     const match = createMatch()
@@ -97,6 +106,8 @@ describe('map-first planning shelf', () => {
     const markup = renderToStaticMarkup(<CommandShelf {...common} squadrons={match.squadrons}
       squadron={match.squadrons[0]} step="route" reviewedIds={new Set(['raven'])}/>)
     expect(markup).toContain('planning-strip')
+    expect(markup).toContain('VIPER 1 ·')
+    expect(markup).not.toContain('formation-chip')
     expect(markup).toContain('aria-label="Undo last waypoint"')
     expect(markup).toContain('aria-label="Escort flight"')
     expect(markup).toContain('RAVEN 3')

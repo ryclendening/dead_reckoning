@@ -21,7 +21,7 @@ import { advanceReplayTime } from './game/frameClock'
 import { advanceToNextRound, constructionPlacementValidator, economyCommandForQuote, economyQuotesFor, executeEconomyCommand, openAdaptPhaseImmediately, PROCUREMENT_CATALOG } from './game/economy'
 import { formatCash, LOGISTICS_EFFECTS } from './game/economyRules'
 import { snapToHex } from './game/hex'
-import { formationBaseGroups, formationBaseId } from './game/formationBasing'
+import { airfieldLabel, formationBaseGroups, formationBaseId } from './game/formationBasing'
 import { deriveRecoveryPlanningView, deriveRouteBudget, formationField, isOperationalAirfield, MAX_RECOVERY_WAYPOINTS, routeDistanceForBasing, transitDestination, validateRecoveryPackage } from './game/forwardBasing'
 import { generateRouteTemplate, protectOrbit, validateBomberOrderForPlayer, validateGroundStrikeOrder } from './game/routeTemplates'
 import { normalizeMatch } from './game/persistence'
@@ -625,12 +625,15 @@ export default function App(){
     if(isPlanReadOnly()||!planningBaseGroups.some(group=>group.base.id===id))return
     setPlanningBaseId(id);setPlanningStep('idle');setRouteNotice(undefined)
   }
-  const selectExecutionBase=(id:string)=>{const base=match.playerAssets.find(asset=>asset.id===id&&(asset.kind==='base'||asset.kind==='fob'));if(!base)return;setExecutionBaseId(id);setFollowId(undefined);setFocusPoint([...base.position]);setCameraFocusRequestKey(key=>key+1)}
+  const focusMapPoint=(point:Point)=>{
+    setFollowId(undefined)
+    setFocusPoint([...point])
+    setCameraFocusRequestKey(key=>key+1)
+  }
+  const selectExecutionBase=(id:string)=>{const base=match.playerAssets.find(asset=>asset.id===id&&(asset.kind==='base'||asset.kind==='fob'));if(!base)return;setExecutionBaseId(id);focusMapPoint(base.position)}
   const focusAirfield=()=>{const id=match.playerAssets.find(asset=>asset.kind==='base')?.id;if(id)selectExecutionBase(id)}
   const focusDebrief=(point:Point,eventId?:string)=>{
-    setFollowId(undefined)
-    setFocusPoint([...point] as Point)
-    setCameraFocusRequestKey(current=>current+1)
+    focusMapPoint(point)
     setFocusedDebriefEvent(eventId)
   }
   const focusEvent=(event:CombatEvent)=>{const target=match.squadrons.find(s=>event.detail.includes(s.callsign));if(target){setFollowId(target.id);setMatch(m=>({...m,selectedId:target.id}))}else setFollowId(undefined);if(event.position)setFocusPoint(event.position);setActiveEvent(event)}
@@ -668,6 +671,15 @@ export default function App(){
         {match.phase!=='adapt'&&inspectedAsset?<AssetInspector asset={inspectedAsset} sites={inspectionSites} enemy={inspectingEnemy} phase={visiblePhase} result={inspectionResult} seconds={inspectionSeconds} onClose={()=>setSelectedAssetId(undefined)}/>:inspectedAircraft?<AircraftInspector {...inspectedAircraft} onClose={()=>setInspectedFlightId(undefined)}/>:null}
         {visiblePhase!=='deploy'&&visiblePhase!=='debrief' ? <div className="map-tools" aria-label="Map tools">
           {campaign&&(visiblePhase==='plan'||visiblePhase==='execute') ? <CampaignBriefing match={match} target={strikeTarget} homeHealth={Math.round(liveHomeHealth)} enemyHealth={knownEnemyBaseHealth===undefined?undefined:Math.round(knownEnemyBaseHealth)}/> : null}
+          {visiblePhase==='plan'&&planningBaseGroups.length===1?<button type="button" aria-label="Locate airfield"
+            onClick={()=>focusMapPoint(planningBaseGroups[0].base.position)}><LocateFixed/> Airfield</button>:null}
+          {visiblePhase==='plan'&&planningBaseGroups.length>1?<details name="map-tools" className="airfield-locator">
+            <summary><LocateFixed/> Airfields</summary>
+            <div>{planningBaseGroups.map(({base})=><button type="button" key={base.id} onClick={event=>{
+              event.currentTarget.closest('details')?.removeAttribute('open')
+              focusMapPoint(base.position)
+            }}>{airfieldLabel(base)}</button>)}</div>
+          </details>:null}
           {visiblePhase==='execute' ? <><ContactTracks result={executionResult} seconds={inspectionSeconds} home={playerBase} onFocus={point=>{setFollowId(undefined);setFocusPoint(point)}}/>
             {executionResult?.events.some(event=>event.time<=inspectionSeconds) ? <details name="map-tools" className="map-events"><summary>Events</summary><ObserveEventFeed events={executionResult.events} progress={executionProgress} duration={executionResult.duration} onFocus={focusEvent}/></details> : null}</> : null}
           <button type="button" className="defense-map-toggle" aria-label="Defense coverage" aria-pressed={showDefenseCoverage} onClick={()=>setShowDefenseCoverage(value=>!value)}><ShieldCheck/> Defense</button>
@@ -679,12 +691,12 @@ export default function App(){
         match={match} placementId={placementId} onSelectPlacement={setPlacementId}
         online={Boolean(onlineSession)} busy={onlineCommandBusy} locked={onlineView?.locked} opponentLocked={onlineView?.opponentLocked}
         onContinue={()=>onlineSession?void sendOnlineAction({type:'lock-deploy'}):match.setup?advanceCampaignSetup():setMatch(m=>({...m,phase:'plan'}))}/>:null}
-      {match.phase==='plan'&&waitingOnPlan?<section className="phase-panel online-wait-panel" aria-label="Read-only plan"><strong>{onlineView?.locked?'Orders locked':onlineCommandBusy?'Locking orders…':'Checking submitted orders'}</strong><p>{onlineView?.locked?'Tap an aircraft to review its orders.':'Your submitted routes are frozen.'}</p></section>:null}
+      {match.phase==='plan'&&waitingOnPlan?<section className="phase-panel online-wait-panel" aria-label="Read-only plan"><strong>{onlineView?.locked?'Orders locked':onlineCommandBusy?'Locking orders…':'Checking submitted orders'}</strong><p>{onlineView?.locked?'Open an airfield’s aircraft count to review orders.':'Your submitted routes are frozen.'}</p></section>:null}
       {match.phase==='plan'&&!waitingOnPlan?<CommandShelf
         squadrons={match.squadrons}
         squadron={selected} routeNotice={routeNotice} routeBudget={routeBudget} editingReturn={editingReturn}
         onRouteLegChange={canEditReturn?leg=>{setEditReturn(leg==='return');setRouteNotice(undefined)}:undefined}
-        onSelect={selectPlanningFormation} onProtectFlight={selectProtectFlight}
+        onProtectFlight={selectProtectFlight}
         onReconPosture={setReconPosture} onUndoWaypoint={undoWaypoint}
         onClear={()=>{if(editingReturn)setReturnWaypoints([]);else if(selected.role==='bomber')stagePlanningOrder(resetMapOrder(selected,selectedLaunchField?.position??playerBase));else setRoute([])}}
         onCommit={commit} step={planningStep} onClose={closePlanningOrder} reviewedIds={reviewedIds}

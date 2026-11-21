@@ -18,7 +18,7 @@ const help: Record<PlayPhase, { title: string; tips: [string, string][]; online?
   plan: {
     title: 'Planning',
     tips: [
-      ['Find based aircraft', 'When you have multiple airfields, tap the aircraft count above a runway to fan out its formations. Tap a formation to plan its route. Tap the runway itself to choose it as a destination while editing.'],
+      ['Choose a formation', 'Tap the aircraft count above a runway, then choose a formation from the fan. Use the Airfield map control to find a runway. Tap the runway itself to set a destination while editing.'],
       ['Fighter orders', 'Tap the map to plot a patrol. Tap its last waypoint again to select it, then drag from it to size a Protect ring. Select P to resize the ring. Drag elsewhere to pan. Tap a friendly airfield for Transit or use Escort for a flight with a confirmed order.'],
       ['Ground targets', 'Tap a confirmed enemy site to finish a fighter’s approach as Ground Strike. Drag S inside the marked release circle to adjust. Bombers take up to three targets in tap order. Tap a selected site again to remove it.'],
       ['Recon and recovery', 'Recon flies the route you plot. Aggressive continues through threats. Passive returns when it sees a fighter or a SAM or AAA battery fires at it.'],

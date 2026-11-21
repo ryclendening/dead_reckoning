@@ -1,6 +1,5 @@
 import { useState } from 'react'
 import { PhaseHelp } from './PhaseHelp'
-import { FormationChip } from './FormationChip'
 import { AlertTriangle, Bomb as BombIcon, Check, CheckCircle2, ChevronDown, ChevronLeft, ChevronRight, ChevronUp, CornerUpLeft, Crosshair, Eye, List, LocateFixed, RotateCcw, Route, Trash2, Undo2 } from 'lucide-react'
 import type { RouteBudget } from '../game/forwardBasing'
 import { formationStatus, recoveryReasonLabel } from '../game/formationStatus'
@@ -71,7 +70,6 @@ interface CommandShelfProps {
   routeBudget?: RouteBudget
   editingReturn?: boolean
   onRouteLegChange?: (leg:'route'|'return')=>void
-  onSelect: (id:string)=>void
   onProtectFlight?: (id:string)=>void
   onReconPosture?: (posture:ReconPosture)=>void
   onClear: ()=>void
@@ -89,7 +87,7 @@ interface CommandShelfProps {
 }
 
 export function CommandShelf({
-  squadrons,squadron,routeNotice,routeBudget,editingReturn=false,onRouteLegChange,onSelect,
+  squadrons,squadron,routeNotice,routeBudget,editingReturn=false,onRouteLegChange,
   onProtectFlight,onReconPosture,onClear,onUndoWaypoint,onCommit,onClose,step,reviewedIds,
   reviewedCount,totalCount,groundTargets=[],allowEmptyCommit=false,onlineLock=false,cpuPlanning=false,
 }:CommandShelfProps){
@@ -111,12 +109,9 @@ export function CommandShelf({
     :null
 
   return <section className="phase-panel planning-strip" aria-label="Planning command shelf">
-    <nav className="planning-flights" aria-label="Aircraft">
-      {squadrons.map(flight => <FormationChip key={flight.id} flight={flight} cue={reviewedIds.has(flight.id) ? 'planned' : undefined}
-        disabled={flight.aircraft<=0||flight.status==='trapped'} selected={editing&&flight.id===squadron.id} onSelect={()=>onSelect(flight.id)}/>)}
-    </nav>
     <div className="planning-strip-status" aria-live="polite">
-      <span>{routeNotice??(editing?routeStatus:totalCount?`${reviewedCount} / ${totalCount} ready`:'No aircraft available')}</span>
+      <span>{routeNotice??(editing?`${squadron.callsign} · ${routeStatus}`:totalCount?'Tap an airfield’s aircraft count':'No aircraft available')}</span>
+      {!editing&&totalCount>0?<b>{reviewedCount} / {totalCount} ready</b>:null}
       {editing&&hasRoute&&routeBudget&&!routeNotice?<b data-low={routeBudget.remainingRange<5} title="Fuel remaining after reserving recovery">{routeBudget.remainingRange.toFixed(1)} fuel left</b>:null}
     </div>
     <div className={`phase-panel-footer planning-strip-actions${onlineLock&&!editing?' online-commit-first':''}`}>

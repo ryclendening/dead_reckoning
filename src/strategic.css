@@ -108,7 +108,7 @@
   color: #e1ece0;
   box-shadow: none;
 }
-.map-tools > details > summary, .game-frame .map-tools > button {
+.map-tools > details > summary, .game-frame .map-tools > button, .airfield-locator > div > button {
   display: flex;
   align-items: center;
   gap: 5px;
@@ -141,6 +141,13 @@
 .map-tools .contact-tracks span { font-size: 13px; line-height: 1.4; }
 .map-tools .contact-tracks b, .map-tools .campaign-objective b, .map-tools .campaign-threat b { font-size: 14px; }
 .map-tools .contact-tracks button { min-height: 44px; }
+.airfield-locator > div { display: grid; gap: 4px; }
+.airfield-locator > div > button {
+  border: 1px solid #526256;
+  background: #19251e;
+  color: #e1ece0;
+  text-align: left;
+}
 .phase-execute .execute-view-controls {
   position: absolute;
   inset: auto 8px calc(78px + env(safe-area-inset-bottom)) auto;

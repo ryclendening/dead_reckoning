@@ -46,8 +46,6 @@ export function AirfieldAircraft({ assets, squadrons, selectedId, plannedIds, mo
     }
   }, [canvas, expandedId])
 
-  if (mode === 'plan' && groups.length < 2) return null
-
   return <group>{groups.map(({ base, formationIds }) => {
     const flights = formationIds.flatMap(id => flightById.get(id) ?? [])
     const count = flights.reduce((total, flight) => total + flight.aircraft, 0)

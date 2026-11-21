@@ -50,7 +50,7 @@ describe('SAM and ground strike controls',()=>{
     const state=createMatch(),squadron={...state.squadrons[0],mission:'base-strike' as const,strikeTargetId:'e-sam'}
     const target={...state.enemyAssets.find(asset=>asset.id==='e-sam')!,name:'SAM ALPHA',intel:'confirmed' as const,hidden:false}
     const route=renderToStaticMarkup(<CommandShelf squadrons={state.squadrons}
-      squadron={squadron} onSelect={noop} onClear={noop}
+      squadron={squadron} onClear={noop}
       onCommit={noop} onClose={noop} step="route" reviewedIds={new Set()} reviewedCount={0} totalCount={3}
       groundTargets={[target]} onRouteLegChange={noop}/>)
     expect(route).toContain('SAM ALPHA')
