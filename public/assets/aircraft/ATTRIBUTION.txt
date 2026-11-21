@@ -1,0 +1,16 @@
+Dead Reckoning aircraft asset credits
+
+f16.glb
+"f16" by Jonpupu
+https://sketchfab.com/3d-models/f16-cc08b6de1be14932b45b5cb3096f089f
+
+mig23.glb
+"Mig-23 MLD" by Tim Samedov (citizensnip)
+https://sketchfab.com/3d-models/mig-23-mld-7a13c91f07e042a685b4d265644fdc06
+
+Both models are adapted under Creative Commons Attribution 4.0 International.
+https://creativecommons.org/licenses/by/4.0/
+
+The game versions have simplified exterior geometry, consolidated materials,
+normalized scale and orientation, and a wide-zoom silhouette derived from the
+exterior. The MiG-23 camouflage texture was resized for the game.

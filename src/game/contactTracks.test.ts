@@ -36,11 +36,14 @@ describe('enemy contact knowledge',()=>{
     expect(contactProjectionAt(result,'red-hidden',3)?.trackId).toBe('TRACK 02')
   })
 
-  it('reveals type and count only when authorized, retaining identity on radar reacquisition',()=>{
+  it.each([
+    ['fighter','MiG-23 · FIGHTER'],['recon','MiG-25 · RECON'],['bomber','Tu-95 · BOMBER'],
+  ] as const)('reveals %s type and count on sight and retains identity on radar reacquisition',(role,identification)=>{
     const result=contacts()
-    expect(contactTracksAt(result,1.1,[0,0])[0]).toMatchObject({trackId:'TRACK 01',identification:'MiG-23 · FIGHTER',visibility:'visual',aircraft:4})
+    result.enemyFlights[0].role=role
+    expect(contactTracksAt(result,1.1,[0,0])[0]).toMatchObject({trackId:'TRACK 01',identification,visibility:'visual',aircraft:4})
     const reacquired=contactTracksAt(result,2.1,[0,0])[0]
-    expect(reacquired).toMatchObject({trackId:'TRACK 01',identification:'MiG-23 · FIGHTER',visibility:'radar'})
+    expect(reacquired).toMatchObject({trackId:'TRACK 01',identification,visibility:'radar'})
     expect(reacquired.aircraft).toBeUndefined()
     expect(contactTracksAt(result,.75,[0,0])[0].identification).toBe('UNKNOWN AIRCRAFT')
   })

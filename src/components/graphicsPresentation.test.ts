@@ -1,5 +1,5 @@
 import {describe,expect,it} from 'vitest'
-import {authorizedWeaponTarget,combatManeuver,combatWindow,headingAngle,sampledBank,weaponPath,weaponTangent,weaponTrail,weaponVisibleAt,weaponVisualLifecycle} from './graphicsPresentation'
+import {authorizedWeaponTarget,combatManeuver,combatWindow,headingAngle,sampledBank,weaponPath,weaponTangent,weaponTrail,weaponDisplay,weaponVisibleAt,weaponVisualLifecycle} from './graphicsPresentation'
 import type {UnitTrack,WeaponEffect} from '../game/types'
 
 const effect=(kind:WeaponEffect['kind'],hit=true):WeaponEffect=>({id:`${kind}-${hit}`,kind,sourceId:'blue',targetId:'red',start:1,end:2,from:[0,0],to:[0,10],hit,damage:hit?10:0})
@@ -71,9 +71,21 @@ describe('frame-rate graphics math',()=>{
     const gun={...effect('gun'),start:2,end:2}
     expect(weaponVisualLifecycle(gun,1.999).trailVisible).toBe(false)
     expect(weaponVisualLifecycle(gun,2).trailVisible).toBe(true)
-    expect(weaponVisualLifecycle(gun,2.17).burstVisible).toBe(true)
-    expect(weaponVisualLifecycle(gun,2.18).burstVisible).toBe(false)
+    expect(weaponVisualLifecycle(gun,2.17).trailVisible).toBe(true)
+    expect(weaponVisualLifecycle(gun,2.18).trailVisible).toBe(false)
     expect(weaponVisualLifecycle(gun,2.23).impactFlashVisible).toBe(true)
+  })
+
+  it('limits untracked AAA to a brief launch cue and redacted PvP strikes to the impact',()=>{
+    const aaa={...effect('aaa'),launchOnly:true as const}
+    const launch=weaponDisplay(aaa,false)
+    expect(weaponVisualLifecycle(aaa,1.1,launch)).toMatchObject({launchVisible:true,trailVisible:false,inFlight:false,impactFlashVisible:false})
+    expect(weaponVisualLifecycle(aaa,1.15,launch).launchVisible).toBe(false)
+    expect(weaponVisualLifecycle(aaa,2,launch).impactFlashVisible).toBe(false)
+    const redacted={...effect('air-to-ground-missile'),sourceId:'hostile-aircraft'}
+    const impact=weaponDisplay(redacted,false)
+    expect(weaponVisualLifecycle(redacted,1.1,impact)).toMatchObject({launchVisible:false,trailVisible:false,inFlight:false,impactFlashVisible:false})
+    expect(weaponVisualLifecycle(redacted,2,impact).impactFlashVisible).toBe(true)
   })
 
   it('uses only authorized target tracks and never samples past contact start or impact time',()=>{

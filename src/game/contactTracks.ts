@@ -1,8 +1,9 @@
 import {contactProjectionAt,contactTrackIdAt,sampleUnitTrack,unitTrackFor} from './executionProjection'
+import {HOSTILE_AIRFRAME_NAMES} from './aircraftTypes'
 import type {EnemyFlight,Point,RoundResult} from './types'
 
 export function identifiedAircraftType(flight:Pick<EnemyFlight,'role'>){
-  return flight.role==='fighter'?'MiG-23 · FIGHTER':flight.role==='bomber'?'B-52 · BOMBER':'RECON AIRCRAFT'
+  return `${HOSTILE_AIRFRAME_NAMES[flight.role]} · ${flight.role.toUpperCase()}`
 }
 
 export interface ContactTrack {

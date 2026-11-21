@@ -5,7 +5,6 @@ export interface AircraftTypeDefinition {
   id: string
   name: string
   role: Role
-  model: 'f16' | 'atlas'
   maxAircraft: number
   speed: number
   range: number
@@ -14,10 +13,12 @@ export interface AircraftTypeDefinition {
 
 /** Register future airframes here; behavior remains role-driven while platform stats are data-driven. */
 export const AIRCRAFT_TYPES: readonly AircraftTypeDefinition[] = [
-  { id: 'f16', name: 'F-16 Fighting Falcon', role: 'fighter', model: 'f16', maxAircraft: 4, speed: 40 / 22, range: 40, sensorRange: 4.2 },
-  { id: 'recon', name: 'Reconnaissance Flight', role: 'recon', model: 'atlas', maxAircraft: 4, speed: 48 / 22, range: 64, sensorRange: 4.9 },
-  { id: 'bomber', name: 'B-52 Stratofortress', role: 'bomber', model: 'atlas', maxAircraft: 4, speed: 32 / 22, range: 36, sensorRange: 3.4 },
+  { id: 'f16', name: 'F-16 Fighting Falcon', role: 'fighter', maxAircraft: 4, speed: 40 / 22, range: 40, sensorRange: 4.2 },
+  { id: 'recon', name: 'Reconnaissance Flight', role: 'recon', maxAircraft: 4, speed: 48 / 22, range: 64, sensorRange: 4.9 },
+  { id: 'bomber', name: 'B-52 Stratofortress', role: 'bomber', maxAircraft: 4, speed: 32 / 22, range: 36, sensorRange: 3.4 },
 ]
+
+export const HOSTILE_AIRFRAME_NAMES: Record<Role, string> = { fighter: 'MiG-23', recon: 'MiG-25', bomber: 'Tu-95' }
 
 export const DEFAULT_AIRCRAFT_TYPE: Record<Role, string> = { fighter: 'f16', recon: 'recon', bomber: 'bomber' }
 export const aircraftType = (id: string | undefined, role: Role): AircraftTypeDefinition =>

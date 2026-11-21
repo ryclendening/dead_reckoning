@@ -83,14 +83,28 @@ export function authorizedWeaponTarget(effect:WeaponEffect,time:number,authorita
   return sampleUnitTrackForRender(track,targetTime,authoritativeTime,contactStart===undefined?undefined:{contactStart})?.position??effect.to
 }
 
-export function weaponVisualLifecycle(effect:WeaponEffect,time:number){
-  const elapsed=time-effect.start,hitscan=effect.kind==='gun'
-  if(hitscan){
-    const burstVisible=elapsed>=0&&elapsed<.18
-    return {inFlight:false,trailVisible:burstVisible,burstVisible,launchVisible:false,impactFlashVisible:effect.hit&&elapsed>=0&&elapsed<.24,trailOpacity:clamp01(1-elapsed/.18)}
+export type WeaponDisplay = 'full' | 'launch' | 'impact'
+
+export function weaponDisplay(effect: WeaponEffect, launchOnly: boolean): WeaponDisplay {
+  if (launchOnly || effect.launchOnly) return 'launch'
+  return effect.sourceId === 'hostile-aircraft' ? 'impact' : 'full'
+}
+
+export function weaponVisualLifecycle(effect: WeaponEffect, time: number, display: WeaponDisplay = 'full') {
+  const launchAge = time - effect.start
+  const hitscan = effect.kind === 'gun'
+  const impactAge = hitscan ? launchAge : time - effect.end
+  const inFlight = display === 'full' && !hitscan && time >= effect.start && time <= effect.end
+  const canShowLaunch = effect.kind !== 'gun' && effect.kind !== 'bomb'
+  return {
+    inFlight,
+    trailVisible: inFlight || (display === 'full' && hitscan && launchAge >= 0 && launchAge < .18),
+    launchVisible: display !== 'impact' && canShowLaunch && launchAge >= 0 && launchAge < .14,
+    impactFlashVisible: display !== 'launch' && effect.hit && impactAge >= 0 && impactAge < .24,
+    trailOpacity: hitscan ? clamp01(1 - launchAge / .18) : 1,
+    launchProgress: clamp01(launchAge / .14),
+    impactProgress: clamp01(impactAge / .24),
   }
-  const inFlight=time>=effect.start&&time<=effect.end,impactAge=time-effect.end,launchAge=elapsed
-  return {inFlight,trailVisible:inFlight,burstVisible:inFlight&&(effect.kind==='aaa'),launchVisible:(effect.kind==='sam'||effect.kind==='aaa')&&launchAge>=0&&launchAge<.14,impactFlashVisible:effect.hit&&impactAge>=0&&impactAge<.24,trailOpacity:1}
 }
 
 export function weaponVisibleAt(effect:WeaponEffect,time:number){return time>=effect.start-.14&&time<=effect.end+.32}

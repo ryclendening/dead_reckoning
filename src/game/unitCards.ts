@@ -1,4 +1,5 @@
 import { projectFriendlyUnitAt, projectHostileUnitAt } from './executionProjection'
+import { HOSTILE_AIRFRAME_NAMES } from './aircraftTypes'
 import { samStatusForPhase } from './airDefense'
 import type { Asset, EnemyFlight, Phase, RoundResult, Squadron, UnitFrame } from './types'
 
@@ -34,7 +35,7 @@ export function assetCardData(asset:Asset,enemy=false,phase:Phase='plan',result?
 export function aircraftCardData(flight:Squadron|EnemyFlight,frame:UnitFrame,visibility:'friendly'|'visual'|'radar',trackId?:string):UnitCardData|undefined{
   if(visibility==='radar')return undefined
   const aircraft=visibility==='friendly'?`${frame.aircraft} / ${'maxAircraft' in flight?flight.maxAircraft:flight.initialAircraft} AC`:`${frame.aircraft} AC`
-  const role=visibility==='visual'&&flight.role==='fighter'?'MiG-23':flight.role.toUpperCase()
+  const role=visibility==='visual'?HOSTILE_AIRFRAME_NAMES[flight.role]:flight.role.toUpperCase()
   return {title:flight.callsign,subtitle:`${trackId?`${trackId} · `:''}${role} · ${aircraft}`,health:frame.strength,maxHealth:100,status:flightActivityLabel(frame.mode),detail:trackId,mapLabel:flight.callsign}
 }
 
