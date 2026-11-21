@@ -1,15 +1,15 @@
-import { useEffect, useId, useRef, useState } from 'react'
+import { useState } from 'react'
 import { Check, ChevronRight, X } from 'lucide-react'
 import { economyAttentionTargets, economyCommandForQuote, economyQuotesFor, findMatchingEconomyQuote } from '../game/economy'
 import { formatCash } from '../game/economyRules'
 import { upgradeDefinition } from '../game/upgrades'
 import { PanelPages } from './PanelPages'
+import { PurchaseCatalog, type PurchaseCategory } from './PurchaseCatalog'
 import { DefenseSiteDetails } from './DefenseSiteDetails'
 import { assetCardData } from '../game/unitCards'
 import type { EconomyActionId, EconomyActionQuote, EconomyCommand, EconomyTarget, MatchState } from '../game/types'
 
 export type ProcurementMode = 'closed' | 'catalog' | 'placing'
-type PurchaseCategory = 'aircraft' | 'ground'
 
 const campaignTarget = { kind: 'campaign', id: 'campaign' } as const
 
@@ -45,49 +45,12 @@ function PurchaseButton({ quote, onBuy, disabled }: { quote: EconomyActionQuote;
   </button>
 }
 
-export function PurchaseCatalog({ category, quotes, busy, balance, onCategoryChange, onChoose, onClose }: {
-  category: PurchaseCategory
-  quotes: EconomyActionQuote[]
-  busy: boolean
-  balance: number
-  onCategoryChange: (category: PurchaseCategory) => void
-  onChoose: (quote: EconomyActionQuote) => void
-  onClose: () => void
-}) {
-  const purchaseKind = category === 'aircraft' ? 'formation-purchase' : 'asset-construction'
-
-  const dialog = useRef<HTMLDialogElement>(null)
-  const title = useId()
-  useEffect(() => {
-    const store = dialog.current
-    store?.showModal()
-    return () => { store?.close() }
-  }, [])
-
-  return <dialog ref={dialog} className="resupply-store" aria-labelledby={title} onCancel={event => {event.preventDefault();onClose()}}>
-    <header className="store-heading">
-      <h2 id={title}>Resupply store</h2>
-      <strong aria-label="Cash balance">{formatCash(balance)}</strong>
-      <button type="button" aria-label="Close store" onClick={onClose}><X/></button>
-    </header>
-    <div className="resupply-purchase-tabs" role="group" aria-label="Purchase type">
-      <button type="button" aria-pressed={category === 'aircraft'} onClick={() => onCategoryChange('aircraft')}>Aircraft</button>
-      <button type="button" aria-pressed={category === 'ground'} onClick={() => onCategoryChange('ground')}>Ground</button>
-    </div>
-    <div key={category} className="adapt-actions store-items">
-      {quotes.filter(quote => quote.effect.kind === purchaseKind).map(quote =>
-        <PurchaseButton key={quote.id} quote={quote} disabled={busy} onBuy={() => onChoose(quote)}/>
-      )}
-    </div>
-  </dialog>
-}
-
 export function ResupplyPanel({
   match, selectedTarget, onSelectTarget, onCloseTarget, onPurchase, onNextRound, procurementMode,
   procurementActionId, onProcurementMode, onProcurementAction, hasPlacementPreview, onConfirmPlacement,
   onCancelPlacement, busy = false, cpuAdapting = false, nextRoundDisabled = false,
 }: ResupplyPanelProps) {
-  const [purchaseCategory, setPurchaseCategory] = useState<PurchaseCategory>('aircraft')
+  const [purchaseCategory, setPurchaseCategory] = useState<PurchaseCategory>('Aircraft')
   const [showRepairs, setShowRepairs] = useState(false)
   const [upgradePending, setUpgradePending] = useState<EconomyCommand>()
   const quotes = economyQuotesFor(match, selectedTarget)
@@ -129,7 +92,7 @@ export function ResupplyPanel({
   return <section className={`phase-panel resupply-panel${procurementMode!=='placing'&&!hasSelection&&!repairsOpen?' resupply-bar':''}`} aria-label="Resupply">
     <div className="resupply-content">
       {procurementMode === 'catalog' ? <PurchaseCatalog
-        category={purchaseCategory} quotes={catalog} busy={busy} balance={match.logistics} onCategoryChange={setPurchaseCategory}
+        category={purchaseCategory} quotes={catalog} match={match} busy={busy} onCategoryChange={setPurchaseCategory}
         onChoose={choosePurchase} onClose={() => onProcurementMode('closed')}
       /> : null}
 

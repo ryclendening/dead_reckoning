@@ -1,14 +1,21 @@
 import { renderToStaticMarkup } from 'react-dom/server'
 import { describe, expect, it } from 'vitest'
 import { createMatch } from '../game/data'
-import { economyQuotesFor } from '../game/economy'
-import type { EconomyTarget } from '../game/types'
-import { PurchaseCatalog, ResupplyPanel } from './ResupplyPanel'
+import { economyQuotesFor, purchaseEconomyAction } from '../game/economy'
+import type { EconomyTarget, MatchState } from '../game/types'
+import { PurchaseCatalog, type PurchaseCategory } from './PurchaseCatalog'
+import { ResupplyPanel } from './ResupplyPanel'
 
 const noop=()=>{}
 const state=()=>({...createMatch(),phase:'adapt' as const,logistics:20})
 function render(match=state(),selectedTarget:EconomyTarget={kind:'campaign',id:'campaign'}, mode:'closed'|'catalog'='closed'){
   return renderToStaticMarkup(<ResupplyPanel match={match} selectedTarget={selectedTarget} onSelectTarget={noop} onCloseTarget={noop} onPurchase={noop} onNextRound={noop} procurementMode={mode} onProcurementMode={noop} onProcurementAction={noop} hasPlacementPreview={false} onConfirmPlacement={noop} onCancelPlacement={noop}/> )
+}
+
+function renderCatalog(category: PurchaseCategory, match: MatchState = state()) {
+  const quotes = economyQuotesFor(match, { kind: 'campaign', id: 'campaign' })
+  return renderToStaticMarkup(<PurchaseCatalog category={category} quotes={quotes} match={match} busy={false}
+    onCategoryChange={noop} onChoose={noop} onClose={noop}/>)
 }
 
 describe('Resupply',()=>{
@@ -65,29 +72,45 @@ describe('Resupply',()=>{
     const catalog=render(state(),{kind:'campaign',id:'campaign'},'catalog')
     expect(catalog).toContain('aria-pressed="true">Aircraft</button>')
     expect(catalog).toContain('aria-pressed="false">Ground</button>')
-    expect(catalog).toContain('Buy fighter formation')
-    expect(catalog).toContain('Buy recon formation')
-    expect(catalog).toContain('$160M</strong>')
-    expect(catalog).toContain('$120M</strong>')
+    expect(catalog).toContain('<b>Fighter</b><small>$160M</small>')
+    expect(catalog).toContain('<b>Recon</b><small>$120M</small>')
+    expect(catalog).toContain('<b>Bomber</b><small>$240M</small>')
     expect(catalog).toContain('Available at home base next round')
-    expect(catalog).not.toContain('BUILD SAM')
+    expect(catalog).not.toContain('<b>SAM</b>')
   })
 
   it('lists all ground offers and deployment limits in the full-screen store',()=>{
-    const quotes=economyQuotesFor(state(),{kind:'campaign',id:'campaign'})
-    const catalog=renderToStaticMarkup(<PurchaseCatalog
-      category="ground" quotes={quotes} busy={false} balance={20} onCategoryChange={noop} onChoose={noop} onClose={noop}
-    />)
+    const catalog = renderCatalog('Ground')
     expect(catalog).toContain('aria-pressed="true">Ground</button>')
-    expect(catalog).toContain('BUILD FOB')
-    expect(catalog).toContain('BUILD DECOY')
     expect(catalog).toContain('<dialog')
-    expect(catalog).toContain('BUILD AAA')
-    expect(catalog).toMatch(/BUILD SAM[^<]*<\/b><small>1\/3 operational/)
-    expect(catalog).toMatch(/BUILD RADAR[^<]*<\/b><small>1\/2 operational/)
-    expect(catalog).not.toContain('Next purchases page')
-    expect(catalog).not.toContain('Buy fighter formation')
-    expect(catalog).not.toContain('Buy recon formation')
+    expect(catalog).toContain('<b>Forward base</b><small>$80M</small>')
+    expect(catalog).toContain('<b>Decoy</b><small>$40M</small>')
+    expect(catalog).toContain('<b>AAA</b><small>$60M</small>')
+    expect(catalog).toContain('<b>SAM</b><small>$140M</small><small class="store-deployment">1/3 operational')
+    expect(catalog).toContain('<b>Radar</b><small>$180M</small><small class="store-deployment">1/2 operational')
+    expect(catalog).not.toContain('<b>Fighter</b>')
+  })
+
+  it('shows both upgrade branches and locks the other choice after installing one', () => {
+    const match = state()
+    const initial = renderCatalog('Upgrades', match)
+    expect(initial).toContain('Main airfield')
+    expect(initial).toContain('Install · $120M')
+    expect(initial).toContain('<b>supply depot</b><small>$120M</small>')
+    const installed = purchaseEconomyAction(match, 'install-supply-depot', { kind: 'asset', id: 'p-base' })
+    const upgraded = renderCatalog('Upgrades', installed)
+    expect(upgraded).toContain('<b>supply depot</b><small>Installed</small>')
+    expect(upgraded).toContain('<b>maintenance wing</b><small>Locked</small>')
+    expect(upgraded).not.toContain('Install · $120M')
+  })
+
+  it('totals current-round purchases and leaves past spending and income out', () => {
+    const match = purchaseEconomyAction(state(), 'buy-recon', { kind: 'campaign', id: 'campaign' })
+    match.economy.statement.push(
+      { id: 'old', round: 0, direction: 'spend', amount: 16, label: 'Buy fighter formation', source: 'buy-fighter' },
+      { id: 'income', round: match.round, direction: 'income', amount: 8, label: 'Round pay', source: 'base' },
+    )
+    expect(renderCatalog('Aircraft', match)).toContain('1 purchase · $120M')
   })
 
   it('never exposes unknown enemy site details or enemy upgrade and basing controls',()=>{

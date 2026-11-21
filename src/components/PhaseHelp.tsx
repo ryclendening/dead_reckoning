@@ -45,7 +45,7 @@ const help: Record<PlayPhase, { title: string; tips: [string, string][]; online?
   adapt: {
     title: 'Resupply',
     tips: [
-      ['Purchase and build', 'Buy opens the full-screen store. To build, tap a marked hex and select Confirm build. You can move the preview to another marked hex before confirming. Select the main airfield for upgrades.'],
+      ['Purchase and build', 'In Buy, tap a circle to inspect an offer. Upgrades shows the two choices for the main airfield’s single upgrade slot. This round opens your purchase history. To build, pick a site in Ground, tap a marked hex, then select Confirm build.'],
       ['Check repairs', 'Use Repairs or select a damaged formation to restore strength. Ground site damage persists. SAM missiles replenish each round.'],
       ['Prepare to launch', 'You can plan the next round even with no aircraft. A forward base holds up to two formations.'],
     ],
