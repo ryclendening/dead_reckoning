@@ -62,10 +62,10 @@ describe('battlefield model geometry', () => {
   })
 
   it('changes representation in both zoom directions with a stable transition band', () => {
-    expect(aircraftSilhouetteAtScale(25, false)).toBe(true)
-    expect(aircraftSilhouetteAtScale(28, false)).toBe(false)
-    expect(aircraftSilhouetteAtScale(28, true)).toBe(true)
-    expect(aircraftSilhouetteAtScale(30, true)).toBe(false)
+    expect(aircraftSilhouetteAtScale(19, false)).toBe(true)
+    expect(aircraftSilhouetteAtScale(21, false)).toBe(false)
+    expect(aircraftSilhouetteAtScale(21, true)).toBe(true)
+    expect(aircraftSilhouetteAtScale(23, true)).toBe(false)
   })
 
   it('batches small site parts and represents SAM ammunition in the rack geometry', () => {

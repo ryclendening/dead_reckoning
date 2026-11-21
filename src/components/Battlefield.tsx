@@ -2,13 +2,14 @@ import { useProtectGesture, WAYPOINT_HEIGHT, WAYPOINT_HIT_RADIUS } from './usePr
 import { debriefMapSites, primaryDebriefEvent } from '../game/debriefMap'
 import { DebriefSymbol } from './DebriefSymbols'
 import { UnitCard3D } from './UnitCard3D'
+import { FighterAirframe } from './FighterAirframe'
 import { WeaponEffectVisual } from './WeaponEffectVisual'
 import { TerrainRelief, useTerrainRelief } from './TerrainRelief'
 import { aircraftCardData, assetCardData, flightActivityLabel } from '../game/unitCards'
 import { samStatusForPhase, SAM_MISSILES_PER_ROUND } from '../game/airDefense'
 import { defenseProfile, effectiveDefenseProfile, isOperationalSite, radarRange, type EffectiveDefenseProfile } from '../game/equipmentRules'
 import { formatDefenseRange } from './DefenseSiteDetails'
-import { createContext, memo, useContext, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
+import { createContext, memo, Suspense, useContext, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { Canvas, ThreeEvent, useFrame, useThree } from '@react-three/fiber'
 import { Billboard, Html, Line, MapControls, Text } from '@react-three/drei'
 import * as THREE from 'three'
@@ -358,6 +359,11 @@ function AircraftModel({role,enemy=false,reinforcement=false}:{role:Squadron['ro
   const silhouette=useContext(AircraftSilhouette)
   const model=aircraftModel(role,enemy)
   const material=reinforcement?reinforcementSilhouetteMaterial:model.silhouetteMaterial
+  if(role==='fighter'){
+    return <Suspense fallback={<mesh geometry={model.silhouette} material={material} dispose={null}/>}>
+      <FighterAirframe enemy={enemy} silhouette={silhouette} silhouetteMaterial={material}/>
+    </Suspense>
+  }
   return <mesh geometry={silhouette?model.silhouette:model.model} material={silhouette?material:model.material} dispose={null}/>
 }
 

@@ -17,6 +17,8 @@ that exact build at `http://127.0.0.1:4173`. Use a portrait viewport.
 For quick development iteration without the production gate, run `npm run dev`
 and open `http://127.0.0.1:5173`.
 
+[Fighter model credits and license](public/assets/aircraft/ATTRIBUTION.txt).
+
 ## Play online with a friend
 
 With Node.js 24 or newer, build and start the online server:

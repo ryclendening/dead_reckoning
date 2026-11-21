@@ -161,5 +161,5 @@ export const reinforcementSilhouetteMaterial = silhouetteMaterials.reinforcement
 
 // CSS pixels per map unit, with hysteresis so small camera changes do not swap meshes repeatedly.
 export function aircraftSilhouetteAtScale(pixelsPerUnit: number, silhouette: boolean): boolean {
-  return pixelsPerUnit < (silhouette ? 30 : 26)
+  return pixelsPerUnit < (silhouette ? 23 : 20)
 }
