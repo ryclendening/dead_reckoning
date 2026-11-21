@@ -436,13 +436,13 @@ export default function App(){
     })
   },[sendOnlineAction])
   const validInitialPoint=useMemo(()=>{
-    if(match.phase!=='deploy'||!onlineSession&&match.setup?.stage==='allocate')return undefined
+    if(match.phase!=='deploy'||onlineView?.locked||!onlineSession&&match.setup?.stage==='allocate')return undefined
     const validate=initialPlacementValidator(match,placementId)
     return (point:Point)=>validate(point).length===0
-  },[match,onlineSession,placementId])
+  },[match,onlineSession,onlineView?.locked,placementId])
   const stageInitialPlacement=useCallback((id:string,position:Point)=>{
-    if(!onlineView?.locked&&id===placementId&&validInitialPoint?.(position))placeAsset(id,position)
-  },[onlineView?.locked,placementId,validInitialPoint,placeAsset])
+    if(!onlineCommandBusy&&id===placementId&&validInitialPoint?.(position))placeAsset(id,position)
+  },[onlineCommandBusy,placementId,validInitialPoint,placeAsset])
   const advanceCampaignSetup=useCallback(()=>setMatch(m=>{if(!m.setup)return m;if(m.setup.stage==='allocate'&&validateCampaignAllocation(m,m.setup).length===0)return {...m,setup:{...m.setup,stage:'place'}};if(SETUP_REQUIRED_ASSET_IDS.every(id=>m.setup!.placedAssetIds.includes(id)))return confirmCampaignSetup(m);return m}),[])
   const transitOrderError=(squadron:Squadron,state:MatchState)=>{
     if(squadron.mission!=='transit')return undefined
@@ -675,7 +675,10 @@ export default function App(){
         {visiblePhase==='execute'?<ExecutionOverlay progress={executionProgress} speed={speed} onSpeed={()=>setSpeed(s=>s===1?2:1)} match={replayMatch} result={executionResult} selectedId={match.selectedId} followId={followId} onSelectFormation={selectFormation} onClearFollow={()=>setFollowId(undefined)} onAirfield={focusAirfield}/>:null}
       </div>
       {visiblePhase==='execute'&&executionBaseId?<ExecutionChitRail squadrons={match.squadrons} bases={replayMatch.playerAssets} result={executionResult} progress={executionProgress} activeBaseId={executionBaseId} selectedId={match.selectedId} followId={followId} threatenedIds={new Set((executionResult?.threatAlerts??[]).filter(alert=>alert.time<=inspectionSeconds&&!acknowledgedThreatIds.has(alert.id)).map(alert=>alert.unitId))} onSelect={selectFormation}/>:null}
-      {match.phase==='deploy'&&onlineSession&&onlineView?.locked?<section className="phase-panel online-wait-panel"><small>DEPLOYMENT LOCKED</small><strong>{onlineView.opponentLocked?'BOTH DEPLOYMENTS LOCKED':'WAITING FOR OPPONENT TO LOCK'}</strong><p>Your opening package is fixed for this match.</p></section>:match.phase==='deploy'&&match.setup?<CampaignSetupPanel match={match} online={Boolean(onlineSession)} placementId={placementId} onSelectPlacement={id=>{if(!onlineView?.locked&&!onlineCommandBusy)setPlacementId(id)}} onContinue={()=>onlineSession?void sendOnlineAction({type:'lock-deploy'}):advanceCampaignSetup()}/>:match.phase==='deploy'?<DeploymentPanel assets={match.playerAssets} selectedId={placementId} onSelect={setPlacementId} locked={Boolean(onlineView?.locked||onlineCommandBusy)} online={Boolean(onlineSession)} onLock={()=>onlineSession?void sendOnlineAction({type:'lock-deploy'}):setMatch(m=>({...m,phase:'plan'}))}/>:null}
+      {match.phase==='deploy'?<CampaignSetupPanel
+        match={match} placementId={placementId} onSelectPlacement={setPlacementId}
+        online={Boolean(onlineSession)} busy={onlineCommandBusy} locked={onlineView?.locked} opponentLocked={onlineView?.opponentLocked}
+        onContinue={()=>onlineSession?void sendOnlineAction({type:'lock-deploy'}):match.setup?advanceCampaignSetup():setMatch(m=>({...m,phase:'plan'}))}/>:null}
       {match.phase==='plan'&&waitingOnPlan?<section className="phase-panel online-wait-panel" aria-label="Read-only plan"><strong>{onlineView?.locked?'Orders locked':onlineCommandBusy?'Locking orders…':'Checking submitted orders'}</strong><p>{onlineView?.locked?'Tap an aircraft to review its orders.':'Your submitted routes are frozen.'}</p></section>:null}
       {match.phase==='plan'&&!waitingOnPlan?<CommandShelf
         squadrons={match.squadrons}
@@ -693,22 +696,6 @@ export default function App(){
       {(match.phase==='victory'||match.phase==='defeat'||match.phase==='draw')?<EndState victory={match.phase==='victory'} round={match.round} outcome={campaignOutcome(match)} onRestart={()=>setMenuOpen(true)}/>:null}
     </div>
   </main>
-}
-
-function DeploymentPanel({assets,selectedId,onSelect,onLock,locked=false,online=false}:{assets:Asset[];selectedId:string;onSelect:(id:string)=>void;onLock:()=>void;locked?:boolean;online?:boolean}){
-  return <section className="phase-panel deployment-panel" aria-label="Site placement">
-    <header className="phase-panel-heading"><h2>Place sites</h2></header>
-    <div className="phase-panel-content">
-    <p className="phase-panel-copy">{locked?'Waiting for the other player.':'Pick a site. Tap a marked hex.'}</p>
-    <div className="asset-picker">{assets.map(asset=><button type="button" key={asset.id} disabled={locked}
-      aria-pressed={asset.id===selectedId} className={asset.id===selectedId?'active':''} onClick={()=>onSelect(asset.id)}>
-      <b>{asset.kind==='base'?'MAIN AIRFIELD':asset.kind.toUpperCase()}</b>
-    </button>)}</div>
-    </div>
-    <div className="phase-panel-footer"><button type="button" className="phase-primary" disabled={locked} onClick={onLock}>
-      {online?'Lock deployment':'Begin planning'} <ChevronRight/>
-    </button></div>
-  </section>
 }
 
 function ExecutionOverlay({progress,speed,onSpeed,match,result,selectedId,followId,onSelectFormation,onClearFollow,onAirfield}:{

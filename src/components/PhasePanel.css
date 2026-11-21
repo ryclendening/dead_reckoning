@@ -136,11 +136,10 @@
   min-height: 0;
 }
 
-.battlefield-workspace > .planning-strip {
+.battlefield-workspace > :is(.planning-strip, .deployment-strip) {
   --panel-footer: 42px;
   position: absolute;
   inset: auto max(6px, env(safe-area-inset-right)) max(6px, env(safe-area-inset-bottom)) max(6px, env(safe-area-inset-left));
-  grid-template-rows: 38px 27px var(--panel-footer);
   gap: 4px;
   padding: 0;
   border: 0;
@@ -148,8 +147,9 @@
   box-shadow: none;
   pointer-events: none;
 }
+.battlefield-workspace > .planning-strip { grid-template-rows: 38px 27px var(--panel-footer); }
 .planning-strip button, .planning-strip select, .planning-strip .planning-flights { pointer-events: auto; }
-.planning-flights, .resupply-flights {
+.planning-flights, .resupply-flights, .deployment-sites {
   display: flex;
   gap: 4px;
   min-width: 0;
@@ -160,7 +160,7 @@
   border-radius: 8px;
   background: #091411e8;
 }
-.formation-chip {
+:is(.formation-chip, .site-chip) {
   display: flex;
   align-items: center;
   justify-content: center;
@@ -175,8 +175,8 @@
   cursor: pointer;
 }
 .planning-flights .formation-chip { flex: 1 0 max(64px, calc((100% - 12px) / 4)); }
-.formation-chip > span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.formation-chip svg { width: 12px; height: 12px; color: var(--cyan); flex: none; }
+:is(.formation-chip, .site-chip) > span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+:is(.formation-chip, .site-chip) svg { width: 12px; height: 12px; color: var(--cyan); flex: none; }
 .formation-chip[data-role="recon"] .formation-role { color: #9fddbe; }
 .formation-chip[data-role="bomber"] .formation-role, .formation-chip[data-cue="repair"] .formation-cue { color: #e7c378; }
 .formation-chip[data-cue="planned"] .formation-cue { color: #bee6a6; }
@@ -410,9 +410,6 @@
 
 .phase-panel [hidden] { display: none; }
 
-.phase-panel .campaign-setup-options { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-.phase-panel.campaign-setup-float header h2 { font-size: 19px; }
-.phase-panel .campaign-setup-copy { margin-top: 0; }
 .phase-panel.online-wait-panel { grid-template-rows: auto auto 1fr; align-content: start; }
 .phase-panel.online-wait-panel p { align-self: start; }
 
@@ -467,5 +464,41 @@
     gap: 2px 8px;
     font-size: 11px;
     pointer-events: none;
+  }
+}
+
+.battlefield-workspace > .phase-panel.deployment-strip {
+  --panel-footer: 44px;
+  grid-template-rows: 50px var(--panel-footer);
+  padding: 0;
+  border: 0;
+}
+.deployment-sites { align-items: stretch; pointer-events: auto; }
+.deployment-sites .site-chip { position: relative; flex: 1 1 0; min-height: 44px; }
+.deployment-sites .site-placed-cue {
+  position: absolute;
+  inset: 2px 2px auto auto;
+  width: 10px;
+  height: 10px;
+  color: #bee6a6;
+}
+.deployment-strip .phase-primary { pointer-events: auto; border-radius: 5px; }
+.deployment-status {
+  display: grid;
+  align-content: center;
+  min-width: 0;
+  padding: 4px 8px;
+  border-radius: 5px;
+  background: #091411ed;
+  font: 600 11px/1.3 Inter, sans-serif;
+}
+.deployment-status b { color: #a2ddd6; }
+.deployment-status small { color: #bccbbd; font-size: inherit; }
+.deployment-status [role="alert"] { color: #ffd38a; }
+
+@media (orientation: landscape) and (max-height: 500px) {
+  .battlefield-workspace > .phase-panel.deployment-strip {
+    grid-template: 50px / minmax(0, 1fr) auto;
+    align-items: center;
   }
 }

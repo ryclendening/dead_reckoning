@@ -10,7 +10,7 @@ const help: Record<PlayPhase, { title: string; tips: [string, string][]; online?
   deploy: {
     title: 'Deployment',
     tips: [
-      ['Place your sites', 'Select a site and tap a highlighted hex. To move a placed site, select it and tap another hex before locking deployment.'],
+      ['Place your sites', 'Pick a site from the bottom rail and tap a highlighted hex. Drag to pan. You can move any site until you start planning.'],
       ['Radar coverage', RADAR_PLACEMENT_HELP],
     ],
     online: 'Planning starts after both players lock their deployments.',

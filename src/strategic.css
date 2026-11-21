@@ -259,25 +259,6 @@
 .pvp-base-health { display: flex; justify-content: center; flex-wrap: wrap; gap: 6px 20px; padding: 5px 8px; background: #141d17; border-bottom: 1px solid #435b48; color: #b7cab9; font: 600 13px/1.25 Inter, sans-serif; }
 .pvp-base-health b { margin-left: 4px; color: #eef0df; }
 
-.campaign-setup-float { padding: 12px; background: #0d1510; border-top: 1px solid #586859; }
-.campaign-setup-float header { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; }
-.campaign-setup-float header > span { color: #d9c76f; font: 700 12px/1.25 Inter, sans-serif; white-space: nowrap; }
-.campaign-setup-float header h2 { margin: 0; color: #e4e8d6; font: 700 24px/1.15 "Barlow Condensed", sans-serif; }
-.campaign-setup-copy, .campaign-setup-error, .deployment-panel > p { font: 600 13px/1.4 Inter, sans-serif; }
-.campaign-setup-copy { margin: 4px 0 8px; color: #b8c7b5; }
-.campaign-setup-error { margin: 6px 0 0; color: #ef8e80; }
-.campaign-setup-options { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 4px; }
-.campaign-setup-option {
-  display: flex; align-items: center; justify-content: space-between; gap: 4px;
-  min-height: 44px; padding: 6px 10px; border: 1px solid #425044;
-  background: #111611; color: #dfe7d9; text-align: left; cursor: pointer;
-}
-.campaign-setup-option.placed { border-color: #65bd73; color: #e4f3df; }
-.campaign-setup-option[aria-pressed="true"] { border-color: var(--cyan); background: #17302d; }
-.campaign-setup-option svg { flex: 0 0 16px; height: 16px; color: #a3ec9e; }
-.campaign-setup-option b { font: 700 16px/1.2 "Barlow Condensed", sans-serif; }
-.deployment-panel .asset-picker button { min-height: 44px; }
-.deployment-panel .asset-picker b { font-size: 14px; }
 .airfield-pip-list {
   flex-wrap: wrap;
   justify-content: center;

@@ -846,7 +846,13 @@ function BattlefieldScene({squadrons,assets,playerAssets,mappedAreas,terrain,pre
     const hit=e.ray.intersectPlane(groundPlane,new THREE.Vector3())
     return hit?[hit.x,hit.z]:[e.point.x,e.point.z]
   }
-  const down=(e:ThreeEvent<PointerEvent>)=>{if(phase==='adapt'&&construction){const hit=e.ray.intersectPlane(groundPlane,new THREE.Vector3());const point=snapToHex(hit?[hit.x,hit.z]:[e.point.x,e.point.z]);e.stopPropagation();construction.onStage(point);setConstructionHover(point);return}if(phase==='deploy'){const hit=e.ray.intersectPlane(groundPlane,new THREE.Vector3());const point=snapToHex(hit?[hit.x,hit.z]:[e.point.x,e.point.z]);e.stopPropagation();onPlace(placementId,point)}}
+  const down=(event:ThreeEvent<PointerEvent>)=>{
+    if(phase!=='adapt'||!construction)return
+    event.stopPropagation()
+    const point=snapToHex(mapPoint(event))
+    construction.onStage(point)
+    setConstructionHover(point)
+  }
   const startDraft=()=>{
     if(!draft.current.length)draft.current=(editPath?.length?editPath:[routeOrigin??playerBase]).map(point=>[...point] as Point)
   }
@@ -870,7 +876,13 @@ function BattlefieldScene({squadrons,assets,playerAssets,mappedAreas,terrain,pre
     return true
   }
   const mapClick=(e:ThreeEvent<MouseEvent>)=>{
-    if(phase!=='plan'||!routePlanningEnabled||!roleEditsWaypoints||e.delta>8)return
+    if(e.delta>8)return
+    if(phase==='deploy'){
+      e.stopPropagation()
+      onPlace(placementId,snapToHex(mapPoint(e)))
+      return
+    }
+    if(phase!=='plan'||!routePlanningEnabled||!roleEditsWaypoints)return
     e.stopPropagation()
     const point=mapPoint(e)
     if(activeWaypoint===undefined){
