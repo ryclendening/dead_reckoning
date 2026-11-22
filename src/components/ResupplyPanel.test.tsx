@@ -9,7 +9,7 @@ import { ResupplyPanel } from './ResupplyPanel'
 const noop=()=>{}
 const state=()=>({...createMatch(),phase:'adapt' as const,logistics:20})
 function render(match=state(),selectedTarget:EconomyTarget={kind:'campaign',id:'campaign'}, mode:'closed'|'catalog'='closed'){
-  return renderToStaticMarkup(<ResupplyPanel match={match} selectedTarget={selectedTarget} onSelectTarget={noop} onCloseTarget={noop} onPurchase={noop} onNextRound={noop} procurementMode={mode} onProcurementMode={noop} onProcurementAction={noop} hasPlacementPreview={false} onConfirmPlacement={noop} onCancelPlacement={noop}/> )
+  return renderToStaticMarkup(<ResupplyPanel match={match} selectedTarget={selectedTarget} purchaseCategory="Aircraft" onPurchaseCategoryChange={noop} onCloseTarget={noop} onPurchase={noop} onNextRound={noop} procurementMode={mode} onProcurementMode={noop} onProcurementAction={noop} hasPlacementPreview={false} onConfirmPlacement={noop} onCancelPlacement={noop}/> )
 }
 
 function renderCatalog(category: PurchaseCategory, match: MatchState = state()) {
@@ -19,42 +19,23 @@ function renderCatalog(category: PurchaseCategory, match: MatchState = state()) 
 }
 
 describe('Resupply',()=>{
-  it('shows upgrades only for the selected main airfield, outside the repair shortcut',()=>{
+  it('keeps the compact Resupply bar when a ground site is selected',()=>{
     const match=state()
-    expect(render(match)).not.toContain('MAINTENANCE WING')
-    expect(render(match)).not.toContain('Selected system')
-    expect(render(match)).not.toContain('Repairs and replacements')
-    const airfield=render(match,{kind:'asset',id:'p-base'})
-    expect(airfield).toContain('MAINTENANCE WING')
-    expect(airfield).toContain('SUPPLY DEPOT')
-    expect(airfield).not.toContain('Based formations')
-    expect(airfield).not.toContain('Repairs and replacements')
-  })
-
-  it('shows current SAM health and rearmed missiles without offering repair',()=>{
-    const match=state()
-    match.playerAssets=match.playerAssets.map(asset=>asset.id==='p-sam'?{...asset,health:75}:asset)
-    const sam=render(match,{kind:'asset',id:'p-sam'})
-    expect(sam).toContain('75 / 100 HP')
-    expect(sam).toContain('3/3 MSL')
-    expect(sam).not.toContain('REPAIR SAM')
-    expect(sam).not.toContain('Repairs and replacements')
-    expect(sam).not.toContain('MAINTENANCE WING')
-    expect(sam).not.toContain('NEED ATTENTION')
+    for(const id of ['p-base','p-sam','e-base']){
+      const html=render(match,{kind:'asset',id})
+      expect(html).toContain('resupply-panel resupply-bar')
+      expect(html).not.toContain('adapt-drawer')
+      expect(html).not.toContain('MAINTENANCE WING')
+    }
   })
 
   it('names damage, price, and exact repair gain on the selected formation',()=>{
     const match=state()
     match.squadrons=match.squadrons.map(squadron=>squadron.id==='viper'?{...squadron,aircraft:2,strength:30}:squadron)
     match.playerAssets=match.playerAssets.map(asset=>asset.id==='p-base'?{...asset,upgrades:['maintenance-wing']}:asset)
-    const airfield=render(match,{kind:'asset',id:'p-base'})
-    expect(airfield).toContain('MAINTENANCE WING installed')
-    expect(airfield).not.toContain('SUPPLY DEPOT')
-    expect(airfield).toContain('Repairs <span>1</span>')
     const flight=render(match,{kind:'squadron',id:'viper'})
     expect(flight).toContain('resupply-panel resupply-bar')
     expect(flight).toContain('aria-label="Selected aircraft"')
-    expect(flight).toContain('aria-label="VIPER 1, repair available"')
     expect(flight).toContain('Strength 30 → 50 (+20)')
     expect(flight).toContain('Repair · $10M')
     expect(flight).not.toContain('adapt-drawer')
@@ -123,13 +104,4 @@ describe('Resupply',()=>{
     expect(renderCatalog('Aircraft', match)).toContain('1 purchase · $120M')
   })
 
-  it('never exposes unknown enemy site details or enemy upgrade and basing controls',()=>{
-    const match=state()
-    expect(render(match,{kind:'asset',id:'e-base'})).not.toContain('Selected system')
-    match.enemyAssets=match.enemyAssets.map(asset=>asset.id==='e-base'?{...asset,hidden:false,intel:'confirmed'}:asset)
-    const enemy=render(match,{kind:'asset',id:'e-base'})
-    expect(enemy).toContain('Enemy ·')
-    expect(enemy).not.toContain('SUPPLY DEPOT')
-    expect(enemy).not.toContain('Based formations')
-  })
 })

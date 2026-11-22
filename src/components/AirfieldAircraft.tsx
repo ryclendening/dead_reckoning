@@ -21,11 +21,12 @@ function fanPosition(object: Object3D, camera: Camera, { width, height }: { widt
   return [MathUtils.clamp(x, inset, width - inset), y < (paged ? 108 : 76) ? y + distance : y - distance]
 }
 
-export function AirfieldAircraft({ assets, squadrons, selectedId, plannedIds, mode, onSelect }: {
+export function AirfieldAircraft({ assets, squadrons, selectedId, plannedIds, repairIds, mode, onSelect }: {
   assets: Asset[]
   squadrons: Squadron[]
   selectedId?: string
   plannedIds: string[]
+  repairIds?: ReadonlySet<string>
   mode: 'plan' | 'review' | 'service'
   onSelect?: (id: string) => void
 }) {
@@ -50,14 +51,16 @@ export function AirfieldAircraft({ assets, squadrons, selectedId, plannedIds, mo
     const flights = formationIds.flatMap(id => flightById.get(id) ?? [])
     const count = flights.reduce((total, flight) => total + flight.aircraft, 0)
     const field = airfieldLabel(base)
-    const label = `${field}: ${count} aircraft`
+    const needsRepair = mode === 'service' && flights.some(flight => repairIds?.has(flight.id))
+    const label = `${field}: ${count} aircraft${needsRepair ? ' · Repairs available' : ''}`
     const open = expandedId === base.id && count > 0
     const current = flights.some(flight => flight.id === selectedId)
     const fanWidth = Math.min(flights.length, 3) * 80 - 4
     const position: [number, number, number] = [base.position[0], 1.15, base.position[1]]
+    if (base.health <= 0) return null
     return <group key={base.id}>
       <Html position={position} center zIndexRange={open ? [8, 8] : [7, 7]} style={{ pointerEvents: 'none' }}>
-        {count > 0 ? <button type="button" className="airfield-aircraft-count" data-current={current}
+        {count > 0 ? <button type="button" className="airfield-aircraft-count" data-current={current} data-repair={needsRepair}
           aria-label={label} aria-expanded={open} title={label} onPointerDown={event => event.stopPropagation()}
           onClick={event => { event.stopPropagation(); setExpandedId(open ? undefined : base.id) }}>
           <Plane aria-hidden="true"/><b>{count}</b>
@@ -67,7 +70,7 @@ export function AirfieldAircraft({ assets, squadrons, selectedId, plannedIds, mo
         <div className="airfield-aircraft-fan" style={{ width: fanWidth }} role="group" aria-label={`Formations at ${field}`}>
           <PanelPages pageSize={3} label={`Formations at ${field}`} className="airfield-fan-chips">
             {flights.map(flight => <FormationChip key={flight.id} flight={flight} selected={flight.id === selectedId}
-              cue={mode !== 'service' && plannedIds.includes(flight.id) ? 'planned' : undefined}
+              cue={mode === 'service' ? (repairIds?.has(flight.id) ? 'repair' : undefined) : plannedIds.includes(flight.id) ? 'planned' : undefined}
               disabled={mode !== 'service' && flight.status === 'trapped'} showCount
               onSelect={() => { setExpandedId(undefined); onSelect?.(flight.id) }}/>)}
           </PanelPages>

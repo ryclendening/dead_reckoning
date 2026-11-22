@@ -87,18 +87,26 @@
 .online-command-error { top: 56px; font-size: 13px; z-index: 29; }
 .online-wait-panel strong { font: 700 16px Inter, sans-serif; }
 .online-wait-panel p { font-size: 14px; line-height: 1.35; }
-.map-tools {
+.map-control-stack {
   position: absolute;
   z-index: 11;
-  top: 8px;
-  right: 8px;
+  inset: 8px 8px auto;
+  display: grid;
+  justify-items: end;
+  gap: 4px;
+  pointer-events: none;
+}
+.map-tools {
+  position: relative;
+  z-index: 1;
   display: flex;
   flex-wrap: wrap;
   justify-content: flex-end;
-  max-width: calc(100% - 16px);
+  max-width: 100%;
   gap: 4px;
 }
 .game-frame .map-tools > * {
+  pointer-events: auto;
   position: static;
   inset: auto;
   width: auto;

@@ -125,15 +125,15 @@ describe('map-first planning shelf', () => {
     expect(markup).not.toContain('<select')
   })
 
-  it('keeps a bomber on target picking with a visible payload count', () => {
+  it('shows bomber waypoint controls with a visible payload count', () => {
     const match = createMatch()
     const bomber = { ...match.squadrons[0], role: 'bomber' as const, mission: 'bomb' as const,
       bombingTargets: [{ targetId: 'e-base', routeIndex: 1 }] }
     const markup = renderToStaticMarkup(<CommandShelf {...common} squadrons={[bomber]}
       squadron={bomber} step="route"/>)
     expect(markup).toContain('planning-strip')
-    expect(markup).toContain('1 / 3 targets')
-    expect(markup).toContain('Clear targets')
-    expect(markup).not.toContain('Undo last waypoint')
+    expect(markup).toContain('Bomb · 1 / 3')
+    expect(markup).toContain('Clear route')
+    expect(markup).toContain('Undo last waypoint')
   })
 })

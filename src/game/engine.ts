@@ -402,13 +402,14 @@ function* simulateRoundTicks(state:MatchState, recordOpponentView:boolean):Gener
     if(unit.mode==='recovering')return
     if(unit.plannedReturnStart!==undefined&&!unit.diverted){
       const path=[unit.position,...unit.route.slice(unit.plannedReturnStart)]
-      if(unit.traveled+routeFuelCost(path,unit.terrainKnowledge)<=flightRangeFor(unit.source)+.001){
+      if(unit.traveled+routeFuelCost(path,state.world.terrain)<=flightRangeFor(unit.source)+.001){
         unit.returnWaypoint=unit.plannedReturnStart
       }else if(unit.friendly){
         add('warning','RETURN ROUTE SHORTENED',`${unit.callsign} returns directly to its field to stay within fuel range.`,unit.position,time)
       }
     }
     transition(unit,'recovering',time,reason)
+    if(reason==='fuel-reserve'&&unit.friendly)add('warning','FUEL RESERVE RTB',`${unit.callsign} turns back to preserve enough fuel for recovery.`,unit.position,time)
   }
   // Both sides commit the same recon condition before execution. CPU reactions
   // publish no hidden contact or recovery event into the player's live feed.
@@ -508,7 +509,7 @@ function* simulateRoundTicks(state:MatchState, recordOpponentView:boolean):Gener
       else if(u.mode==='following-route')destination=u.route[u.waypoint] as never; else if(u.mode==='recovering')destination=u.returnWaypoint===undefined?home:u.route[u.returnWaypoint]??home; else if(u.mode==='intercepting'){const target=u.targetId?byId.get(u.targetId):undefined;destination=(target?.position??home) as never}
       else if(u.mode==='attacking-recon'){const target=u.targetId?byId.get(u.targetId):undefined;destination=(target?.position??home) as never}
       if(!destination){transition(u,'recovering',time,'route-complete');continue} const step=flightSpeedFor(u.source)*TICK_SECONDS; const next=point(u.position,destination,step);const edgeHit=intersectMovementWithWorld(u.position,next,state.world.bounds);const movementPoint=edgeHit?.point??next;const moved=distance(u.position,movementPoint);const fuelUsed=segmentFuelCost(u.position,movementPoint,state.world.terrain)
-      if((u.friendly||cpuActive)&&u.mode!=='recovering'&&u.traveled+fuelUsed+segmentFuelCost(movementPoint,home,u.terrainKnowledge)>flightRangeFor(u.source)+.001){transition(u,'recovering',time,'fuel-reserve');continue}
+      if((u.friendly||cpuActive)&&u.mode!=='recovering'&&u.traveled+fuelUsed+segmentFuelCost(movementPoint,home,state.world.terrain)>flightRangeFor(u.source)+.001){beginRecovery(u,time,'fuel-reserve');continue}
       if((u.friendly||cpuActive)&&u.mode==='recovering'&&u.traveled+fuelUsed>flightRangeFor(u.source)+.001){u.traveled=flightRangeFor(u.source);u.aircraft=0;u.strength=0;releaseClaim(u);transition(u,'destroyed',time,'fuel-exhaustion');if(u.friendly)add('danger','FORMATION LOST',`${u.callsign} exhausts its fuel before reaching recovery.`,u.position,time);continue}
       if(edgeHit){u.facing=facingAfterMove(u.position,edgeHit.point,u.facing);u.position=edgeHit.point;u.traveled+=fuelUsed;if(u.mode==='following-route')u.waypoint++;else if(u.mode==='recovering'&&u.returnWaypoint!==undefined&&u.returnWaypoint<u.route.length-1)u.returnWaypoint++;continue}
       u.facing=facingAfterMove(u.position,next,u.facing);u.position=next;u.traveled+=fuelUsed

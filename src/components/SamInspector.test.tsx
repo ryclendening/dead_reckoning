@@ -13,36 +13,32 @@ describe('SAM and ground strike controls',()=>{
     const state=createMatch(),asset=state.playerAssets.find(asset=>asset.kind==='sam')!,result=resolveRound(state)
     result.weaponEffects=[]
     let html=renderToStaticMarkup(<AssetInspector phase="execute" asset={asset} result={result} seconds={0} onClose={noop}/>)
-    expect(html).toContain('3 / 3')
-    expect(html).toContain('100 / 100')
-    expect(html).toContain('READY TO FIRE')
+    expect(html).toContain('3/3 missiles')
+    expect(html).toContain('100/100 HP')
+    expect(html).toContain('3/3 missiles · Range 3.2')
     const shot:WeaponEffect={id:'sam-1',kind:'sam',sourceId:asset.id,targetId:'red-fighter',start:2,end:3.05,from:asset.position,to:[0,0],hit:false,damage:0}
     result.weaponEffects=[shot]
     html=renderToStaticMarkup(<AssetInspector phase="execute" asset={{...asset,health:40}} result={result} seconds={2.5} onClose={noop}/>)
-    expect(html).toContain('2 / 3')
-    expect(html).toContain('READY IN 2.5s')
-    expect(html).toContain('40 / 100')
+    expect(html).toContain('2/3 missiles')
+    expect(html).toContain('Ready in 2.5s')
+    expect(html).toContain('40/100 HP')
     result.weaponEffects=[shot,{...shot,id:'sam-2',start:5},{...shot,id:'sam-3',start:8}]
     html=renderToStaticMarkup(<AssetInspector phase="execute" asset={asset} result={result} seconds={8} onClose={noop}/>)
-    expect(html).toContain('0 / 3')
-    expect(html).toContain('EMPTY · RELOADS NEXT ROUND')
+    expect(html).toContain('Out of missiles · Reloads next round')
     html=renderToStaticMarkup(<AssetInspector phase="execute" asset={{...asset,health:0}} result={result} seconds={8} onClose={noop}/>)
-    expect(html).toContain('DESTROYED')
+    expect(html).toContain('Destroyed')
   })
 
   it('replenishes the Adapt and Plan display while labeling Debrief as the completed round',()=>{
     const state=createMatch(),asset={...state.playerAssets.find(asset=>asset.kind==='sam')!,health:75},result=resolveRound(state)
     result.weaponEffects=[{id:'last-round-shot',kind:'sam',sourceId:asset.id,targetId:'red-fighter',start:2,end:3.05,from:asset.position,to:[0,0],hit:false,damage:0}]
     const debrief=renderToStaticMarkup(<AssetInspector phase="debrief" asset={asset} result={result} seconds={2.5} onClose={noop}/>)
-    expect(debrief).toContain('MISSILES AT ROUND END')
-    expect(debrief).toContain('2 / 3')
+    expect(debrief).toContain('2/3 missiles at round end')
     for(const phase of ['adapt','plan'] as const){
       const html=renderToStaticMarkup(<AssetInspector phase={phase} asset={asset} result={result} seconds={2.5} onClose={noop}/>)
-      expect(html).toContain('3 / 3')
-      expect(html).toContain('3 missiles remaining')
-      expect(html).toContain('75 / 100')
-      expect(html).not.toContain('READY IN')
-      if(phase==='adapt')expect(html).toContain('REARMED FOR NEXT ROUND')
+      expect(html).toContain('3/3 missiles')
+      expect(html).toContain('75/100 HP')
+      expect(html).not.toContain('Ready in')
     }
   })
 

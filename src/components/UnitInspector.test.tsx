@@ -8,14 +8,14 @@ const noop=()=>{}
 const frame:UnitFrame={time:2,position:[0,0],facing:[1,0],mode:'recovering',strength:62,morale:70,aircraft:3,traveledDistance:2}
 
 describe('expanded tactical cards',()=>{
-  it('shows the same identity, health, and status layout for a selected ground site',()=>{
+  it('shows a compact status card for a selected ground site',()=>{
     const asset={...createMatch().playerAssets.find(asset=>asset.kind==='radar')!,name:'WATCH',health:40}
     const html=renderToStaticMarkup(<AssetInspector asset={asset} phase="adapt" seconds={0} onClose={noop}/>)
     expect(html).toContain('WATCH')
-    expect(html).toContain('RADAR SITE')
-    expect(html).toContain('40 / 100')
-    expect(html).toContain('DAMAGED')
-    expect(html).toContain('DETECTION RANGE 6.4')
+    expect(html).toContain('class="site-readout"')
+    expect(html).toContain('40/100 HP')
+    expect(html).toContain('Scan 6.4')
+    expect(html).not.toContain('unit-inspector')
     expect(html).not.toContain('MISSILES')
   })
 
@@ -27,22 +27,21 @@ describe('expanded tactical cards',()=>{
     expect(html).not.toContain('GROUND STRIKE')
   })
 
-  it('shows the range gained and the supporting radar, then shows local range when the radar is lost',()=>{
+  it('shows the current range and whether it is radar linked',()=>{
     const assets=createMatch().playerAssets
     const aaa={...assets.find(asset=>asset.kind==='aaa')!,position:[0,0] as [number,number]}
     const radar={...assets.find(asset=>asset.kind==='radar')!,position:[1,0] as [number,number],name:'WATCH'}
     const render=(health:number)=>renderToStaticMarkup(<AssetInspector asset={aaa} sites={[aaa,{...radar,health}]} phase="execute" seconds={0} onClose={noop}/>)
-    expect(render(100)).toContain('Radar-linked · 1.9 → 2.85 map units · WATCH')
-    expect(render(0)).toContain('Local range · 1.9 map units · No radar link')
+    expect(render(100)).toContain('Range 2.85 · Radar linked')
+    expect(render(0)).toContain('Range 1.9')
   })
 
-  it('keeps the local SAM radius distinct from the radar detection zone',()=>{
+  it('shows both missile inventory and radar guidance for a linked SAM',()=>{
     const assets=createMatch().playerAssets
     const sam={...assets.find(asset=>asset.kind==='sam')!,position:[0,0] as [number,number]}
     const radar={...assets.find(asset=>asset.kind==='radar')!,position:[5,0] as [number,number],name:'WATCH'}
     const html=renderToStaticMarkup(<AssetInspector asset={sam} sites={[sam,radar]} phase="plan" seconds={0} onClose={noop}/>)
-    expect(html).toContain('Local range · 3.2 map units')
-    expect(html).toContain('Radar guided · Covers the detection zone of WATCH')
+    expect(html).toContain('3/3 missiles · Radar guided')
   })
 
   it('keeps friendly aircraft count, activity, and morale in the selected card',()=>{

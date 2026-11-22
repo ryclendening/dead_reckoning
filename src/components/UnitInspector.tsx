@@ -1,7 +1,9 @@
 import type { ReactNode } from 'react'
+import { X } from 'lucide-react'
 import { samStatusForPhase } from '../game/airDefense'
-import { defenseProfile } from '../game/equipmentRules'
-import { DefenseSiteDetails } from './DefenseSiteDetails'
+import { effectiveDefenseProfile, radarRange } from '../game/equipmentRules'
+import { upgradeDefinition } from '../game/upgrades'
+import { formatDefenseRange } from './DefenseSiteDetails'
 import { aircraftCardData, assetCardData, type UnitCardData } from '../game/unitCards'
 import type { Asset, EnemyFlight, Phase, RoundResult, Squadron, UnitFrame } from '../game/types'
 
@@ -14,17 +16,68 @@ export function UnitInspector({data,onClose,children,enemy=false}:{data:UnitCard
   </aside>
 }
 
-export function AssetInspector({asset,sites=[],phase,result,seconds,enemy=false,onClose}:{asset:Asset;sites?:readonly Asset[];phase:Phase;result?:RoundResult;seconds:number;enemy?:boolean;onClose:()=>void}){
-  const data=assetCardData(asset,enemy,phase,result,seconds)
-  if(!data)return null
-  const profile=defenseProfile(asset)
-  const sam=asset.kind==='sam'?samStatusForPhase(asset.id,phase,result?.weaponEffects,seconds,asset):undefined
-  const activity=asset.health<=0?'DESTROYED':asset.operational===false?'OFFLINE':sam?.remaining===0?'EMPTY · RELOADS NEXT ROUND':sam&&sam.cooldown>.001?`READY IN ${sam.cooldown.toFixed(1)}s`:phase==='adapt'?'REARMED FOR NEXT ROUND':'READY TO FIRE'
-  return <UnitInspector data={data} enemy={enemy} onClose={onClose}>
-    {sam?<><label>{phase==='debrief'?'MISSILES AT ROUND END':'MISSILES THIS ROUND'} <strong>{sam.remaining} / {sam.capacity}</strong></label><div className="sam-ammo" aria-label={`${sam.remaining} missiles remaining`}>{Array.from({length:sam.capacity},(_,index)=><i key={index} className={index<sam.remaining?'loaded':''}/>)}</div><p>{activity}</p><small>{profile?.cooldown}s BETWEEN SHOTS</small></>:null}
-    <DefenseSiteDetails asset={asset} sites={sites} enemy={enemy}/>
-    {asset.kind==='aaa'?<small>{profile?.burstShots} SHOTS PER BURST</small>:asset.kind==='base'||asset.kind==='fob'?<label>BASED FORMATIONS <strong>{asset.basedFormationIds?.length??0}{asset.kind==='fob'?` / ${asset.capacity??2}`:''}</strong></label>:null}
-  </UnitInspector>
+interface AssetInspectorProps {
+  asset: Asset
+  sites?: readonly Asset[]
+  phase: Phase
+  result?: RoundResult
+  seconds: number
+  enemy?: boolean
+  onClose: () => void
+  onUpgrades?: () => void
+}
+
+function siteReadout({ asset, sites = [], phase, result, seconds, enemy }: AssetInspectorProps): string {
+  if (asset.health <= 0) return 'Destroyed'
+  if (asset.operational === false) return 'Offline'
+  if (enemy && asset.intel !== 'confirmed') return 'Unconfirmed site'
+
+  if (asset.kind === 'radar') {
+    const range = formatDefenseRange(radarRange(asset))
+    const linked = sites.filter(site => effectiveDefenseProfile(site, sites)?.radarLinks.some(radar => radar.id === asset.id)).length
+    return `Scan ${range} · ${linked} linked`
+  }
+
+  const defense = effectiveDefenseProfile(asset, sites)
+  if (defense) {
+    const range = formatDefenseRange(defense.range)
+    const guided = defense.radarLinks.length > 0
+    if (asset.kind === 'sam' && !enemy) {
+      const sam = samStatusForPhase(asset.id, phase, result?.weaponEffects, seconds, asset)
+      const inventory = `${sam.remaining}/${sam.capacity} missiles`
+      if (phase === 'debrief') return `${inventory} at round end`
+      if (sam.remaining === 0) return 'Out of missiles · Reloads next round'
+      if (sam.cooldown > .001) return `${inventory} · Ready in ${sam.cooldown.toFixed(1)}s`
+      return `${inventory} · ${guided ? 'Radar guided' : `Range ${range}`}`
+    }
+    return `${enemy ? 'Known range' : 'Range'} ${range}${guided ? ' · Radar linked' : ''}`
+  }
+
+  if (enemy) return 'Confirmed site'
+  if (asset.kind === 'fob') return `${asset.basedFormationIds?.length ?? 0}/${asset.capacity ?? 2} formations based`
+  if (asset.kind === 'base') {
+    const upgrade = asset.upgrades?.map(upgradeDefinition).find(Boolean)
+    return upgrade?.label ?? `${asset.basedFormationIds?.length ?? 0} formations based`
+  }
+  return 'Decoy runway'
+}
+
+export function AssetInspector(props: AssetInspectorProps) {
+  const { asset, enemy, onClose, onUpgrades } = props
+  const data = assetCardData(asset, enemy)
+  if (!data) return null
+  const summary = siteReadout(props)
+  return <aside className="site-readout" data-enemy={Boolean(enemy)} aria-label="Selected ground site">
+    <div className="site-readout-body">
+      <div className="site-readout-heading">
+        <b title={data.title}>{data.title}</b>
+        <strong>{Math.round(data.health)}/{data.maxHealth} HP</strong>
+      </div>
+      <small title={summary}>{summary}</small>
+    </div>
+    {onUpgrades ? <button type="button" className="site-upgrade-action" onClick={onUpgrades}>Upgrades</button> : null}
+    <button type="button" className="site-readout-dismiss" onClick={onClose} aria-label="Close ground site"><X aria-hidden="true"/></button>
+  </aside>
 }
 
 export function AircraftInspector({flight,frame,visibility,trackId,onClose}:{flight:Squadron|EnemyFlight;frame:UnitFrame;visibility:'friendly'|'visual'|'radar';trackId?:string;onClose:()=>void}){

@@ -98,7 +98,7 @@ export function CommandShelf({
   const strikeTarget=groundTargets.find(asset=>asset.id===squadron.strikeTargetId)
   const eligibleEscorts=squadrons.filter(item=>item.id!==squadron.id&&reviewedIds.has(item.id)&&item.aircraft>0)
   const routeStatus=editingReturn?'Return'
-    :isBomber?`${squadron.bombingTargets?.length??0} / 3 targets`
+    :isBomber?`Bomb · ${squadron.bombingTargets?.length??0} / 3`
     :strikeTarget?`Strike · ${strikeTarget.name??strikeTarget.kind.toUpperCase()}`
     :squadron.protectRadius!==undefined?`Protect · ${squadron.protectRadius.toFixed(1)} units`
     :squadron.protectedTargetId?'Escort'
@@ -116,8 +116,8 @@ export function CommandShelf({
     </div>
     <div className={`phase-panel-footer planning-strip-actions${onlineLock&&!editing?' online-commit-first':''}`}>
       {editing?<>
-        {!isBomber?<button type="button" className="plan-icon" aria-label="Undo last waypoint" title="Undo waypoint" disabled={!onUndoWaypoint} onClick={onUndoWaypoint}><Undo2/></button>:null}
-        <button type="button" className="plan-icon" aria-label={editingReturn?'Clear return':isBomber?'Clear targets':'Reset order'} title={editingReturn?'Clear return':isBomber?'Clear targets':'Reset order'} disabled={!hasRoute} onClick={onClear}><Trash2/></button>
+        <button type="button" className="plan-icon" aria-label="Undo last waypoint" title="Undo waypoint" disabled={!onUndoWaypoint} onClick={onUndoWaypoint}><Undo2/></button>
+        <button type="button" className="plan-icon" aria-label={editingReturn?'Clear return':isBomber?'Clear route':'Reset order'} title={editingReturn?'Clear return':isBomber?'Clear route':'Reset order'} disabled={!hasRoute} onClick={onClear}><Trash2/></button>
         {onRouteLegChange?<button type="button" className="plan-icon" aria-pressed={editingReturn} aria-label={editingReturn?'Edit outbound route':'Edit return route'}
           title={editingReturn?'Outbound':'Return'} onClick={()=>onRouteLegChange(editingReturn?'route':'return')}>{editingReturn?<Route/>:<CornerUpLeft/>}</button>:null}
         {isFighter&&!editingReturn?<select className="planning-escort" aria-label="Escort flight" value={squadron.protectedTargetId??''} onChange={event=>onProtectFlight?.(event.target.value)}>

@@ -20,6 +20,7 @@ const help: Record<PlayPhase, { title: string; tips: [string, string][]; online?
     tips: [
       ['Choose a formation', 'Tap the aircraft count above a runway, then choose a formation from the fan. Use the Airfield map control to find a runway. Tap the runway itself to set a destination while editing.'],
       ['Fighter orders', 'Tap the map to plot a patrol. Tap its last waypoint again to select it, then drag from it to size a Protect ring. Select P to resize the ring. Drag elsewhere to pan. Tap a friendly airfield for Transit or use Escort for a flight with a confirmed order.'],
+      ['Inspect a site', 'Tap a site to see HP and its current range, missile count, radar links, or based formations.'],
       ['Ground targets', 'Tap a confirmed enemy site to finish a fighter’s approach as Ground Strike. Drag S inside the marked release circle to adjust. Bombers take up to three targets in tap order. Tap a selected site again to remove it.'],
       ['Recon and recovery', 'Recon flies the route you plot. Aggressive continues through threats. Passive returns when it sees a fighter or a SAM or AAA battery fires at it.'],
       ['Spot ground sites', `Recon spots sites within ${RECON_GROUND_OBSERVATION_RANGE} map units and can pick up an operating radar beyond its coverage. Fighters and bombers spot sites within ${FIXED_ASSET_OBSERVATION_RANGE} units.`],
@@ -47,7 +48,7 @@ const help: Record<PlayPhase, { title: string; tips: [string, string][]; online?
     title: 'Resupply',
     tips: [
       ['Purchase and build', 'In Buy, select an offer for details. The main airfield has one upgrade slot. This round shows your purchases. To build, pick a site in Ground, tap a marked hex, then select Confirm build.'],
-      ['Check repairs', 'Select an aircraft from the floating rail or tap an airfield’s aircraft count to find its formations. Repairs filters the rail to formations that can regain strength. Ground site damage persists. SAM missiles replenish each round.'],
+      ['Check repairs', 'Tap an airfield’s aircraft count to open its formation fan. An amber dot marks a field with repairs available. Select a marked formation to see its repair offer. Ground site damage persists. SAM missiles replenish each round.'],
       ['Prepare to launch', 'You can plan the next round even with no aircraft. A forward base holds up to two formations.'],
     ],
   },

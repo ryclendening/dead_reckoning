@@ -13,7 +13,7 @@ export interface RouteGenerationResult { route:Point[]; ingress:Point[]; request
 
 export const ROUTE_TEMPLATES:RouteTemplateDefinition[]=[
   {id:'base-strike',label:'Ground Strike',shortLabel:'GROUND STRIKE',description:'Choose a confirmed ground target, then edit the ingress and place the strike point inside its six-unit release circle. Avoid voluntary air combat.',roles:['fighter'],requiresTarget:true},
-  {id:'bomb',label:'Bomb',shortLabel:'BOMB',description:'Select up to three confirmed ground sites in route order. Pass within two units to release each payload.',roles:['bomber'],requiresTarget:true},
+  {id:'bomb',label:'Bomb',shortLabel:'BOMB',description:'Plot up to twelve route points. Tap up to three confirmed ground sites to add bomb releases along the route.',roles:['bomber'],requiresTarget:false},
   {id:'transit',label:'Transit',shortLabel:'TRANSIT',description:'Fly to a friendly airfield without diverting to intercept contacts.',roles:['fighter','recon','bomber'],requiresTarget:true},
   {id:'defensive-cap',label:'Protect',shortLabel:'PROTECT',description:'Choose a friendly site, flight, or map point. Intercept threats inside the moving or fixed cover circle; break off at its marked edge.',roles:['fighter'],requiresTarget:true},
   {id:'forward-patrol',label:'Forward Patrol',shortLabel:'FORWARD PATROL',description:'Hunt inside the corridor around the patrol route, then break pursuit at its marked edge. Shots +10 points; incoming hits +6 points.',roles:['fighter'],requiresTarget:true},
@@ -66,7 +66,6 @@ export function validateBomberOrder(squadron:Squadron,launch:Asset|undefined,tar
   if(squadron.role!=='bomber')return 'BOMBING REQUIRES A BOMBER'
   if(!launch||launch.health<=0||launch.operational===false||squadron.aircraft<=0)return 'NO LEGAL BOMBING INGRESS FROM THIS FIELD'
   const assignments=squadron.bombingTargets??[]
-  if(assignments.length<1)return 'SELECT AT LEAST ONE CONFIRMED GROUND TARGET'
   if(assignments.length>MAX_BOMBING_TARGETS)return 'A BOMBER CARRIES ONLY THREE PAYLOADS'
   if(squadron.route.length<2||squadron.route.length>12||distance(squadron.route[0],launch.position)>.001)return 'KEEP THE FIXED TAKEOFF POINT'
   const seen=new Set<string>();let previous=0
