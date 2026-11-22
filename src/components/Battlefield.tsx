@@ -214,11 +214,14 @@ const FogOfWar=memo(function FogOfWar({geometry,mappedAreas,observations,present
 })
 
 
+// Decorative geometry should not pick a site that sits behind it.
+const ignoreRaycast = () => {}
+
 function DamageSmoke({severity=.3,position=[0,.25,0]}:{severity?:number;position?:[number,number,number]}){
   const ref=useRef<THREE.Group>(null)
   const age=useRef(0)
   useFrame((_,delta)=>{age.current+=delta;if(!ref.current)return;ref.current.children.forEach((child,index)=>{const cycle=(age.current*.23+index*.31)%1;child.position.y=cycle*.95;child.position.x=Math.sin(age.current*.75+index)*.1*cycle;const scale=.32+cycle*.45+severity*.25;child.scale.setScalar(scale);const material=(child as THREE.Mesh).material as THREE.MeshBasicMaterial;material.opacity=(1-cycle)*(.2+severity*.34)})})
-  return <group ref={ref} position={position}>{[0,1,2].map(i=><mesh key={i} position={[0,i*.18,0]}><sphereGeometry args={[.22,7,5]}/><meshBasicMaterial color={i===0?'#282823':'#4a4a40'} transparent opacity={.4} depthWrite={false}/></mesh>)}</group>
+  return <group ref={ref} position={position}>{[0,1,2].map(i=><mesh key={i} position={[0,i*.18,0]} raycast={ignoreRaycast}><sphereGeometry args={[.22,7,5]}/><meshBasicMaterial color={i===0?'#282823':'#4a4a40'} transparent opacity={.4} depthWrite={false}/></mesh>)}</group>
 }
 
 function Runway({asset,executing,enemy=false,selected=false,onSelect}:{asset:Asset;executing:boolean;enemy?:boolean;selected?:boolean;onSelect?:()=>void}){
@@ -226,7 +229,7 @@ function Runway({asset,executing,enemy=false,selected=false,onSelect}:{asset:Ass
   const model=asset.kind==='base'?runwayModels.base:forward?runwayModels.fob:runwayModels.decoy
   const severity=1-clamp01(asset.health/Math.max(1,asset.maxHealth))
   return <group position={to3(asset.position,.14)} rotation={[0,.2,0]} onPointerDown={event=>{if(onSelect)event.stopPropagation()}} onClick={event=>{event.stopPropagation();onSelect?.()}}>
-    {selected?<mesh position={[0,.01,0]} rotation={[-Math.PI/2,0,0]}><ringGeometry args={[forward?.62:.78,forward?.7:.86,32]}/><meshBasicMaterial color="#7ceaf0" depthTest={false}/></mesh>:null}
+    {selected?<mesh position={[0,.01,0]} rotation={[-Math.PI/2,0,0]} raycast={ignoreRaycast}><ringGeometry args={[forward?.62:.78,forward?.7:.86,32]}/><meshBasicMaterial color="#7ceaf0" depthTest={false}/></mesh>:null}
     <mesh geometry={model} material={groundSiteMaterial(enemy,isOperationalSite(asset))} castShadow dispose={null}/>
     {executing&&asset.struck&&severity>0?<DamageSmoke severity={severity} position={[0,.22,-.1]}/>:null}
   </group>
@@ -315,7 +318,7 @@ function BatteryCoverage({asset,profile,enemy=false,preview=false}:{asset:Asset;
   </>
 }
 function SiteSelectionRing({selected}:{selected:boolean}){
-  return selected?<mesh position={[0,.01,0]} rotation={[-Math.PI/2,0,0]}>
+  return selected?<mesh position={[0,.01,0]} rotation={[-Math.PI/2,0,0]} raycast={ignoreRaycast}>
     <ringGeometry args={[.56,.64,32]}/><meshBasicMaterial color="#7ceaf0" depthTest={false}/>
   </mesh>:null
 }

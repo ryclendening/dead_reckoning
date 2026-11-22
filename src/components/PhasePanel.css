@@ -492,7 +492,18 @@
   }
 }
 
+.ground-site-marker { position: relative; }
+.ground-site-leader {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  height: 1px;
+  background: #b4ccc1a6;
+  transform-origin: left center;
+  pointer-events: none;
+}
 .ground-site-label {
+  position: relative;
   display: grid;
   gap: 3px;
   width: max-content;
@@ -507,10 +518,8 @@
   font: 700 13px/1 'Barlow Condensed', sans-serif;
   pointer-events: auto;
   cursor: pointer;
-  transform: translateY(-7px);
 }
-.ground-site-label[data-below-badge="true"] { transform: translateY(16px); }
-.ground-site-label[data-selected="true"], .ground-site-label:focus-visible { border-color: var(--site-color); }
+.ground-site-label[data-selected="true"], .ground-site-label:focus-visible { outline: 2px solid var(--site-color); outline-offset: 1px; }
 .ground-site-heading { display: flex; align-items: baseline; justify-content: space-between; gap: 6px; white-space: nowrap; }
 .ground-site-heading b { overflow: hidden; text-overflow: ellipsis; }
 .ground-site-heading > span { color: #dce4d8; font-variant-numeric: tabular-nums; }
@@ -533,9 +542,9 @@
   position: relative;
   display: grid;
   place-items: center;
-  width: 28px;
+  width: 36px;
   min-width: 0;
-  height: 28px;
+  height: 36px;
   padding: 0;
   color: var(--site-color);
 }
@@ -573,8 +582,22 @@
 .site-readout[data-enemy="true"] { --site-readout-accent: #f0a696; }
 .site-readout-body { flex: 1; min-width: 0; }
 .site-readout-heading { display: flex; align-items: baseline; justify-content: space-between; gap: 6px; }
-.site-readout-heading b, .site-readout-body small { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.site-readout-heading b, .site-readout .site-health {
+  display: block;
+  width: 100%;
+  height: 4px;
+  margin-top: 2px;
+  accent-color: var(--site-readout-accent);
+}
+.site-readout-body small { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .site-readout-heading strong { color: var(--site-readout-accent); white-space: nowrap; font-variant-numeric: tabular-nums; }
+.site-readout .site-health {
+  display: block;
+  width: 100%;
+  height: 4px;
+  margin-top: 2px;
+  accent-color: var(--site-readout-accent);
+}
 .site-readout-body small { display: block; margin-top: 2px; color: #c5d3c9; font-size: 13px; font-weight: 600; }
 .site-readout button {
   flex: none;

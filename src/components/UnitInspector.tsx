@@ -73,6 +73,7 @@ export function AssetInspector(props: AssetInspectorProps) {
         <b title={data.title}>{data.title}</b>
         <strong>{Math.round(data.health)}/{data.maxHealth} HP</strong>
       </div>
+      <progress className="site-health" value={data.health} max={data.maxHealth} aria-label="Site health"/>
       <small title={summary}>{summary}</small>
     </div>
     {onUpgrades ? <button type="button" className="site-upgrade-action" onClick={onUpgrades}>Upgrades</button> : null}
