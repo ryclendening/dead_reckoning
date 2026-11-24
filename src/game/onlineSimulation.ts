@@ -2,7 +2,7 @@ import { resolveRound } from './engine'
 import { deriveLogisticsIncome } from './economy'
 import { LOGISTICS_EFFECTS } from './economyRules'
 import { applyRecoveryOutcomesToBasing } from './forwardBasing'
-import type { Asset, EnemyFlight, GroundSiteSighting, MatchState, RoundResult, Squadron } from './types'
+import type { Asset, CombatEvent, EnemyFlight, GroundSiteSighting, MatchState, RoundResult, Squadron } from './types'
 import { CAMPAIGN_ROUND_LIMIT, type CampaignOutcome } from './campaign'
 import type { CpuSiteReport, CpuState } from './cpu/types'
 
@@ -78,6 +78,12 @@ function outcomeFor(ownHealth: number, enemyBaseHealth: number, round: number): 
 function visibleTimes(result: RoundResult, hostileId: string): Array<[number, number]> {
   return result.contactIntervals.filter(interval => interval.targetId === hostileId).map(interval => [interval.start, interval.end])
 }
+const recoveryNotices: Partial<Record<string, Pick<CombatEvent, 'tone' | 'title' | 'detail'>>> = {
+  'no-reachable-recovery': { tone: 'danger', title: 'NO RECOVERY FIELD', detail: 'is holding because no operational airfield is within reach.' },
+  'fuel-reserve': { tone: 'warning', title: 'FUEL RESERVE RTB', detail: 'turns back to preserve fuel for landing.' },
+  'fuel-exhaustion': { tone: 'danger', title: 'FORMATION LOST', detail: 'ran out of fuel before landing.' },
+}
+
 function projectResult(result: RoundResult, ownIds: Set<string>, opponentIds: Set<string>, input: MatchState,
   sightings: GroundSiteSighting[], refreshed: Set<string>): RoundResult {
   const hasOwn = (id: string) => ownIds.has(id)
@@ -160,6 +166,20 @@ function projectResult(result: RoundResult, ownIds: Set<string>, opponentIds: Se
     if (squadron) events.push({ id: `strike-${effect.sourceId}-${Math.round(effect.start * 20)}`, time: effect.start, tone: 'friendly',
       title: effect.kind === 'bomb' ? 'BOMB RELEASED' : 'GROUND STRIKE LAUNCHED',
       detail: effect.kind === 'bomb' ? `${squadron.callsign} releases a bomb on confirmed ${target?.kind ?? 'ground'} coordinates.` : `${squadron.callsign} releases an air-to-ground missile.`, position: effect.from })
+  }
+  // Reconstruct notices only from this seat’s own flight tracks.
+  for (const interval of result.behaviorIntervals) {
+    if (!hasOwn(interval.unitId)) continue
+    const message = recoveryNotices[interval.reason]
+    if (!message) continue
+    const formation = ownResultSquadrons.find(item => item.id === ownId(interval.unitId))
+    if (!formation) continue
+    const track = ownTracks.find(item => item.unitId === interval.unitId)
+    const frame = track?.frames.find(frame => frame.time >= interval.start - .001)
+    events.push({
+      id: `recovery-${interval.id}`, time: interval.start, position: frame?.position,
+      tone: message.tone, title: message.title, detail: `${formation.callsign} ${message.detail}`,
+    })
   }
   events.sort((a, b) => a.time - b.time)
   const authorizedParticipant = (id: string, time: number) =>

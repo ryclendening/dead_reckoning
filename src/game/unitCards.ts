@@ -16,7 +16,7 @@ export interface UnitCardData {
 const ASSET_LABELS:Record<Asset['kind'],string>={base:'MAIN AIRFIELD',fob:'FORWARD AIRFIELD',decoy:'DECOY AIRFIELD',radar:'RADAR SITE',sam:'SAM SITE',aaa:'AAA SITE'}
 
 export function flightActivityLabel(mode?:string){
-  return mode==='grounded'?'STATIONED':mode==='dogfighting'||mode==='dogfight'?'DOGFIGHT':mode==='attacking-recon'?'PURSUIT':mode==='intercepting'?'INTERCEPT':mode==='recovering'||mode==='rtb'?'RTB':mode==='recovered'?'LANDED':mode==='destroyed'?'DESTROYED':mode==='trapped'?'TRAPPED':mode==='disengaging'?'BREAKING CONTACT':'ENROUTE'
+  return mode==='grounded'?'STATIONED':mode==='dogfighting'||mode==='dogfight'?'DOGFIGHT':mode==='attacking-recon'?'PURSUIT':mode==='intercepting'?'INTERCEPT':mode==='recovering'||mode==='rtb'?'RTB':mode==='recovered'?'LANDED':mode==='stranded'?'NO RECOVERY':mode==='destroyed'?'DESTROYED':mode==='trapped'?'TRAPPED':mode==='disengaging'?'BREAKING CONTACT':'ENROUTE'
 }
 
 /** Call with the visibility-authorized asset, including provisional observations when currently visible. */

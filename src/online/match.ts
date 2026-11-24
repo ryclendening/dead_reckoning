@@ -1,5 +1,5 @@
 import { validProtectRadius } from '../game/missionResponsibility'
-import { campaignEnemyStart } from '../game/campaignLayout'
+import { campaignEnemyStart, ONLINE_SPACED_START_REGION, ONLINE_START_SEPARATION } from '../game/campaignLayout'
 import { placeInitialAsset, validateInitialPlacement } from '../game/campaignPlacement'
 import { confirmCampaignSetup, createCampaignSetupState, SETUP_FORMATION_IDS, SETUP_REQUIRED_ASSET_IDS } from '../game/campaignSetup'
 import { friendlyAssetsFor, squadronsFor } from '../game/data'
@@ -44,13 +44,13 @@ const other = (seat: SeatIndex): SeatIndex => seat === 0 ? 1 : 0
 const isHex = (position: Point) => distanceBetween(snapToHex(position), position) <= .001
 
 export function newOnlineMatch(id: string, tokenHash: string, invite: string, seed: number): OnlineMatch {
-  const world = generateCampaignWorld(seed)
-  const starts = [world.friendlyTerritory.center, campaignEnemyStart(seed, world.bounds, world.friendlyTerritory.center)]
+  const world = generateCampaignWorld(seed, true, ONLINE_START_SEPARATION)
+  const starts = [world.friendlyTerritory.center, campaignEnemyStart(seed, world.bounds, world.friendlyTerritory.center, ONLINE_START_SEPARATION)]
   if (seed % 2) starts.reverse()
 
   const createSeat = (index: SeatIndex): Seat => {
     const localWorld = {
-      ...world, seed: 0, layoutVersion: undefined, startRegionId: 'online',
+      ...world, seed: 0, layoutVersion: undefined, startRegionId: ONLINE_SPACED_START_REGION,
       friendlyTerritory: { ...world.friendlyTerritory, center: starts[index] },
     }
     const match: MatchState = {
@@ -74,7 +74,7 @@ export function playerView(game: OnlineMatch, index: SeatIndex): OnlineView {
   return {
     match: {
       ...match, seed: 0,
-      world: { seed: 0, startRegionId: 'online', friendlyTerritory: world.friendlyTerritory,
+      world: { seed: 0, startRegionId: world.startRegionId, friendlyTerritory: world.friendlyTerritory,
         bounds: world.presentationBounds, presentationBounds: world.presentationBounds,
         terrain:terrainKnownWithin(world.terrain,match.mappedAreas,2.65,friendlyTerritoryForAssets(world.friendlyTerritory,match.playerAssets)) },
     },

@@ -1,4 +1,5 @@
 import { MAPPED_RADIUS } from './fog'
+import { ONLINE_RUNWAY_RADIUS, ONLINE_SPACED_START_REGION } from './campaignLayout'
 import { markSetupAssetPlaced } from './campaignSetup'
 import type { MatchState, Point } from './types'
 import { territoryContains } from './territory'
@@ -20,6 +21,8 @@ export function initialPlacementValidator(state: MatchState, assetId: string): (
   return point => {
     if (!point || !Number.isFinite(point[0]) || !Number.isFinite(point[1])) return ['SELECT A MAP LOCATION']
     if (!territoryContains(point, territory, edgeMargin)) return ['PLACE INSIDE FRIENDLY TERRITORY']
+    if (asset.kind === 'base' && state.world.startRegionId === ONLINE_SPACED_START_REGION
+      && distance(point, territory.center) > ONLINE_RUNWAY_RADIUS + 1e-7) return ['PLACE THE RUNWAY NEAR THE TERRITORY CENTER']
     if (!groundFootprintIsClear(point, terrain, asset.kind === 'base' || asset.kind === 'fob' ? 1.1 : .55)) return ['PLACE ON CLEAR, SURVEYED LAND']
     if (placed.some(other => distance(point, other.position) < INITIAL_PLACEMENT_SPACING)) return ['TOO CLOSE TO ANOTHER FRIENDLY ASSET']
     return []

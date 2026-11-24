@@ -54,6 +54,7 @@ export function debriefMapEvents(result: RoundResult): DebriefMapEvent[] {
     if (!item.aircraftLost || (!friendly && !item.confirmed)) continue
     const track = unitTrackFor(result, item.id)
     if (!track) continue
+    const fuelLoss = friendly && result.recoveryOutcomes?.some(outcome => outcome.formationId === item.id && outcome.reason === 'fuel-exhaustion')
     let remaining = item.aircraftLost
     let lastLossTime = track.frames[0]?.time ?? 0
     for (let index = 1; index < track.frames.length && remaining > 0; index++) {
@@ -62,17 +63,19 @@ export function debriefMapEvents(result: RoundResult): DebriefMapEvent[] {
       if (!count) continue
       remaining -= count
       // Pip reconciliation can occur on combat exit. Anchor it to that combat's last hit.
-      const hit = result.combatSequences.flatMap(sequence => sequence.exchanges)
+      const recordedFuelLoss = frame.mode === 'destroyed' && fuelLoss
+      const hit = recordedFuelLoss ? undefined : result.combatSequences.flatMap(sequence => sequence.exchanges)
         .filter(exchange => exchange.defenderId === item.id && exchange.hit && exchange.damage > 0 && exchange.time >= lastLossTime && exchange.time <= frame.time + .000001)
         .sort((a, b) => b.time - a.time)[0]
       lastLossTime = frame.time
       const time = hit?.time ?? frame.time
+      const holdingLoss = frame.mode === 'destroyed' && previous.mode === 'stranded' && !hit
+      const cause = holdingLoss ? ' · NO RECOVERY FIELD · FUEL EXHAUSTED' : recordedFuelLoss ? ' · FUEL EXHAUSTED' : ''
       // Confirmed aggregate attrition does not authorize a hidden crash position.
       if (!friendly && !contactProjectionAt(result, item.id, time)) continue
-      const recoveryLoss = !hit && frame.mode === 'destroyed' && previous.mode === 'stranded'
       events.push({ id: `loss-${item.id}-${index}`, kind: 'loss', time, position: hit?.position ?? frame.position,
         title: `${friendly ? 'FRIENDLY' : 'ENEMY'} AIRCRAFT LOST`,
-        detail: `${name(item.id, time)} · ${count} LOST${recoveryLoss ? ' · FUEL EXHAUSTED' : ''}`, side: friendly ? 'friendly' : 'hostile', count })
+        detail: `${name(item.id, time)} · ${count} LOST${cause}`, side: friendly ? 'friendly' : 'hostile', count })
     }
   }
   const reported = new Set<string>()

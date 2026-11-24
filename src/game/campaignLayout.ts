@@ -5,6 +5,9 @@ import type { Point, WorldBounds } from './types'
 // Leave enough room for a full opening territory and a direct, fuel-valid
 // fighter strike even when the player places their base at its far edge.
 export const CAMPAIGN_START_SEPARATION = { min: 18, max: 21 }
+export const ONLINE_START_SEPARATION = { min: 25, max: 27 }
+export const ONLINE_SPACED_START_REGION = 'online-spaced'
+export const ONLINE_RUNWAY_RADIUS = 1.5
 export const CAMPAIGN_START_CLEARANCE = 4.5
 export const ENEMY_SITE_SPACING = 1.15
 
@@ -39,24 +42,24 @@ function hexes(bounds: WorldBounds, clearance = 0): Point[] {
   return points
 }
 
-function enemyCandidates(bounds: WorldBounds, friendlyStart: Point): Point[] {
+function enemyCandidates(bounds: WorldBounds, friendlyStart: Point, limits: { min: number; max: number }): Point[] {
   return hexes(bounds, CAMPAIGN_START_CLEARANCE).filter(point => {
     const separation = distance(point, friendlyStart)
-    return separation >= CAMPAIGN_START_SEPARATION.min && separation <= CAMPAIGN_START_SEPARATION.max
+    return separation >= limits.min && separation <= limits.max
   })
 }
 
-export function campaignStart(seed: number, bounds: WorldBounds): Point {
+export function campaignStart(seed: number, bounds: WorldBounds, limits = CAMPAIGN_START_SEPARATION): Point {
   // Broad central deployment area; neither faction is tied to four corners.
   const candidates = hexes({ minX: Math.max(bounds.minX + CAMPAIGN_START_CLEARANCE, -7.5), maxX: Math.min(bounds.maxX - CAMPAIGN_START_CLEARANCE, 7.5),
     minZ: Math.max(bounds.minZ + CAMPAIGN_START_CLEARANCE, -9), maxZ: Math.min(bounds.maxZ - CAMPAIGN_START_CLEARANCE, 9) })
-  const start = shuffled(candidates, seed, 0x117da93).find(point => enemyCandidates(bounds, point).length > 0)
+  const start = shuffled(candidates, seed, 0x117da93).find(point => enemyCandidates(bounds, point, limits).length > 0)
   if (!start) throw new Error('No campaign start satisfies the deployment and flight-range limits.')
   return start
 }
 
-export function campaignEnemyStart(seed: number, bounds: WorldBounds, friendlyStart: Point): Point {
-  const start = shuffled(enemyCandidates(bounds, friendlyStart), seed, 0x7a31b49)[0]
+export function campaignEnemyStart(seed: number, bounds: WorldBounds, friendlyStart: Point, limits = CAMPAIGN_START_SEPARATION): Point {
+  const start = shuffled(enemyCandidates(bounds, friendlyStart, limits), seed, 0x7a31b49)[0]
   if (!start) throw new Error('No enemy start satisfies the deployment and flight-range limits.')
   return start
 }

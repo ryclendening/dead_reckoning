@@ -1,7 +1,6 @@
 import type { BoundarySegment, CampaignWorld, FriendlyTerritory, Point, WorldBounds, WorldEdge } from './types'
 import { territoryBounds, territoryContains } from './territory'
-import { campaignStart } from './campaignLayout'
-import { campaignEnemyStart } from './campaignLayout'
+import { CAMPAIGN_START_SEPARATION, campaignEnemyStart, campaignStart } from './campaignLayout'
 import { generateTerrainMap } from './terrain'
 
 export const CAMPAIGN_WORLD_BOUNDS:WorldBounds={minX:-14,maxX:14,minZ:-18,maxZ:18}
@@ -27,10 +26,10 @@ const edgeCoordinate=(edge:WorldEdge,point:Point)=>edge==='east'||edge==='west'?
 const boundaryCoordinate=(edge:WorldEdge,bounds:WorldBounds)=>edge==='east'?bounds.maxX:edge==='west'?bounds.minX:edge==='north'?bounds.maxZ:bounds.minZ
 const edgeLimits=(edge:WorldEdge,bounds:WorldBounds):[number,number]=>edge==='east'||edge==='west'?[bounds.minZ,bounds.maxZ]:[bounds.minX,bounds.maxX]
 
-export function generateCampaignWorld(seed:number,randomize=true):CampaignWorld{
+export function generateCampaignWorld(seed:number,randomize=true,separation=CAMPAIGN_START_SEPARATION):CampaignWorld{
   const start=START_ANCHORS[seededIndex(seed,START_ANCHORS.length)]
-  const center=randomize?campaignStart(seed,CAMPAIGN_WORLD_BOUNDS):[...start.center] as Point
-  const enemyCenter=randomize?campaignEnemyStart(seed,CAMPAIGN_WORLD_BOUNDS,center):undefined
+  const center=randomize?campaignStart(seed,CAMPAIGN_WORLD_BOUNDS,separation):[...start.center] as Point
+  const enemyCenter=randomize?campaignEnemyStart(seed,CAMPAIGN_WORLD_BOUNDS,center,separation):undefined
   const terrain=randomize?generateTerrainMap(seed,CAMPAIGN_WORLD_BOUNDS,[center,...(enemyCenter?[enemyCenter]:[])]):undefined
   return {seed,...(randomize?{layoutVersion:2 as const}:{}),bounds:{...CAMPAIGN_WORLD_BOUNDS},presentationBounds:{minX:CAMPAIGN_WORLD_BOUNDS.minX-PRESENTATION_APRON,maxX:CAMPAIGN_WORLD_BOUNDS.maxX+PRESENTATION_APRON,minZ:CAMPAIGN_WORLD_BOUNDS.minZ-PRESENTATION_APRON,maxZ:CAMPAIGN_WORLD_BOUNDS.maxZ+PRESENTATION_APRON},startRegionId:randomize?`campaign-${seed}`:start.id,friendlyTerritory:{center,radius:START_TERRITORY_RADIUS},...(terrain?{terrain}:{})}
 }
