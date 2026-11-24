@@ -1,6 +1,6 @@
 import { resolveRound } from './engine'
-import { deriveLogisticsIncome } from './economy'
-import { LOGISTICS_EFFECTS } from './economyRules'
+import { applyRoundIncome, deriveLogisticsIncome } from './economy'
+import { foundNewDefenseUpgrade, reportedEnemyAsset } from './defenseIntel'
 import { applyRecoveryOutcomesToBasing } from './forwardBasing'
 import type { Asset, CombatEvent, EnemyFlight, GroundSiteSighting, MatchState, RoundResult, Squadron } from './types'
 import { CAMPAIGN_ROUND_LIMIT, type CampaignOutcome } from './campaign'
@@ -34,7 +34,7 @@ function knownReports(state: MatchState, enemyToCanonical: Map<string, string>):
   return state.enemyAssets.flatMap(asset => {
     const id = enemyToCanonical.get(localId(asset.id))
     return id ? [{ id, kind: asset.kind, position: clone(asset.position), health: asset.health,
-      maxHealth: asset.maxHealth, observedRound: Math.max(1, state.round), upgrades: clone(asset.upgrades ?? []) }] : []
+      maxHealth: asset.maxHealth, observedRound: Math.max(1, state.round), defenseSurvey: clone(asset.defenseSurvey), upgrades: clone(asset.defenseSurvey?.upgrades) }] : []
   })
 }
 
@@ -52,12 +52,12 @@ function makeCpuState(seat: MatchState, orders: Squadron[], reports: CpuSiteRepo
 
 function observedEnemyAssets(input: Asset[], actual: Asset[], refreshed: Set<string>, strikeHealth: Map<string, number>): Asset[] {
   const known = new Map(input.filter(asset=>!asset.hidden&&asset.intel!=='unknown')
-    .map(asset=>[localId(asset.id),asset]))
+    .map(asset=>[localId(asset.id),reportedEnemyAsset(asset)]))
   for (const asset of actual) {
     const id = localId(asset.id)
     const prior = known.get(id)
     if (refreshed.has(id)) {
-      known.set(id,{...clone(asset),id:opponentId(id),intel:'confirmed',confidence:Math.max(90,prior?.confidence??0),hidden:false,basedFormationIds:undefined})
+      known.set(id,{...reportedEnemyAsset(clone(asset)),id:opponentId(id),intel:'confirmed',confidence:Math.max(90,prior?.confidence??0),hidden:false})
     }
     const strike = strikeHealth.get(id)
     const current = known.get(id)
@@ -131,7 +131,7 @@ function projectResult(result: RoundResult, ownIds: Set<string>, opponentIds: Se
   const knownAssets = observedEnemyAssets(input.enemyAssets,result.assets,refreshed,opponentStrikeHealth)
   const groundReplay = {
     friendlyAtStart: clone(input.playerAssets),
-    knownEnemyAtStart: clone(input.enemyAssets.filter(asset=>!asset.hidden&&asset.intel!=='unknown')),
+    knownEnemyAtStart: clone(input.enemyAssets.filter(asset=>!asset.hidden&&asset.intel!=='unknown').map(reportedEnemyAsset)),
     enemySightings: sightings.map(({asset,...window})=>({...window,asset:{...clone(asset),id:opponentId(localId(asset.id)),basedFormationIds:undefined}})),
   }
   const inputOwnAssets = new Set(input.playerAssets.map(asset => localId(asset.id)))
@@ -158,7 +158,7 @@ function projectResult(result: RoundResult, ownIds: Set<string>, opponentIds: Se
   }]
   for (const report of ownReports.filter(item => item.recovered)) {
     const asset = knownAssets.find(item => item.id === report.assetId)
-    if (asset) events.push({ id: report.id, time: result.duration, tone: 'friendly', title: 'INTEL RECOVERED', detail: report.detail, position: asset.position })
+    if (asset) events.push({ id: report.id, time: result.duration, tone: 'friendly', title: report.kind === 'defense-upgrade' ? 'DEFENSE UPGRADE SURVEYED' : 'INTEL RECOVERED', detail: report.detail, position: asset.position })
   }
   for (const effect of result.weaponEffects.filter(item => (item.kind === 'air-to-ground-missile' || item.kind === 'bomb') && hasOwn(item.sourceId) && knownAssetIds.has(item.targetId))) {
     const squadron = ownResultSquadrons.find(item => item.id === ownId(effect.sourceId))
@@ -268,27 +268,15 @@ function projectResult(result: RoundResult, ownIds: Set<string>, opponentIds: Se
   }
 }
 
-function sideIncome(state: MatchState, enemyLosses: number, reports: RoundResult['intelReports']) {
-  return deriveLogisticsIncome(state, { enemyLosses, intelReports: reports })
-}
-
 function projectSeat(input: MatchState, enemyAssetsForSeat: Asset[], ownAssetsForSeat: Asset[], ownFormationValues: Squadron[],
   resultForSeat: RoundResult, outcome: CampaignOutcome | undefined): MatchState {
-  const income = resultForSeat.logisticsIncome
-  const settled = input.economy.lastSettledRound === input.round
-  const statement = settled ? input.economy.statement : [
-    ...input.economy.statement,
-    { id: `income-${input.round}-base`, round: input.round, direction: 'income' as const, amount: income.base,
-      label: income.base > LOGISTICS_EFFECTS.baseIncome ? 'ROUND PAY · SUPPLY DEPOT' : 'ROUND PAY', source: 'round-income' },
-    ...(income.intel ? [{ id: `income-${input.round}-intel`, round: input.round, direction: 'income' as const, amount: income.intel, label: 'INTELLIGENCE RECOVERY', source: 'intel-recovery' }] : []),
-    ...(income.enemyAircraft ? [{ id: `income-${input.round}-enemy-aircraft`, round: input.round, direction: 'income' as const, amount: income.enemyAircraft, label: 'CONFIRMED ENEMY AIRCRAFT', source: 'enemy-aircraft' }] : []),
-  ]
+  const paid = applyRoundIncome(input, input.round, resultForSeat.logisticsIncome, true)
   return {
     ...clone(input), phase: 'debrief', round: input.round, seed: input.seed, campaignScore: input.campaignScore + resultForSeat.roundScore,
     squadrons: ownFormationValues, playerAssets: ownAssetsForSeat, enemyAssets: enemyAssetsForSeat,
     playerBaseHealth: ownAssetsForSeat.find(asset => asset.kind === 'base')?.health ?? input.playerBaseHealth,
     enemyBaseHealth: enemyAssetsForSeat.find(asset => asset.kind === 'base')?.health ?? input.enemyBaseHealth,
-    logistics: input.logistics + (settled ? 0 : income.total), economy: { lastSettledRound: input.round, statement },
+    logistics: paid.logistics, economy: paid.economy,
     command: Math.min(3, input.command + 1),
     mappedAreas: [...new Map([...input.mappedAreas, ...resultForSeat.mappedAreas].map(point => [`${point[0]}:${point[1]}`, point])).values()],
     discoveredBoundaries: clone(input.discoveredBoundaries),
@@ -304,7 +292,7 @@ export function resolveOnlineRound(seats: [MatchState, MatchState], seed: number
   const aEnemyReports = new Map(a.enemyAssets.map(asset => [localId(asset.id), asset]))
   const bAssets = b.playerAssets.map(asset => {
     const report = aEnemyReports.get(localId(asset.id))
-    return { ...mapAsset(asset, opponentId(asset.id)), intel: report?.intel ?? 'unknown', confidence: report?.confidence ?? 0,
+    return { ...mapAsset(asset, opponentId(asset.id)), defenseSurvey: report?.defenseSurvey, intel: report?.intel ?? 'unknown', confidence: report?.confidence ?? 0,
       hidden: !report || report.intel === 'unknown' || report.hidden }
   })
   const bKnownTargets = new Map<string, string>()
@@ -338,7 +326,7 @@ export function resolveOnlineRound(seats: [MatchState, MatchState], seed: number
       sortieOrdered: flight.sortieOrdered, plannedRecoveryFieldId: undefined }
   })
   const aFormations = raw.squadrons.map(item => clone(item))
-  const bOwnAssets = raw.assets.map(asset => ({ ...clone(asset), id: localId(asset.id), intel: 'confirmed' as const, confidence: 100, hidden: false, basedFormationIds: asset.basedFormationIds?.map(localId) }))
+  const bOwnAssets = raw.assets.map(asset => ({ ...clone(asset), id: localId(asset.id), defenseSurvey: undefined, intel: 'confirmed' as const, confidence: 100, hidden: false, basedFormationIds: asset.basedFormationIds?.map(localId) }))
   const bSettledAssets = applyRecoveryOutcomesToBasing(bOwnAssets, bRecovery.map(item => ({ ...item,
     formationId: localId(item.formationId), launchFieldId: localId(item.launchFieldId), plannedFieldId: localId(item.plannedFieldId), actualFieldId: item.actualFieldId ? localId(item.actualFieldId) : undefined,
   })), bFormations)
@@ -349,7 +337,7 @@ export function resolveOnlineRound(seats: [MatchState, MatchState], seed: number
     squadrons: bFormations.map(formation => ({ ...formation, id: opponentId(formation.id) })),
     assets: raw.playerAssets.map(asset => {
       const prior = b.enemyAssets.find(item => localId(item.id) === localId(asset.id))
-      return { ...clone(asset), id: opponentId(localId(asset.id)), intel: prior?.intel ?? 'unknown',
+      return { ...clone(asset), id: opponentId(localId(asset.id)), defenseSurvey: prior?.defenseSurvey, intel: prior?.intel ?? 'unknown',
         confidence: prior?.confidence ?? 0, hidden: !prior || prior.intel === 'unknown' || prior.hidden }
     }),
     playerAssets: bSettledAssets,
@@ -367,19 +355,28 @@ export function resolveOnlineRound(seats: [MatchState, MatchState], seed: number
   }) : sequence)
   const aResult = {
     ...aProjection,
-    logisticsIncome: sideIncome(a, aProjection.enemyLosses, aProjection.intelReports),
+    logisticsIncome: deriveLogisticsIncome(a, aProjection),
   }
   const reportedAssets = (raw.cpuReport?.sites ?? []).map(report => ({
     id: opponentId(report.id), kind: report.kind, position: clone(report.position), health: report.health,
     maxHealth: report.maxHealth, intel: 'confirmed' as const, confidence: 90, hidden: false, struck: false,
-    upgrades: clone(report.upgrades ?? []), operational: report.operational,
+    defenseSurvey: clone(report.defenseSurvey), operational: report.operational,
   }))
-  const bNewIntelReports = reportedAssets.flatMap(asset => {
+  const bNewIntelReports: RoundResult['intelReports'] = reportedAssets.flatMap(asset => {
     const previous = b.enemyAssets.find(item => item.id === asset.id)
     const observerId = raw.cpuReport?.siteObservers?.[localId(asset.id)]
-    if (previous && previous.intel !== 'unknown' && !previous.hidden || !observerId) return []
-    return [{ id: `intel-${asset.id}`, observerId, assetId: asset.id, confidence: 90,
-      recovered: true, detail: `Recovered ${asset.kind} coordinates.` }]
+    if (!observerId) return []
+    const reports: RoundResult['intelReports'] = []
+    if (!previous || previous.intel === 'unknown' || previous.hidden) {
+      reports.push({ id: `intel-${asset.id}`, observerId, assetId: asset.id, confidence: 90,
+        recovered: true, detail: `Recovered ${asset.kind} coordinates.` })
+    }
+    const surveyObserver = raw.cpuReport?.defenseSurveyObservers?.[localId(asset.id)]
+    if (surveyObserver && foundNewDefenseUpgrade(previous?.defenseSurvey, asset.defenseSurvey)) {
+      reports.push({ id: `survey-${asset.id}`, kind: 'defense-upgrade', observerId: surveyObserver, assetId: asset.id, confidence: 90,
+        recovered: true, detail: `Surveyed an enemy ${asset.kind.toUpperCase()} upgrade.` })
+    }
+    return reports
   })
   const refreshedAssets = new Map(reportedAssets.map(asset => [asset.id, asset]))
   reverse.assets = reverse.assets.map(asset => refreshedAssets.get(asset.id) ?? asset)
@@ -387,7 +384,7 @@ export function resolveOnlineRound(seats: [MatchState, MatchState], seed: number
   const bProjection = projectResult(reverse, bSeed, bOpponents, b, raw.cpuReport?.groundSightings?.[1]??[], new Set(reportedAssets.map(asset=>localId(asset.id))))
   const bResult = {
     ...bProjection,
-    logisticsIncome: sideIncome(b, bProjection.enemyLosses, bProjection.intelReports),
+    logisticsIncome: deriveLogisticsIncome(b, bProjection),
   }
   const aResultWithRound = { ...aResult, round: a.round }
   const bResultWithRound = { ...bResult, round: b.round }

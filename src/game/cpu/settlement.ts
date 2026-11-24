@@ -1,5 +1,7 @@
 import { isCampaign } from '../campaign'
 import { modifiedStat } from '../upgrades'
+import { foundNewDefenseUpgrade } from '../defenseIntel'
+import { objectiveRewards } from '../objectives'
 import { LOGISTICS_EFFECTS } from '../economyRules'
 import type { MatchState, RoundResult } from '../types'
 import { applyRecoveryOutcomesToBasing } from '../forwardBasing'
@@ -10,6 +12,11 @@ import { executeCpuEconomyCommand } from './economy'
 export function settleCpuRound(state: MatchState, result: RoundResult): MatchState {
   if (!isCampaign(state) || !state.cpu || !result.cpuReport || state.cpu.lastSettledRound === result.round) return state
   const cpu = structuredClone(state.cpu), report = result.cpuReport
+  const rewards = objectiveRewards(cpu.completedObjectives, new Set(cpu.formations.map(formation => formation.id)),
+    result.playerAssets, result.combatSequences, report.sites.some(site =>
+      foundNewDefenseUpgrade(cpu.sites.find(previous => site.id === previous.id)?.defenseSurvey, site.defenseSurvey)))
+  if (rewards.length) cpu.completedObjectives = [...(cpu.completedObjectives ?? []), ...rewards.map(reward => reward.id)]
+  cpu.logistics += rewards.reduce((sum, reward) => sum + reward.amount, 0)
   const priorIds = new Set(cpu.sites.map(site => site.id))
   const sites = new Map(cpu.sites.map(site => [site.id, site]))
   for (const site of report.sites) sites.set(site.id, site)

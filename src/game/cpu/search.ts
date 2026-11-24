@@ -41,7 +41,7 @@ export function collectionScorer(view:CpuPlanningView,prior=searchPrior(view),fo
     const flying=orders.filter(o=>o.sortieOrdered!==false).map(o=>forecasts(o).map(f=>{
       let mask=cache.get(f.order)
       if(!mask){
-        const radius=groundObservationRange(f.order.role)
+        const radius=groundObservationRange(f.order.role, f.order)
         mask=points.map(p=>covers(f.order.route,p.point,radius))
         cache.set(f.order,mask)
       }

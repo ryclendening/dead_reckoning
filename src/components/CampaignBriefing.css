@@ -11,3 +11,7 @@
 .campaign-briefing-detail{padding:0 8px 8px}
 .campaign-briefing:not([open]) .campaign-briefing-detail{display:none}
 @media(max-width:500px){.campaign-briefing{top:9px;right:9px;width:min(286px,calc(100% - 118px));padding:0}.campaign-briefing summary{padding:4px 6px;font-size:7px}.campaign-briefing summary span{font-size:6px}}
+
+.campaign-contracts { display: grid; gap: 4px; margin: 8px 0 0; padding: 8px 0 0; border-top: 1px solid #445b4f; list-style: none; }
+.campaign-contracts li { display: flex; justify-content: space-between; gap: 6px; font-size: 12px; }
+.campaign-contracts b { color: #c4e9be; white-space: nowrap; }

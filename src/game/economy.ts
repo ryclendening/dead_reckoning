@@ -1,9 +1,10 @@
 import type { ConstructibleAssetKind, EconomyActionId, EconomyActionQuote, EconomyCommand, EconomyTarget, MatchState, Point, RoundResult, LogisticsIncome, LogisticsStatementEntry } from './types'
 import { normalizeFormationBasing, formationField } from './forwardBasing'
-import { campaignOutcome, campaignOutcomePhase } from './campaign'
+import { campaignOutcome, campaignOutcomePhase, isCampaign } from './campaign'
 import { maintainCpu, planNextCpuRound } from './cpu/settlement'
 import { modifiedStat } from './upgrades'
 import { LOGISTICS_EFFECTS } from './economyRules'
+import { objectiveRewards } from './objectives'
 import { sidePlanningContext, applySideContext } from './sideContext'
 import * as shared from './sideEconomy'
 export { LOGISTICS_COSTS, LOGISTICS_EFFECTS } from './economyRules'
@@ -23,22 +24,36 @@ export function executeEconomyCommand(s: MatchState, c: EconomyCommand): MatchSt
 }
 export const purchaseEconomyAction = (s: MatchState, actionId: EconomyActionId, target: EconomyTarget) => executeEconomyCommand(s, { actionId, target })
 const baseAsset=(state:MatchState)=>state.playerAssets.find(a=>a.kind==='base')
-export function deriveLogisticsIncome(state: MatchState, result: Pick<RoundResult, 'enemyLosses' | 'intelReports'>): LogisticsIncome {
+type IncomeResult = Pick<RoundResult, 'enemyLosses' | 'intelReports'> & Partial<Pick<RoundResult, 'assets' | 'combatSequences'>>
+
+export function deriveLogisticsIncome(state: MatchState, result: IncomeResult): LogisticsIncome {
   const base = modifiedStat(baseAsset(state), 'economy.baseIncome', LOGISTICS_EFFECTS.baseIncome)
-  const intel = result.intelReports.filter(report => report.recovered).length * LOGISTICS_EFFECTS.intelRecovery
+  const intel = result.intelReports.filter(report => report.recovered && report.kind !== 'defense-upgrade').length * LOGISTICS_EFFECTS.intelRecovery
   const enemyAircraft = result.enemyLosses * LOGISTICS_EFFECTS.confirmedEnemyAircraft
-  return { base, intel, enemyAircraft, total: base + intel + enemyAircraft }
+  const objectives = isCampaign(state) ? objectiveRewards(state.economy.completedObjectives,
+    new Set(state.squadrons.map(formation => formation.id)), result.assets ?? [], result.combatSequences ?? [],
+    result.intelReports.some(report => report.recovered && report.kind === 'defense-upgrade')) : []
+  const total = base + intel + enemyAircraft + objectives.reduce((sum, reward) => sum + reward.amount, 0)
+  return { base, intel, enemyAircraft, total, ...(objectives.length ? { objectives } : {}) }
+}
+
+export function applyRoundIncome(state: MatchState, round: number, income: LogisticsIncome, retainStatement = false) {
+  if (state.economy.lastSettledRound === round) return state
+  const entries: LogisticsStatementEntry[] = [
+    ...(retainStatement ? state.economy.statement : []),
+    { id: `income-${round}-base`, round, direction: 'income', amount: income.base, label: income.base > LOGISTICS_EFFECTS.baseIncome ? 'ROUND PAY · SUPPLY DEPOT' : 'ROUND PAY', source: 'round-income' },
+    ...(income.intel ? [{ id: `income-${round}-intel`, round, direction: 'income' as const, amount: income.intel, label: 'INTELLIGENCE RECOVERY', source: 'intel-recovery' }] : []),
+    ...(income.enemyAircraft ? [{ id: `income-${round}-enemy-aircraft`, round, direction: 'income' as const, amount: income.enemyAircraft, label: 'CONFIRMED ENEMY AIRCRAFT', source: 'enemy-aircraft' }] : []),
+    ...(income.objectives ?? []).map(({ id, label, amount })=>({ id: `income-${round}-${id}`, round, label, amount, direction: 'income' as const, source: 'objective' })),
+  ]
+  const completed = new Set([...(state.economy.completedObjectives ?? []), ...(income.objectives ?? []).map(reward => reward.id)])
+  return { ...state, logistics: state.logistics + income.total, economy: {
+    lastSettledRound: round, statement: entries, ...(completed.size ? { completedObjectives: [...completed] } : {}),
+  } }
 }
 
 export function settleLogisticsIncome(state: MatchState, result: RoundResult): MatchState {
-  if (state.economy.lastSettledRound === result.round) return state
-  const income = result.logisticsIncome
-  const entries: LogisticsStatementEntry[] = [
-    { id: `income-${result.round}-base`, round: result.round, direction: 'income', amount: income.base, label: income.base > LOGISTICS_EFFECTS.baseIncome ? 'ROUND PAY · SUPPLY DEPOT' : 'ROUND PAY', source: 'round-income' },
-    ...(income.intel ? [{ id: `income-${result.round}-intel`, round: result.round, direction: 'income' as const, amount: income.intel, label: 'INTELLIGENCE RECOVERY', source: 'intel-recovery' }] : []),
-    ...(income.enemyAircraft ? [{ id: `income-${result.round}-enemy-aircraft`, round: result.round, direction: 'income' as const, amount: income.enemyAircraft, label: 'CONFIRMED ENEMY AIRCRAFT', source: 'enemy-aircraft' }] : []),
-  ]
-  return { ...state, logistics: state.logistics + income.total, economy: { lastSettledRound: result.round, statement: entries } }
+  return applyRoundIncome(state, result.round, result.logisticsIncome)
 }
 
 /** Enter the visible Resupply phase before running the CPU's private adaptation work. */

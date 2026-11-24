@@ -23,7 +23,7 @@ export function flightActivityLabel(mode?:string){
 export function assetCardData(asset:Asset,enemy=false,phase:Phase='plan',result?:RoundResult,seconds=0):UnitCardData|undefined{
   if(enemy&&(asset.hidden||asset.intel==='unknown'))return undefined
   const condition=asset.health<=0?'DESTROYED':asset.operational===false?'OFFLINE':asset.health<asset.maxHealth?'DAMAGED':'OPERATIONAL'
-  const sam=asset.kind==='sam'?samStatusForPhase(asset.id,phase,result?.weaponEffects,seconds):undefined
+  const sam=asset.kind==='sam'?samStatusForPhase(asset.id,phase,result?.weaponEffects,seconds,asset):undefined
   const availability=sam?sam.remaining===0?'EMPTY':sam.cooldown>.001?`COOLDOWN ${sam.cooldown.toFixed(1)}s`:'READY':undefined
   return {title:asset.name??ASSET_LABELS[asset.kind],subtitle:`${ASSET_LABELS[asset.kind]} · ${enemy?asset.intel.toUpperCase():'FRIENDLY'}`,health:asset.health,maxHealth:asset.maxHealth,
     status:condition==='DESTROYED'||condition==='OFFLINE'?condition:sam?`${sam.remaining}/${sam.capacity} MSL · ${availability}`:condition,

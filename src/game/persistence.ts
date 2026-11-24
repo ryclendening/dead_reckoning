@@ -10,6 +10,8 @@ import { createCpuState, prepareCpuRound } from './cpu/planner'
 import { validCpuReport, validCpuState } from './cpu/persistence'
 import { normalizeAircraftType } from './aircraftTypes'
 import { isKnownUpgradeId } from './upgrades'
+import { validDefenseSurvey } from './defenseIntel'
+import { isObjectiveId } from './objectives'
 
 const phases = new Set(['deploy', 'plan', 'execute', 'debrief', 'adapt', 'victory', 'defeat', 'draw'])
 const roles = new Set(['fighter', 'recon', 'bomber'])
@@ -110,6 +112,7 @@ function validAsset(value: unknown): value is Asset {
   if (value.capacity !== undefined && (!Number.isInteger(value.capacity) || !finite(value.capacity) || value.capacity < 1)) return false
   if (value.basedFormationIds !== undefined && !strings(value.basedFormationIds)) return false
   if (!validUpgrades(value.upgrades)) return false
+  if (value.defenseSurvey !== undefined && !validDefenseSurvey(value.defenseSurvey)) return false
   if (value.name !== undefined && typeof value.name !== 'string') return false
   return true
 }
@@ -117,6 +120,8 @@ function validAsset(value: unknown): value is Asset {
 function validEconomy(value: unknown): value is EconomyState {
   if (!record(value) || !Array.isArray(value.statement)) return false
   if (value.lastSettledRound !== undefined && (!Number.isInteger(value.lastSettledRound) || !nonnegative(value.lastSettledRound))) return false
+  if (value.completedObjectives !== undefined && (!Array.isArray(value.completedObjectives)
+    || !value.completedObjectives.every(isObjectiveId))) return false
   return value.statement.every(entry => record(entry) && text(entry.id) && Number.isInteger(entry.round) && nonnegative(entry.round)
     && (entry.direction === 'income' || entry.direction === 'spend') && finite(entry.amount) && entry.amount >= 0
     && text(entry.label) && text(entry.source))

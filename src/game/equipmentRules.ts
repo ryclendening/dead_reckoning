@@ -49,15 +49,19 @@ export function effectiveDefenseProfile(site: DefenseSite, sameSideSites: readon
   const base = isOperationalSite(site) ? defenseProfile(site) : undefined
   if (!base) return undefined
   const links: RadarLink[] = []
+  let fireControl = 0
   for (const radar of sameSideSites) {
     if (radar.kind !== 'radar' || !isOperationalSite(radar)) continue
     const link = { id: radar.id, position: radar.position, radius: radarRange(radar) }
-    if (inCoverageCircle(site.position, link)) links.push(link)
+    if (inCoverageCircle(site.position, link)) {
+      links.push(link)
+      fireControl = Math.max(fireControl, modifiedStat(radar, 'ground.radar.guidedHitChance', 0))
+    }
   }
   links.sort((a, b) => a.id.localeCompare(b.id))
   const range = site.kind === 'aaa' && links.length ? base.range * RADAR_AAA_MULTIPLIER : base.range
   const radarLinks = site.kind === 'sam' ? links : links.slice(0, 1)
   const coverage = [{ position: site.position, radius: range }]
   if (site.kind === 'sam') coverage.push(...radarLinks)
-  return { ...base, range, baseRange: base.range, radarLinks, coverage }
+  return { ...base, hitChance: Math.min(1, base.hitChance + fireControl), range, baseRange: base.range, radarLinks, coverage }
 }

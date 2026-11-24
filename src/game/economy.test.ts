@@ -3,6 +3,9 @@ import { createMatch } from './data'
 import { beginNextRound, deriveLogisticsIncome, economyAttentionTargets, economyCommandForQuote, economyQuotesFor, executeEconomyCommand, findMatchingEconomyQuote, LOGISTICS_COSTS, openAdaptPhase, purchaseEconomyAction, settleLogisticsIncome, validateAssetPlacement, validateFobPlacement } from './economy'
 import { FORMATION_PRICES } from './economyRules'
 import { resolveRound } from './engine'
+import { flightRangeFor } from './flightRules'
+import { groundAttackDamage } from './strikeRules'
+import { effectiveDefenseProfile, radarRange } from './equipmentRules'
 import { normalizeMatch } from '../App'
 import type { ConstructibleAssetKind, EconomyActionId, IntelReport, MatchState, Point } from './types'
 
@@ -74,7 +77,7 @@ describe('logistics economy', () => {
       playerAssets: [...base.playerAssets.map(asset => asset.kind === 'base' ? asset : { ...asset, health: 50 }), fob] }
     for (const asset of state.playerAssets.filter(asset => asset.kind !== 'base')) {
       const target = { kind: 'asset' as const, id: asset.id }
-      expect(economyQuotesFor(state, target)).toEqual([])
+      expect(economyQuotesFor(state, target).every(quote => quote.effect.kind === 'upgrade-installation')).toBe(true)
       expect(purchaseEconomyAction(state, 'repair-defense', target)).toBe(state)
       expect(purchaseEconomyAction(state, 'repair-fob', target)).toBe(state)
     }
@@ -97,13 +100,13 @@ describe('logistics economy', () => {
     const state = { ...createMatch(), phase: 'adapt' as const, logistics: 20 }
     const upgraded = purchaseEconomyAction(state, 'install-maintenance-wing', { kind: 'asset', id: 'p-base' })
     const damaged = { ...upgraded, squadrons: upgraded.squadrons.map(squadron => squadron.id === 'viper' ? { ...squadron, strength: 50, aircraft: 3 } : squadron) }
-    expect(economyQuotesFor(damaged, { kind: 'squadron', id: 'viper' }).map(quote => quote.cost)).toEqual([1])
+    expect(economyQuotesFor(damaged, { kind: 'squadron', id: 'viper' }).find(quote => quote.id === 'repair-formation')?.cost).toBe(1)
   })
 
   it('returns exact effects and resource projections and omits irrelevant healthy actions', () => {
     const healthy = { ...createMatch(), phase: 'adapt' as const }
-    expect(economyQuotesFor(healthy, { kind: 'squadron', id: 'viper' })).toEqual([])
-    expect(economyQuotesFor(healthy, { kind: 'asset', id: 'p-radar' })).toEqual([])
+    expect(economyQuotesFor(healthy, { kind: 'squadron', id: 'viper' }).map(quote => quote.upgradeId)).toEqual(['extended-tanks', 'precision-ordnance'])
+    expect(economyQuotesFor(healthy, { kind: 'asset', id: 'p-radar' }).map(quote => quote.upgradeId)).toEqual(['wide-scan', 'fire-control'])
 
     const damaged = { ...healthy, logistics: 7, squadrons: healthy.squadrons.map(formation =>
       formation.id === 'viper' ? { ...formation, strength: 88 } : formation) }
@@ -112,6 +115,30 @@ describe('logistics economy', () => {
       effect: { kind: 'formation-strength', before: 88, after: 100 },
       projected: { logistics: 5, reserveAircraft: 3 },
     })
+  })
+
+  it('installs one surviving unit refit, persists it, and applies it to authoritative stats', () => {
+    const initial = { ...createMatch(), phase: 'adapt' as const, logistics: 40 }
+    const radar = { kind: 'asset', id: 'p-radar' } as const
+    const fighter = { kind: 'squadron', id: 'viper' } as const
+    const recon = { kind: 'squadron', id: 'raven' } as const
+    const battery = { kind: 'asset', id: 'p-sam' } as const
+    let state = purchaseEconomyAction(initial, 'install-wide-scan', radar)
+    expect(radarRange(state.playerAssets.find(asset => asset.id === radar.id)!)).toBe(8)
+    expect(purchaseEconomyAction(state, 'install-fire-control', radar)).toBe(state)
+    expect(purchaseEconomyAction(state, 'install-precision-ordnance', recon)).toBe(state)
+    state = purchaseEconomyAction(state, 'install-precision-ordnance', fighter)
+    state = purchaseEconomyAction(state, 'install-extended-tanks', recon)
+    state = purchaseEconomyAction(state, 'install-sam-magazine', battery)
+    expect(state.logistics).toBe(8)
+    const loaded = normalizeMatch(JSON.parse(JSON.stringify(state)))
+    const loadedFighter = loaded.squadrons.find(unit => unit.id === fighter.id)!
+    const loadedRecon = loaded.squadrons.find(unit => unit.id === recon.id)!
+    expect(groundAttackDamage(loadedFighter, 'sam', 100)).toBe(55)
+    expect(groundAttackDamage(loadedFighter, 'base', 100)).toBe(40)
+    expect(flightRangeFor(loadedRecon)).toBeCloseTo(64 * 1.2)
+    expect(effectiveDefenseProfile(loaded.playerAssets.find(asset => asset.id === battery.id)!, loaded.playerAssets)?.magazine).toBe(4)
+    expect(purchaseEconomyAction(loaded, 'install-extended-tanks', fighter)).toBe(loaded)
   })
 
   it('rejects insufficient, stale, and retargeted commands without mutation', () => {

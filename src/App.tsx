@@ -28,6 +28,7 @@ import { generateRouteTemplate, protectOrbit, validateBomberOrderForPlayer, vali
 import { normalizeMatch } from './game/persistence'
 import { planBombingTarget, removeBombingTarget } from './game/groundStrikePlanning'
 import { approachWaypoints, mapProtectOrder, mapStrikeOrder, resetMapOrder } from './game/mapPlanning'
+import { isDefenseSite, surveyedDefenseSites } from './game/defenseIntel'
 import { aircraftInspectionAt } from './game/unitCards'
 import { debriefMapSites } from './game/debriefMap'
 import { DebriefSymbol } from './components/DebriefSymbols'
@@ -266,7 +267,7 @@ export default function App(){
     : undefined
   const inspectingEnemy=Boolean(inspectedAsset&&replayMatch.enemyAssets.some(asset=>asset.id===inspectedAsset.id))
   const inspectionSites=inspectedAsset?(inspectingEnemy
-    ? replayMatch.enemyAssets.filter(asset=>!asset.hidden&&asset.intel==='confirmed')
+    ? surveyedDefenseSites(replayMatch.enemyAssets)
     : replayMatch.playerAssets).map(asset=>visiblePhase==='execute'&&!projectedGround?projectGroundAssetAt(asset,executionResult,inspectionSeconds):asset):undefined
   const inspectedAircraft=visiblePhase==='execute'&&inspectedFlightId?aircraftInspectionAt(executionResult,inspectedFlightId,inspectionSeconds):undefined
   const inspectAsset=(id:string)=>{if(match.phase==='adapt'){selectEconomyTarget({kind:'asset',id},false);return}setSelectedAssetId(id);setInspectedFlightId(undefined)}
@@ -652,7 +653,15 @@ export default function App(){
   const focusEvent=(event:CombatEvent)=>{const target=match.squadrons.find(s=>event.detail.includes(s.callsign));if(target){setFollowId(target.id);setMatch(m=>({...m,selectedId:target.id}))}else setFollowId(undefined);if(event.position)setFocusPoint(event.position);setActiveEvent(event)}
   const selectEconomyTarget=(target:EconomyTarget,focus=true)=>{closeProcurement();setEconomyTarget(target);setSelectedAssetId(target.kind==='asset'?target.id:undefined);setInspectedFlightId(undefined);const point=target.kind==='asset'?[...match.playerAssets,...match.enemyAssets.filter(asset=>!asset.hidden&&asset.intel!=='unknown')].find(asset=>asset.id===target.id)?.position:target.kind==='squadron'?match.playerAssets.find(asset=>asset.id===formationBaseId(planningBaseGroups,target.id))?.position:undefined;setFocusPoint(focus?point:undefined)}
   const purchaseEconomy=(command:EconomyCommand)=>onlineSession?void sendOnlineAction({type:'purchase',actionId:command.actionId,target:command.target,placement:command.placement,upgradeId:command.upgradeId}):setMatch(state=>executeEconomyCommand(state,command))
-  const changeProcurementMode=(mode:ProcurementMode)=>{setFocusPoint(undefined);setProcurementMode(mode);if(mode!=='placing')setProcurementPlacement(undefined);if(mode==='catalog'){setProcurementActionId(undefined);setSelectedAssetId(undefined);setEconomyTarget({kind:'campaign',id:'campaign'})}if(mode==='closed'){setProcurementActionId(undefined);setSelectedAssetId(undefined);setEconomyTarget({kind:'campaign',id:'campaign'})}}
+  const changeProcurementMode=(mode:ProcurementMode,upgradeTarget?:EconomyTarget)=>{
+    setFocusPoint(undefined)
+    setProcurementMode(mode)
+    if(mode==='placing')return
+    setProcurementPlacement(undefined)
+    setProcurementActionId(undefined)
+    setSelectedAssetId(undefined)
+    setEconomyTarget(upgradeTarget??{kind:'campaign',id:'campaign'})
+  }
   const selectProcurementAction=(actionId:EconomyActionId)=>{setFocusPoint(undefined);setProcurementActionId(actionId);setProcurementPlacement(undefined);setProcurementMode('placing');setEconomyTarget({kind:'campaign',id:'campaign'})}
   const procurementDefinition=PROCUREMENT_CATALOG.find(item=>item.actionId===procurementActionId)
   const validProcurementPoint=useMemo(()=>{
@@ -702,8 +711,8 @@ export default function App(){
             asset={inspectedAsset} sites={inspectionSites} enemy={inspectingEnemy} phase={visiblePhase}
             result={inspectionResult} seconds={inspectionSeconds}
             onClose={()=>visiblePhase==='adapt'?selectEconomyTarget({kind:'campaign',id:'campaign'},false):setSelectedAssetId(undefined)}
-            onUpgrades={visiblePhase==='adapt'&&!inspectingEnemy&&inspectedAsset.kind==='base'
-              ? ()=>{setPurchaseCategory('Upgrades');changeProcurementMode('catalog')}
+            onUpgrades={visiblePhase==='adapt'&&!inspectingEnemy&&inspectedAsset.operational!==false&&(inspectedAsset.kind==='base'||isDefenseSite(inspectedAsset))
+              ? ()=>{setPurchaseCategory('Upgrades');changeProcurementMode('catalog',{kind:'asset',id:inspectedAsset.id})}
               : undefined}/>:null}
         </div>
         {visiblePhase==='execute'?<ExecutionOverlay progress={executionProgress} speed={speed} onSpeed={()=>setSpeed(s=>s===1?2:1)} match={replayMatch} result={executionResult} selectedId={match.selectedId} followId={followId} onSelectFormation={selectFormation} onClearFollow={()=>setFollowId(undefined)} onAirfield={focusAirfield}/>:null}
@@ -763,7 +772,7 @@ export function Debrief({match,focusedEvent,onFocus,onResupply,pending=false}:{
   const message=outcome?campaignOutcomeMessage(outcome):undefined
   const intel=result.intelReports.filter(report=>report.recovered).map(report=>result.assets.find(asset=>asset.id===report.assetId)).filter((asset):asset is Asset=>!!asset)
   const losses=result.friendlyAttrition.filter(item=>item.aircraftLost>0)
-  const {base,intel:intelIncome,enemyAircraft,total}=result.logisticsIncome
+  const {base,intel:intelIncome,enemyAircraft,total,objectives=[]}=result.logisticsIncome
   const depotPay=Math.max(0,base-LOGISTICS_EFFECTS.baseIncome)
   const enemyBase=match.enemyAssets.find(asset=>asset.kind==='base'&&asset.intel==='confirmed'&&!asset.hidden)
   const orders=missionOrderDebrief(match,result)
@@ -803,6 +812,7 @@ export function Debrief({match,focusedEvent,onFocus,onResupply,pending=false}:{
           <div><dt>Round pay</dt><dd>+{formatCash(base-depotPay)}</dd></div>
           {depotPay>0?<div><dt>Supply Depot</dt><dd>+{formatCash(depotPay)}</dd></div>:null}
           <div><dt>Recovered intel <small>{formatCash(LOGISTICS_EFFECTS.intelRecovery)} per new site</small></dt><dd>{intelIncome>0?'+':''}{formatCash(intelIncome)}</dd></div>
+          {objectives.map(reward=><div key={reward.id}><dt>{reward.label}</dt><dd>+{formatCash(reward.amount)}</dd></div>)}
           <div><dt>Confirmed enemy losses <small>{formatCash(LOGISTICS_EFFECTS.confirmedEnemyAircraft)} per aircraft</small></dt><dd>{enemyAircraft>0?'+':''}{formatCash(enemyAircraft)}</dd></div>
         </dl>
       </details>

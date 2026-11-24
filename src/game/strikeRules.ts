@@ -1,3 +1,4 @@
+import { modifiedStat } from './upgrades'
 import { aircraftStrikeRange } from './aircraftTypes'
 import type { AssetKind, Squadron, WeaponKind } from './types'
 
@@ -19,7 +20,7 @@ export function groundAttackProfile(formation: Pick<Squadron, 'role' | 'aircraft
     : { weapon: 'air-to-ground-missile', releaseRange: aircraftStrikeRange(formation), payloads: 1 }
 }
 
-export function groundAttackDamage(formation: Pick<Squadron, 'role' | 'strength'>, target: AssetKind, strength = formation.strength ?? 100): number {
+export function groundAttackDamage(formation: Pick<Squadron, 'role' | 'strength' | 'upgrades'>, target: AssetKind, strength = formation.strength ?? 100): number {
   // A carried bomb remains a full ordnance payload even when the formation is
   // damaged. Non-base sites top out at 100 health, so one release destroys
   // equipment; base damage still scales with strength and takes two hits.
@@ -27,5 +28,7 @@ export function groundAttackDamage(formation: Pick<Squadron, 'role' | 'strength'
   const fullStrength = formation.role === 'bomber'
     ? target === 'base' ? BOMBER_BASE_DAMAGE : BOMBER_DAMAGE
     : FIGHTER_STRIKE_DAMAGE
-  return Math.round(fullStrength * Math.max(0, Math.min(100, strength)) / 100)
+  const damage = formation.role === 'fighter' && target === 'base'
+    ? fullStrength : modifiedStat(formation, 'aircraft.groundAttackDamage', fullStrength)
+  return Math.round(damage * Math.max(0, Math.min(100, strength)) / 100)
 }

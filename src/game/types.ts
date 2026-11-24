@@ -75,9 +75,11 @@ export interface Asset {
   id: string; kind: AssetKind; position: Point
   intel: IntelLevel; confidence: number; health: number; maxHealth: number; hidden: boolean; struck: boolean
   name?: string; operational?: boolean; capacity?: number; basedFormationIds?: string[]; upgrades?: UpgradeId[]
+  defenseSurvey?: DefenseSurvey
 }
 /** String IDs are catalog-backed so new upgrade entries do not require widening this union. */
 export type UpgradeId = string
+export interface DefenseSurvey { round: number; upgrades: UpgradeId[] }
 /** @deprecated Use UpgradeId; retained for save and import compatibility. */
 export type AssetUpgradeId = UpgradeId
 export type EconomyActionId = 'repair-formation' | 'replace-aircraft' | 'repair-defense' | 'repair-fob' | `install-${string}` | 'buy-fighter' | 'buy-recon' | 'buy-bomber' | 'build-fob' | 'build-decoy' | 'build-sam' | 'build-aaa' | 'build-radar'
@@ -101,12 +103,14 @@ export interface EconomyCommand {
   placement?: Point
   expectedCost?: number; expectedReserveCost?: number; expectedLogistics?: number; expectedReserveAircraft?: number
 }
-export interface LogisticsIncome { base: number; intel: number; enemyAircraft: number; total: number }
+export type ObjectiveId = 'silence-radar' | 'suppress-battery' | 'survey-upgrade'
+export interface ObjectiveReward { id: ObjectiveId; label: string; amount: number }
+export interface LogisticsIncome { base: number; intel: number; enemyAircraft: number; total: number; objectives?: ObjectiveReward[] }
 export interface LogisticsStatementEntry {
   id: string; round: number; direction: 'income' | 'spend'; amount: number; label: string
   source: string; target?: EconomyTarget
 }
-export interface EconomyState { lastSettledRound?: number; statement: LogisticsStatementEntry[] }
+export interface EconomyState { lastSettledRound?: number; statement: LogisticsStatementEntry[]; completedObjectives?: ObjectiveId[] }
 export interface EconomyActionQuote {
   id: EconomyActionId; target: EconomyTarget; label: string; detail: string; cost: number
   upgradeId?: UpgradeId
@@ -204,6 +208,7 @@ export interface InterceptPlan {
 export interface SimulationCommand {id:string;unitId:string;type:'rtb';issuedAtTick:number}
 export interface ThreatAlert {id:string;unitId:string;time:number;kind:'fighter-contact'|'sam-launch'|'aaa-launch';sourceId:string}
 export interface IntelReport {
+  kind?: 'defense-upgrade'
   id: string; observerId: string; assetId: string; confidence: number; recovered: boolean; detail: string
 }
 export interface OperationalFinding {

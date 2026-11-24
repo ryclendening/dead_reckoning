@@ -1,5 +1,7 @@
 import { Crosshair, Eye, Shield } from 'lucide-react'
 import { CAMPAIGN_ROUND_LIMIT } from '../game/campaign'
+import { OBJECTIVE_REWARDS } from '../game/objectives'
+import { formatCash } from '../game/economyRules'
 import type { Asset, MatchState } from '../game/types'
 import './CampaignBriefing.css'
 
@@ -28,6 +30,12 @@ export function CampaignBriefing({ match, target, homeHealth, enemyHealth }: {
     <div className="campaign-threat"><Eye/><span><b>PROTECT HOME BASE</b><small>Both sides can strike after recovering target coordinates. Both bases surviving round {CAMPAIGN_ROUND_LIMIT} is a draw.</small></span></div>
     <div className="campaign-health"><span>HOME BASE</span><i><em style={{ width: `${Math.max(0, Math.min(100, homeHealth))}%` }}/></i><b>{homeHealth}%</b></div>
     {strikeReady ? <div className="campaign-health enemy"><span>ENEMY BASE</span><i><em style={{ width: `${Math.max(0, Math.min(100, health ?? 0))}%` }}/></i><b>{health}%</b></div> : null}
+    <ul className="campaign-contracts" aria-label="One-time payouts">
+      {Object.values(OBJECTIVE_REWARDS).map(reward => {
+        const complete = match.economy.completedObjectives?.includes(reward.id)
+        return <li key={reward.id}><span>{reward.label}</span><b>{complete ? 'Paid' : `+${formatCash(reward.amount)}`}</b></li>
+      })}
+    </ul>
     </div>
   </details>
 }

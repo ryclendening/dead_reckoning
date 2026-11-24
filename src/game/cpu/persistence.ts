@@ -1,3 +1,5 @@
+import { validDefenseSurvey } from '../defenseIntel'
+import { isObjectiveId } from '../objectives'
 import { isKnownUpgradeId } from '../upgrades'
 import type { Squadron } from '../types'
 import type { CpuRoundReport, CpuState } from './types'
@@ -11,6 +13,7 @@ const site = (v: unknown) => record(v) && text(v.id) && ['base', 'fob', 'sam', '
   && point(v.position) && number(v.health) && number(v.maxHealth) && v.maxHealth > 0 && v.health <= v.maxHealth && integer(v.observedRound) && v.observedRound > 0
   && (v.operational === undefined || typeof v.operational === 'boolean')
   && (v.upgrades === undefined || Array.isArray(v.upgrades) && v.upgrades.every(isKnownUpgradeId))
+  && (v.defenseSurvey === undefined || validDefenseSurvey(v.defenseSurvey))
   && (v.observedAt === undefined || number(v.observedAt)) && (v.estimatedDamage === undefined || number(v.estimatedDamage) && v.estimatedDamage <= v.health)
 const traffic = (v: unknown) => record(v) && point(v.position) && ['fighter', 'recon', 'bomber', 'unknown'].includes(String(v.role)) && integer(v.observedRound) && (v.trackId===undefined||text(v.trackId))
   && (v.observedAt === undefined || number(v.observedAt))
@@ -53,6 +56,10 @@ export function validCpuReport(v: unknown): v is CpuRoundReport {
     && (v.strikes === undefined || Array.isArray(v.strikes) && v.strikes.every(s=>record(s)&&text(s.sourceId)&&text(s.targetId)&&number(s.damage)&&s.damage<=300&&number(s.releasedAt)))
 }
 
+const spendingAction = (value: unknown) => typeof value === 'string' &&
+  (value.startsWith('install-') ? isKnownUpgradeId(value.slice('install-'.length))
+    : ['repair', 'replace', 'repair-defense', 'repair-formation', 'replace-aircraft', 'buy-fighter', 'buy-recon', 'buy-bomber', 'repair-fob', 'build-sam', 'build-aaa', 'build-radar', 'build-fob', 'build-decoy'].includes(value))
+
 export function validCpuState(v: unknown, validFormation: (v: unknown) => v is Squadron, round: number): v is CpuState {
   if (!record(v) || (v.version !== 1 && v.version !== 2) || !['easy', 'medium', 'hard'].includes(String(v.difficulty)) || !Number.isInteger(v.seed)
     || !integer(v.reserves) || !number(v.logistics) || !integer(v.searchIndex) || typeof v.lastReconLost !== 'boolean'
@@ -65,8 +72,10 @@ export function validCpuState(v: unknown, validFormation: (v: unknown) => v is S
       && (f.maxAircraft !== 4 || !new RegExp(`^red-reinforcement-${f.role}-[1-9][0-9]*$`).test(f.id)))
     || !Array.isArray(v.sites) || !v.sites.every(s => site(s) && (s as { observedRound: number }).observedRound <= round)
     || !Array.isArray(v.traffic) || !v.traffic.every(t => traffic(t) && (t as { observedRound: number }).observedRound <= round)
-    || !Array.isArray(v.spending) || !v.spending.every(s => record(s) && integer(s.round) && s.round <= round && text(s.targetId) && number(s.cost) && ['repair', 'replace', 'repair-defense', 'repair-formation', 'replace-aircraft', 'buy-fighter', 'buy-recon', 'buy-bomber', 'repair-fob', 'build-sam', 'build-aaa', 'build-radar', 'build-fob', 'install-maintenance-wing', 'install-supply-depot'].includes(String(s.action)))
+    || !Array.isArray(v.spending) || !v.spending.every(s => record(s) && integer(s.round) && s.round <= round && text(s.targetId) && number(s.cost) && spendingAction(s.action))
     || [v.lastSettledRound, v.lastAdaptedRound].some(n => n !== undefined && (!integer(n) || n > round))) return false
+  if (v.completedObjectives !== undefined && (!Array.isArray(v.completedObjectives)
+    || !v.completedObjectives.every(isObjectiveId))) return false
   if (v.mappedAreas !== undefined && (!Array.isArray(v.mappedAreas) || !v.mappedAreas.every(point))) return false
   if (v.intent !== undefined && !intent(v.intent) || v.adaptTrace !== undefined && !trace(v.adaptTrace)) return false
   if (v.outcomes !== undefined && (!Array.isArray(v.outcomes) || !v.outcomes.every(o=>record(o)&&integer(o.round)&&o.round<=round&&text(o.formationId)&&['search-area','defensive-cap','base-strike','forward-patrol','transit','bomb'].includes(String(o.mission))&&typeof o.recovered==='boolean'&&(o.damage===undefined||number(o.damage)&&o.damage<=300)))) return false

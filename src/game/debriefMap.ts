@@ -80,13 +80,14 @@ export function debriefMapEvents(result: RoundResult): DebriefMapEvent[] {
   }
   const reported = new Set<string>()
   for (const report of result.intelReports) {
-    if (!report.recovered || reported.has(report.assetId)) continue
+    const key = report.kind === 'defense-upgrade' ? `survey-${report.assetId}` : `intel-${report.assetId}`
+    if (!report.recovered || reported.has(key)) continue
     const asset = result.assets.find(candidate => candidate.id === report.assetId)
     if (!asset) continue
-    reported.add(asset.id)
+    reported.add(key)
     const recovery = unitTrackFor(result, report.observerId)?.frames.find(frame => frame.mode === 'recovered')
-    events.push({ id: `intel-${asset.id}`, kind: 'intel', time: recovery?.time ?? result.duration,
-      position: asset.position, title: 'INTEL RECOVERED', detail: `${asset.kind.toUpperCase()} · ${asset.name ?? 'FIXED SITE'}`, side: 'neutral' })
+    events.push({ id: key, kind: 'intel', time: recovery?.time ?? result.duration,
+      position: asset.position, title: report.kind === 'defense-upgrade' ? 'DEFENSE UPGRADE SURVEYED' : 'INTEL RECOVERED', detail: `${asset.kind.toUpperCase()} · ${asset.name ?? 'FIXED SITE'}`, side: 'neutral' })
   }
   return events.sort((a, b) => a.time - b.time || a.id.localeCompare(b.id))
 }

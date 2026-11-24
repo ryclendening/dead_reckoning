@@ -254,7 +254,7 @@ export function projectOnlineGroundReplay(result:RoundResult, seconds:number): {
   }
   for(const asset of enemy.values()){
     const sighting=latest.get(asset.id)
-    enemy.set(asset.id,sighting?applyHits({...sighting.asset,intel:asset.intel,confidence:asset.confidence},sighting.start):applyHits(asset))
+    enemy.set(asset.id,sighting?applyHits({...sighting.asset,intel:asset.intel,confidence:asset.confidence,defenseSurvey:asset.defenseSurvey,upgrades:asset.defenseSurvey?.upgrades},sighting.start):applyHits(asset))
     latest.delete(asset.id)
   }
   for(const {asset,start} of latest.values())enemy.set(asset.id,applyHits(asset,start))

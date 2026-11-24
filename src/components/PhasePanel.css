@@ -286,7 +286,7 @@
 .formation-service { pointer-events: auto; }
 .formation-service {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) auto 44px;
+  grid-template-columns: minmax(0, 1fr) auto auto 44px;
   align-items: center;
   gap: 4px;
   width: min(100%, 360px);
@@ -310,7 +310,7 @@
   cursor: pointer;
 }
 .formation-service .formation-repair { border-color: #78a596; background: #26463c; }
-.formation-service .formation-dismiss { display: grid; grid-column: 3; place-items: center; }
+.formation-service .formation-dismiss { display: grid; grid-column: 4; place-items: center; }
 .formation-dismiss svg { width: 16px; height: 16px; }
 .phase-plan .battlefield-workspace > .online-wait-panel { flex-basis: 86px; }
 

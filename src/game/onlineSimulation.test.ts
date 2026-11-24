@@ -2,9 +2,10 @@ import { describe, expect, it } from 'vitest'
 import { CAMPAIGN_ROUND_LIMIT } from './campaign'
 import { FORMATION_PRICES, LOGISTICS_EFFECTS } from './economyRules'
 import { createMatch } from './data'
-import { RADAR_BASE_RANGE } from './equipmentRules'
 import { projectOnlineGroundReplay } from './executionProjection'
 import { resolveOnlineRound } from './onlineSimulation'
+import { surveyedDefenseSites } from './defenseIntel'
+import { RADAR_BASE_RANGE, radarRange } from './equipmentRules'
 import type { MatchState, Point } from './types'
 
 function seat(seed: number, offset = 0): MatchState {
@@ -51,6 +52,8 @@ describe('authoritative online round adapter', () => {
       expect(impacts.some(effect=>effect.targetId==='p-sam')).toBe(true)
       expect(impacts.every(effect=>effect.targetId==='p-sam'||effect.targetId==='opponent:p-sam')).toBe(true)
       expect(impacts.every(effect=>!effect.sourceId.startsWith('red-'))).toBe(true)
+      expect(resolved.lastResult!.logisticsIncome.objectives).toMatchObject([{ id: 'suppress-battery', amount: 4 }])
+      expect(resolved.economy.completedObjectives).toContain('suppress-battery')
     }
     const incoming=resolvedA.lastResult!.weaponEffects.find(effect=>effect.kind==='bomb'&&effect.targetId==='p-sam'&&effect.sourceId==='hostile-aircraft')
     if(incoming)expect(incoming.from).toEqual(incoming.to)
@@ -58,6 +61,53 @@ describe('authoritative online round adapter', () => {
     expect(hiddenImpactIds).toHaveLength(2)
     expect(new Set(hiddenImpactIds).size).toBe(2)
     expect(resolvedA.enemyAssets.find(asset=>asset.id==='opponent:p-sam')?.health).toBeLessThan(100)
+  })
+
+  it.each([0, 1] as const)('keeps upgrade intel stale until recon recovers for online seat %i', owner => {
+    const prepare = (role: 'fighter' | 'recon', completed = false) => {
+      const states: [MatchState, MatchState] = [seat(50), seat(51)]
+      const homes: [Point, Point] = [[-8, 0], [8, 0]]
+      for (const [index, state] of states.entries()) {
+        const home = homes[index]
+        const radar = state.playerAssets.find(asset => asset.kind === 'radar')!
+        state.round = 3
+        state.playerAssets = [
+          { ...state.playerAssets.find(asset => asset.kind === 'base')!, position: home },
+          { ...radar, position: [home[0], 1], upgrades: ['wide-scan'] },
+        ]
+        state.enemyAssets = [{
+          ...radar, id: 'opponent:p-radar', position: [homes[1 - index][0], 1],
+          defenseSurvey: completed ? { round: 2, upgrades: ['wide-scan'] } : { round: 1, upgrades: [] },
+        }]
+        if (completed) state.economy.completedObjectives = ['survey-upgrade']
+        if (index !== owner) continue
+        const route: Point[] = [home, [homes[1 - owner][0], 1]]
+        const id = role === 'recon' ? 'raven' : 'viper'
+        state.squadrons = state.squadrons.map(formation => formation.id !== id ? formation : {
+          ...formation, mission: role === 'recon' ? 'search-area' : 'transit', route, routeIngress: route,
+          sortieOrdered: true, plannedRecoveryFieldId: 'p-base',
+        })
+      }
+      return states
+    }
+    const byFighter = resolveOnlineRound(prepare('fighter'), 56)[owner]
+    const staleRadar = surveyedDefenseSites(byFighter.enemyAssets)[0]
+    expect(staleRadar.defenseSurvey).toEqual({ round: 1, upgrades: [] })
+    expect(radarRange(staleRadar)).toBe(RADAR_BASE_RANGE)
+    expect(byFighter.lastResult?.logisticsIncome.objectives).toBeUndefined()
+    expect(byFighter.lastResult?.groundReplay?.enemySightings.map(item => item.asset.kind)).toContain('radar')
+    expect(byFighter.lastResult?.groundReplay?.enemySightings.every(item => !item.asset.upgrades && !item.asset.defenseSurvey)).toBe(true)
+
+    const byRecon = resolveOnlineRound(prepare('recon'), 56)[owner]
+    const newRadar = surveyedDefenseSites(byRecon.enemyAssets)[0]
+    expect(newRadar.defenseSurvey).toEqual({ round: 3, upgrades: ['wide-scan'] })
+    expect(radarRange(newRadar)).toBe(8)
+    expect(byRecon.lastResult?.groundReplay?.knownEnemyAtStart[0].defenseSurvey?.round).toBe(1)
+    expect(byRecon.lastResult?.logisticsIncome.objectives).toMatchObject([{ id: 'survey-upgrade', amount: 3 }])
+    expect(byRecon.economy.completedObjectives).toContain('survey-upgrade')
+
+    const seenAgain = resolveOnlineRound(prepare('recon', true), 56)[owner]
+    expect(seenAgain.lastResult?.logisticsIncome.objectives).toBeUndefined()
   })
 
   it('shows observed ground sites and their HP to both seats only when their own recon sees them', () => {

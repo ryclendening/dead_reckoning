@@ -16,6 +16,8 @@ import { aircraftSensorRange, aircraftType } from './aircraftTypes'
 import { routeFuelCost, segmentFuelCost, terrainKnownWithin } from './terrain'
 import { friendlyTerritoryForAssets } from './territory'
 import { groundObservationRange, siteObservationRange } from './siteObservation'
+import { foundNewDefenseUpgrade, isDefenseSite, surveyDefense } from './defenseIntel'
+import type { DefenseSurvey } from './types'
 import { defenseProfile, effectiveDefenseProfile, inCoverageCircle, radarRange, RADAR_BASE_RANGE, SAM_FLIGHT_SECONDS, AAA_FLIGHT_SECONDS, AAA_BURST_INTERVAL, SAM_DEPLOYMENT_LIMIT } from './equipmentRules'
 import { cpuFlights, cpuReportAt } from './cpu/planner'
 import { settleCpuRound } from './cpu/settlement'
@@ -373,6 +375,8 @@ function* simulateRoundTicks(state:MatchState, recordOpponentView:boolean):Gener
   const friendlyTerrain=terrainKnownWithin(state.world.terrain,state.mappedAreas,2.65,friendlyTerritoryForAssets(state.world.friendlyTerritory,playerAssets))
   const hostileTerrain=terrainKnownWithin(state.world.terrain,state.cpu?.mappedAreas??[],2.65,friendlyTerritoryForAssets({center:[...enemyBase],radius:4.5},assets))
   const cpuStrikeReleases:NonNullable<import('./cpu/types').CpuRoundReport['strikes']>=[];const cpuTrackIds=new Map<string,string>();const cpuTrackId=(id:string)=>{if(!cpuTrackIds.has(id))cpuTrackIds.set(id,`cpu-r${state.round}-track-${cpuTrackIds.size+1}`);return cpuTrackIds.get(id)!};const cpuApproaches=new Map<string,CpuTraffic>();const approach=(position:Point,role:CpuTraffic['role'],source:'visual'|'radar',time:number):CpuTraffic=>{const bearing=Math.atan2(position[1]-enemyBase[1],position[0]-enemyBase[0]),sector=(Math.round(bearing/(Math.PI/4))+8)%8;const angle=sector*Math.PI/4,band=Math.max(4,Math.round(distance(position,enemyBase)/4)*4);return {position:[enemyBase[0]+Math.cos(angle)*band,enemyBase[1]+Math.sin(angle)*band],role,source,observedAt:time,bearing:angle,sector,observedRound:state.round}}
+  const defenseSurveysByObserver=new Map<string,Map<string,DefenseSurvey>>()
+  const priorCpuSites=new Map(state.cpu?.sites.map(site=>[site.id,site]))
   const cpuSites=new Map<string,Map<string,CpuSiteReport>>(),cpuTraffic=new Map<string,Map<string,CpuTraffic>>()
   const events:CombatEvent[]=[]; const sequences:CombatSequence[]=[]; const effects:WeaponEffect[]=[]; const observations:ContactObservation[]=[]; const plans:InterceptPlan[]=[]; const intelReports:IntelReport[]=[]; const intervals:ContactInterval[]=[]; const behavior:BehaviorInterval[]=[]; const commands:SimulationCommand[]=[];const threatAlerts:ThreatAlert[]=[];const alertedThreats=new Set<string>();const pendingImpacts:PendingImpact[]=[];let baseDamage=0,enemyBaseDamage=0,baseExposure=state.baseExposure,baseExposureDelta=0; const add=(tone:CombatEvent['tone'],title:string,detail:string,position?:Point,time=0)=>events.push({id:`${state.round}-${events.length}`,tone,title,detail,position,time});
   const make=(s:Squadron|EnemyFlight,friendly:boolean):SimUnit=>{
@@ -457,7 +461,7 @@ function* simulateRoundTicks(state:MatchState, recordOpponentView:boolean):Gener
       last.end = time
       return
     }
-    const sighting = { asset: { ...asset, basedFormationIds: undefined, intel: 'probable' as const, confidence: 70, hidden: false }, start: time, end: time }
+    const sighting = { asset: { ...asset, basedFormationIds: undefined, upgrades: undefined, defenseSurvey: undefined, intel: 'probable' as const, confidence: 70, hidden: false }, start: time, end: time }
     groundSightings[side].push(sighting)
     latestSightings[side].set(asset.id, sighting)
   }
@@ -743,13 +747,18 @@ function* simulateRoundTicks(state:MatchState, recordOpponentView:boolean):Gener
       const opposingSites = observer.friendly ? assets : isCampaign(state) ? playerAssets : []
       for (const asset of opposingSites) {
         const separation = distance(observer.position, asset.position)
-        if (separation > siteObservationRange(observer.role, asset)) continue
+        if (separation > siteObservationRange(observer.role, asset, observer.source)) continue
         observer.observed.add(asset.id)
+        if (observer.role === 'recon' && asset.health > 0 && isDefenseSite(asset)) {
+          const surveys = defenseSurveysByObserver.get(observer.id) ?? new Map<string, DefenseSurvey>()
+          if (!surveys.has(asset.id)) surveys.set(asset.id, surveyDefense(asset, state.round))
+          defenseSurveysByObserver.set(observer.id, surveys)
+        }
         if (recordOpponentView) recordGroundSighting(asset, observer.friendly ? 0 : 1, time)
         else if (observer.friendly) recordObservation(observer, asset, separation, time)
         if (cpuActive && !observer.friendly) {
           const reports = cpuSites.get(observer.id) ?? new Map<string, CpuSiteReport>()
-          reports.set(asset.id, cpuReportAt(asset, state.round, time))
+          reports.set(asset.id, cpuReportAt({ ...asset, upgrades: undefined }, state.round, time))
           cpuSites.set(observer.id, reports)
         }
       }
@@ -780,12 +789,33 @@ function* simulateRoundTicks(state:MatchState, recordOpponentView:boolean):Gener
     .map(report => ({ report, observerId: unit.id })))
     .sort((a, b) => (a.report.observedAt ?? 0) - (b.report.observedAt ?? 0))
     .map(site => [site.report.id, site]))
+  const cpuSurveys = new Map(recoveredCpu.flatMap(unit=>[...(defenseSurveysByObserver.get(unit.id)??[])]))
+  for (const {report} of recoveredSites.values()) {
+    const survey = cpuSurveys.get(report.id) ?? priorCpuSites.get(report.id)?.defenseSurvey
+    if (survey) {
+      report.defenseSurvey = survey
+      report.upgrades = survey.upgrades
+    }
+  }
+  for (const unit of recoveredRecon) {
+    for (const [id, survey] of defenseSurveysByObserver.get(unit.id) ?? []) {
+      const asset = assets.find(site => site.id === id)
+      if (!asset) continue
+      if (foundNewDefenseUpgrade(asset.defenseSurvey, survey)) {
+        const detail = `${unit.callsign} surveyed an enemy ${asset.kind.toUpperCase()} upgrade.`
+        intelReports.push({ id: `survey-${id}`, kind: 'defense-upgrade', observerId: unit.id, assetId: id, recovered: true, confidence: 90, detail })
+        add('friendly', 'DEFENSE UPGRADE SURVEYED', detail, asset.position, duration)
+      }
+      asset.defenseSurvey = survey
+    }
+  }
   let cpuReport:import('./cpu/types').CpuRoundReport|undefined=cpuActive?{
     sites:[...recoveredSites.values()].map(site => site.report),
     traffic:[...cpuApproaches.values(),...recoveredCpu.flatMap(unit=>[...(cpuTraffic.get(unit.id)?.values()??[])])],
     recoveredIds:recoveredCpu.map(unit=>unit.id),
     ...(recordOpponentView ? { opponentContacts, groundSightings,
-      recoveredFriendlySiteIds: [...new Set(units.filter(unit=>unit.friendly&&unit.mode==='recovered').flatMap(unit=>[...unit.observed]))], siteObservers: Object.fromEntries([...recoveredSites].map(([id, site]) => [id, site.observerId])) } : {}),
+      recoveredFriendlySiteIds: [...new Set(units.filter(unit=>unit.friendly&&unit.mode==='recovered').flatMap(unit=>[...unit.observed]))], siteObservers: Object.fromEntries([...recoveredSites].map(([id, site]) => [id, site.observerId])),
+      defenseSurveyObservers: Object.fromEntries(recoveredCpu.flatMap(unit => [...(defenseSurveysByObserver.get(unit.id)?.keys() ?? [])].map(id => [id, unit.id]))) } : {}),
   }:undefined
   if(isCampaign(state)){
     let gained=0
@@ -813,7 +843,7 @@ function* simulateRoundTicks(state:MatchState, recordOpponentView:boolean):Gener
   for(const f of flights){const u=byId.get(f.id)!;Object.assign(f,{aircraft:u.aircraft,strength:u.strength,morale:u.morale,status:u.mode==='destroyed'?'destroyed':'rtb',...(cpuActive?sortieCondition(u.source as Squadron,!!u.trapped||u.mode==='grounded'): {})})}
   if(cpuReport)cpuReport={...cpuReport,confirmedKills:deriveFormationAttrition(state.squadrons,squadrons,confirmedDamageTargets(squadrons,sequences)).filter(item=>item.confirmed).reduce((n,item)=>n+item.aircraftLost,0),strikes:cpuStrikeReleases.filter(s=>recoveredCpu.some(u=>u.id===s.sourceId)),recoveryOutcomes:allRecoveryOutcomes.filter(o=>flights.some(f=>f.id===o.formationId)),mappedAreas:recoveredCpu.filter(u=>u.role==='recon').flatMap(u=>sampleRoute(u.frames.map(f=>f.position)))}
   const unresolved=units.some(unit=>!terminal(unit));add('friendly',unresolved?'ROUND TIME CAP':'RECOVERY COMPLETE',unresolved?'Airborne formations retain an unresolved recovery disposition.':'Surviving formations completed recovery.',base,duration);events.sort((a,b)=>a.time-b.time)
-  const executionRoutes=Object.fromEntries(units.map(u=>[u.id,u.frames.map(f=>f.position)]));const mappedAreas=recoveredRecon.flatMap(u=>sampleRoute(executionRoutes[u.id])).filter(point=>point[0]>=state.world.bounds.minX&&point[0]<=state.world.bounds.maxX&&point[1]>=state.world.bounds.minZ&&point[1]<=state.world.bounds.maxZ);const confirmedEnemyIds=confirmedDamageTargets(flights,sequences);const friendlyAttrition=deriveFormationAttrition(state.squadrons,squadrons);const enemyAttrition=deriveFormationAttrition(flights.map(flight=>({...flight,aircraft:flight.initialAircraft})),flights,confirmedEnemyIds);const friendlyLosses=friendlyAttrition.reduce((total,item)=>total+item.aircraftLost,0);const enemyLosses=enemyAttrition.filter(item=>item.confirmed).reduce((total,item)=>total+item.aircraftLost,0);const logisticsIncome=deriveLogisticsIncome(state,{enemyLosses,intelReports});const result:RoundResult={cpuReport,round:state.round,duration,tickSeconds:TICK_SECONDS,unitTracks:units.map(u=>({unitId:u.id,frames:u.frames})),contactIntervals:intervals,behaviorIntervals:behavior,events,squadrons,assets,enemyLosses,friendlyLosses,friendlyAttrition,enemyAttrition,friendlyFormationsDestroyed:friendlyAttrition.filter(item=>item.destroyed).length,enemyFormationsDestroyed:enemyAttrition.filter(item=>item.destroyed&&item.confirmed).length,intelGained:intelReports.filter(x=>x.recovered).map(x=>x.detail),baseDamage,enemyBaseDamage,logisticsIncome,command:Math.min(3,state.command+1),executionRoutes,enemyFlights:flights,defenseCues:[],defensiveAwareness:0,lessons:events.filter(e=>['DOGFIGHT ENDS','CAP BREAKS PURSUIT','FIGHTER TRACK LOST','INTEL RECOVERED','INTEL LOST','RECOVERY DIVERSION','RECON RTB CONDITION','FORMATION LOST'].includes(e.title)).slice(0,4).map(e=>({title:e.title,detail:e.detail,tone:e.tone==='danger'?'danger':e.tone==='warning'?'warning':'friendly'})),playerAssets,reinforcementCalls:[],roundScore:0,baseExposure,baseExposureDelta,combatSequences:sequences,weaponEffects:effects,contactObservations:observations,interceptPlans:plans,intelReports,mappedAreas,discoveredBoundaries,recoveryOutcomes,simulationCommands:commands,threatAlerts};result.roundScore=battleScoreAt(result,Infinity);return result
+  const executionRoutes=Object.fromEntries(units.map(u=>[u.id,u.frames.map(f=>f.position)]));const mappedAreas=recoveredRecon.flatMap(u=>sampleRoute(executionRoutes[u.id])).filter(point=>point[0]>=state.world.bounds.minX&&point[0]<=state.world.bounds.maxX&&point[1]>=state.world.bounds.minZ&&point[1]<=state.world.bounds.maxZ);const confirmedEnemyIds=confirmedDamageTargets(flights,sequences);const friendlyAttrition=deriveFormationAttrition(state.squadrons,squadrons);const enemyAttrition=deriveFormationAttrition(flights.map(flight=>({...flight,aircraft:flight.initialAircraft})),flights,confirmedEnemyIds);const friendlyLosses=friendlyAttrition.reduce((total,item)=>total+item.aircraftLost,0);const enemyLosses=enemyAttrition.filter(item=>item.confirmed).reduce((total,item)=>total+item.aircraftLost,0);const logisticsIncome=deriveLogisticsIncome(state,{enemyLosses,intelReports,assets,combatSequences:sequences});const result:RoundResult={cpuReport,round:state.round,duration,tickSeconds:TICK_SECONDS,unitTracks:units.map(u=>({unitId:u.id,frames:u.frames})),contactIntervals:intervals,behaviorIntervals:behavior,events,squadrons,assets,enemyLosses,friendlyLosses,friendlyAttrition,enemyAttrition,friendlyFormationsDestroyed:friendlyAttrition.filter(item=>item.destroyed).length,enemyFormationsDestroyed:enemyAttrition.filter(item=>item.destroyed&&item.confirmed).length,intelGained:intelReports.filter(x=>x.recovered).map(x=>x.detail),baseDamage,enemyBaseDamage,logisticsIncome,command:Math.min(3,state.command+1),executionRoutes,enemyFlights:flights,defenseCues:[],defensiveAwareness:0,lessons:events.filter(e=>['DOGFIGHT ENDS','CAP BREAKS PURSUIT','FIGHTER TRACK LOST','INTEL RECOVERED','INTEL LOST','RECOVERY DIVERSION','RECON RTB CONDITION','FORMATION LOST'].includes(e.title)).slice(0,4).map(e=>({title:e.title,detail:e.detail,tone:e.tone==='danger'?'danger':e.tone==='warning'?'warning':'friendly'})),playerAssets,reinforcementCalls:[],roundScore:0,baseExposure,baseExposureDelta,combatSequences:sequences,weaponEffects:effects,contactObservations:observations,interceptPlans:plans,intelReports,mappedAreas,discoveredBoundaries,recoveryOutcomes,simulationCommands:commands,threatAlerts};result.roundScore=battleScoreAt(result,Infinity);return result
 }
 
 export interface RoundSimulationController {result:RoundResult;complete:boolean;advance:(commands?:SimulationCommand[])=>RoundResult;nextTick:()=>number}

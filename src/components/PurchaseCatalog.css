@@ -92,6 +92,15 @@
   background: var(--store-panel);
   font: var(--store-subheading);
 }
+.store-root select {
+  min-height: 34px;
+  max-width: min(210px, 55vw);
+  padding: 0 4px;
+  border: 0;
+  background: var(--store-panel);
+  color: inherit;
+  font: inherit;
+}
 .store-root svg { width: 18px; height: 18px; color: #a2ddd6; }
 .store-fork { display: block; width: 100%; height: 24px; stroke: #60968a; stroke-width: 1px; }
 .store-upgrades .store-offers { grid-template-columns: repeat(2, minmax(0, 1fr)); }

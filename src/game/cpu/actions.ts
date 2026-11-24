@@ -137,7 +137,7 @@ function fighterActions(view: CpuPlanningView, work: RouteWork, fighter: Squadro
     const followups=base&&site.kind!=='base'&&baseOrders.length?baseOrders.map(o=>estimateBaseAttack(view,o,after)):[]
     const followup=followups.sort((a,b)=>b.damageNow-a.damageNow||a.releaseSeconds-b.releaseSeconds)[0]
     for(const order of site.kind==='base'?earlyBaseOrders:strikeOrders(view,fighter,site,work)) {
-      const attack=estimateBaseAttack(view,order),payload=groundAttackDamage(fighter,'base')
+      const attack=estimateBaseAttack(view,order),payload=groundAttackDamage(fighter,site.kind)
       const survive=payload?attack.damageNow/payload:0
       // A late release loses its operating field if an observed strike threat
       // can finish home first. Compare public travel bounds, not future orders.

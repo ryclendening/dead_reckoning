@@ -1,5 +1,6 @@
 import type { ReactNode } from 'react'
 import { X } from 'lucide-react'
+import { isDefenseSite, reportedEnemyAsset } from '../game/defenseIntel'
 import { samStatusForPhase } from '../game/airDefense'
 import { effectiveDefenseProfile, radarRange } from '../game/equipmentRules'
 import { upgradeDefinition } from '../game/upgrades'
@@ -31,14 +32,17 @@ function siteReadout({ asset, sites = [], phase, result, seconds, enemy }: Asset
   if (asset.health <= 0) return 'Destroyed'
   if (asset.operational === false) return 'Offline'
   if (enemy && asset.intel !== 'confirmed') return 'Unconfirmed site'
+  if (enemy && isDefenseSite(asset) && !asset.defenseSurvey) return 'Coverage unsurveyed'
+  const surveyed = enemy && asset.defenseSurvey ? ` · Survey R${asset.defenseSurvey.round}` : ''
+  const configuration = enemy ? reportedEnemyAsset(asset) : asset
 
   if (asset.kind === 'radar') {
-    const range = formatDefenseRange(radarRange(asset))
+    const range = formatDefenseRange(radarRange(configuration))
     const linked = sites.filter(site => effectiveDefenseProfile(site, sites)?.radarLinks.some(radar => radar.id === asset.id)).length
-    return `Scan ${range} · ${linked} linked`
+    return `Scan ${range} · ${linked} linked${surveyed}`
   }
 
-  const defense = effectiveDefenseProfile(asset, sites)
+  const defense = effectiveDefenseProfile(configuration, sites)
   if (defense) {
     const range = formatDefenseRange(defense.range)
     const guided = defense.radarLinks.length > 0
@@ -50,7 +54,7 @@ function siteReadout({ asset, sites = [], phase, result, seconds, enemy }: Asset
       if (sam.cooldown > .001) return `${inventory} · Ready in ${sam.cooldown.toFixed(1)}s`
       return `${inventory} · ${guided ? 'Radar guided' : `Range ${range}`}`
     }
-    return `${enemy ? 'Known range' : 'Range'} ${range}${guided ? ' · Radar linked' : ''}`
+    return `${enemy ? 'Known range' : 'Range'} ${range}${guided ? ' · Radar linked' : ''}${surveyed}`
   }
 
   if (enemy) return 'Confirmed site'

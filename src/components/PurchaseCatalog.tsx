@@ -3,8 +3,8 @@ import { Bomb, Check, ChevronRight, Crosshair, Eye, LockKeyhole, Package, Radar,
 import type { LucideIcon } from 'lucide-react'
 import { economyQuotesFor } from '../game/economy'
 import { formatCash } from '../game/economyRules'
-import type { EconomyActionQuote, MatchState } from '../game/types'
-import { UPGRADE_CATALOG } from '../game/upgrades'
+import type { EconomyActionQuote, EconomyTarget, MatchState } from '../game/types'
+import { upgradesFor } from '../game/upgrades'
 import './PurchaseCatalog.css'
 
 const categories = ['Aircraft', 'Ground', 'Upgrades'] as const
@@ -41,25 +41,35 @@ interface Offer {
   deployment?: string
 }
 
-function upgradeOffers(match: MatchState): Offer[] {
-  const base = match.playerAssets.find(asset => asset.kind === 'base')
-  const quotes = base ? economyQuotesFor(match, { kind: 'asset', id: base.id }) : []
-  const installed = base?.upgrades ?? []
-  return UPGRADE_CATALOG.filter(upgrade => upgrade.targets.includes('base')).map(upgrade => {
+function upgradeTargets(match: MatchState) {
+  return [
+    ...match.playerAssets.filter(asset => asset.health > 0 && asset.operational !== false && upgradesFor(asset.kind).length).map(asset => ({
+      target: { kind: 'asset', id: asset.id } as EconomyTarget,
+      name: asset.name ?? (asset.kind === 'base' ? 'Main airfield' : asset.kind.toUpperCase()), installed: asset.upgrades ?? [],
+      definitions: upgradesFor(asset.kind),
+    })),
+    ...match.squadrons.filter(formation => formation.aircraft > 0 && formation.status !== 'trapped').map(formation => ({
+      target: { kind: 'squadron', id: formation.id } as EconomyTarget, name: formation.callsign, installed: formation.upgrades ?? [],
+      definitions: upgradesFor('squadron', formation.role),
+    })),
+  ]
+}
+
+function upgradeOffers(match: MatchState, owner: ReturnType<typeof upgradeTargets>[number] | undefined): Offer[] {
+  if (!owner) return []
+  const quotes = economyQuotesFor(match, owner.target)
+  return owner.definitions.map(upgrade => {
     const quote = quotes.find(item => item.upgradeId === upgrade.id)
-    const isInstalled = installed.includes(upgrade.id)
+    const installed = owner.installed.includes(upgrade.id)
     return {
       id: upgrade.id, label: upgrade.label.toLowerCase(), icon: upgradeIcons[upgrade.id] ?? Wrench,
-      cost: upgrade.cost, detail: upgrade.detail, quote, installed: isInstalled,
-      reason: quote?.reason ?? (!quote && !isInstalled
-        ? base ? 'Airfield upgrade slot filled' : 'Main airfield unavailable'
-        : undefined),
+      cost: upgrade.cost, detail: upgrade.detail, quote, installed,
+      reason: quote?.reason ?? (!quote && !installed ? 'Upgrade slot filled' : undefined),
     }
   })
 }
 
-function storeOffers(category: PurchaseCategory, quotes: EconomyActionQuote[], match: MatchState): Offer[] {
-  if (category === 'Upgrades') return upgradeOffers(match)
+function storeOffers(category: PurchaseCategory, quotes: EconomyActionQuote[]): Offer[] {
   return quotes.flatMap(quote => {
     const effect = quote.effect
     if (category === 'Aircraft' && effect.kind === 'formation-purchase') return [{
@@ -74,11 +84,12 @@ function storeOffers(category: PurchaseCategory, quotes: EconomyActionQuote[], m
   })
 }
 
-export function PurchaseCatalog({ category, quotes, match, busy, onCategoryChange, onChoose, onClose }: {
+export function PurchaseCatalog({ category, quotes, match, busy, initialUpgradeTarget, onCategoryChange, onChoose, onClose }: {
   category: PurchaseCategory
   quotes: EconomyActionQuote[]
   match: MatchState
   busy: boolean
+  initialUpgradeTarget?: EconomyTarget
   onCategoryChange: (category: PurchaseCategory) => void
   onChoose: (quote: EconomyActionQuote) => void
   onClose: () => void
@@ -88,7 +99,10 @@ export function PurchaseCatalog({ category, quotes, match, busy, onCategoryChang
   const receipt = useId()
   const [selectedIds, setSelectedIds] = useState<Partial<Record<PurchaseCategory, string>>>({})
   const [receiptOpen, setReceiptOpen] = useState(false)
-  const offers = storeOffers(category, quotes, match)
+  const [upgradeTargetId, setUpgradeTargetId] = useState(initialUpgradeTarget?.id)
+  const owners = category === 'Upgrades' ? upgradeTargets(match) : []
+  const owner = owners.find(item => item.target.id === upgradeTargetId) ?? owners[0]
+  const offers = category === 'Upgrades' ? upgradeOffers(match, owner) : storeOffers(category, quotes)
   const selected = offers.find(offer => offer.id === selectedIds[category])
     ?? offers.find(offer => offer.installed) ?? offers[0]
   const purchases = match.economy.statement.filter(entry => entry.round === match.round && entry.direction === 'spend')
@@ -122,7 +136,15 @@ export function PurchaseCatalog({ category, quotes, match, busy, onCategoryChang
           <ul>{purchases.map(entry => <li key={entry.id}><span>{entry.label.toLowerCase()}</span><strong>{formatCash(entry.amount)}</strong></li>)}</ul>
         </section> : <div className={showUpgrades ? 'store-upgrades' : 'store-catalog'}>
           {showUpgrades ? <>
-            <div className="store-root"><Warehouse aria-hidden="true"/><b>Main airfield</b></div>
+            <div className="store-root">
+              <Wrench aria-hidden="true"/>
+              <select aria-label="Upgrade target" value={owner?.target.id ?? ''} onChange={event => {
+                setUpgradeTargetId(event.target.value)
+                setSelectedIds(ids => ({ ...ids, Upgrades: undefined }))
+              }}>
+                {owners.map(item => <option key={item.target.id} value={item.target.id}>{item.name}</option>)}
+              </select>
+            </div>
             <svg className="store-fork" viewBox="0 0 100 24" preserveAspectRatio="none" aria-hidden="true">
               <path d="M50 0V12 M25 24V12H75V24" fill="none" vectorEffect="non-scaling-stroke"/>
             </svg>

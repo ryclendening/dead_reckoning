@@ -21,7 +21,15 @@ function commands(view:CpuPlanningView):EconomyCommand[] {
   const result:EconomyCommand[]=targets.flatMap(target=>economyQuotesFor(ctx,target).filter(q=>q.eligible).map(q=>({actionId:q.id,target,expectedCost:q.cost,expectedLogistics:ctx.logistics,expectedReserveAircraft:ctx.reserves})))
   // Consider fixed infrastructure only when its current return can cover the price.
   const work=ctx.formations.reduce((n,f)=>n+Math.ceil(Math.max(0,f.aircraft/f.maxAircraft*100-(f.strength??100))/25),0)
-  const filtered=result.filter(c=>c.actionId!=='install-maintenance-wing'||work>12)
+  const established = new Set(['install-maintenance-wing', 'install-supply-depot'])
+  const progression = result.filter(command => command.actionId.startsWith('install-') && !established.has(command.actionId))
+  const filtered = result.filter(command => (!command.actionId.startsWith('install-') || established.has(command.actionId))
+    && (command.actionId !== 'install-maintenance-wing' || work > 12))
+  if (view.round >= 3 && view.round < CAMPAIGN_ROUND_LIMIT) {
+    // Keep one candidate per upgrade so the purchase beam stays bounded.
+    const unique = new Map(progression.map(command => [command.actionId, command]))
+    filtered.push(...unique.values())
+  }
   const campaignQuotes=economyQuotesFor(ctx,{kind:'campaign',id:'campaign'})
   for(const quote of campaignQuotes){
     if(quote.effect.kind!=='formation-purchase'||!quote.eligible)continue
@@ -147,6 +155,8 @@ export function planPurchases(view:CpuPlanningView):ReturnType<typeof choosePack
       return commands(current).flatMap(command=>{
         const next=executeEconomyCommand(node.ctx,command);if(next===node.ctx)return []
         const changesDefense=['build-sam','build-aaa','build-radar'].includes(command.actionId)
+          || command.actionId.startsWith('install-') && command.target.kind==='asset'
+            && next.assets.some(asset=>asset.id===command.target.id&&(asset.kind==='radar'||asset.kind==='sam'||asset.kind==='aaa'))
         const effects=changesDefense?defenseNetworkBenefits(current,next.assets):{coverage:0,reconDenial:0,opponentAttrition:0}
         const forward=command.actionId==='build-fob'&&command.placement?forwardValue(current,command.placement)?.gain??0:0
         const child:Node={ctx:next,commands:[...node.commands,command],coverage:node.coverage+effects.coverage,forward:Math.max(node.forward,forward),reconDenial:Math.min(1,node.reconDenial+effects.reconDenial),opponentAttrition:Math.min(1,node.opponentAttrition+effects.opponentAttrition),rank:scored.find(candidate=>candidate.node===node)?.score??0}
@@ -157,7 +167,7 @@ export function planPurchases(view:CpuPlanningView):ReturnType<typeof choosePack
     // Equivalent purchase permutations must not consume all beam slots.
     const unique=new Map<string,Node>()
     for(const node of successors){
-      const key=JSON.stringify([node.ctx.logistics,node.ctx.reserves,node.ctx.formations.map(f=>[f.id,f.aircraft,f.strength,f.status]),node.ctx.assets.map(a=>[a.kind,a.position,a.health,a.operational,a.upgrades]).sort((a,b)=>JSON.stringify(a).localeCompare(JSON.stringify(b)))])
+      const key=JSON.stringify([node.ctx.logistics,node.ctx.reserves,node.ctx.formations.map(f=>[f.id,f.aircraft,f.strength,f.status,f.upgrades]),node.ctx.assets.map(a=>[a.kind,a.position,a.health,a.operational,a.upgrades]).sort((a,b)=>JSON.stringify(a).localeCompare(JSON.stringify(b)))])
       if(!unique.has(key))unique.set(key,node)
     }
     beam=boundBeam([...unique.values()])

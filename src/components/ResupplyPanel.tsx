@@ -1,4 +1,4 @@
-import { Check, ChevronRight, X } from 'lucide-react'
+import { Check, ChevronRight, Wrench, X } from 'lucide-react'
 import { economyCommandForQuote, economyQuotesFor } from '../game/economy'
 import { formatCash } from '../game/economyRules'
 import { formationStatus } from '../game/formationStatus'
@@ -19,7 +19,7 @@ interface ResupplyPanelProps {
   purchaseCategory: PurchaseCategory
   onPurchaseCategoryChange: (category: PurchaseCategory) => void
   procurementActionId?: EconomyActionId
-  onProcurementMode: (mode: ProcurementMode) => void
+  onProcurementMode: (mode: ProcurementMode, upgradeTarget?: EconomyTarget) => void
   onProcurementAction: (actionId: EconomyActionId) => void
   hasPlacementPreview: boolean
   onConfirmPlacement: () => void
@@ -52,7 +52,7 @@ export function ResupplyPanel({
   return <section className={`phase-panel resupply-panel${procurementMode !== 'placing' ? ' resupply-bar' : ''}`} aria-label="Resupply">
     <div className="resupply-content">
       {procurementMode === 'catalog' ? <PurchaseCatalog
-        category={purchaseCategory} quotes={catalog} match={match} busy={busy} onCategoryChange={onPurchaseCategoryChange}
+        category={purchaseCategory} quotes={catalog} match={match} busy={busy} initialUpgradeTarget={selectedTarget} onCategoryChange={onPurchaseCategoryChange}
         onChoose={choosePurchase} onClose={() => onProcurementMode('closed')}
       /> : null}
 
@@ -73,6 +73,10 @@ export function ResupplyPanel({
         </div>
         {repair ? <button type="button" className="formation-repair" disabled={busy || !repair.eligible}
           onClick={() => buy(repair)}>Repair · {formatCash(repair.cost)}{repair.reason ? <small>{repair.reason}</small> : null}</button> : null}
+        {formation.status !== 'trapped' ? <button type="button" aria-label="Formation upgrades" title="Upgrades" onClick={() => {
+          onPurchaseCategoryChange('Upgrades')
+          onProcurementMode('catalog', selectedTarget)
+        }}><Wrench width={16} height={16}/></button> : null}
         <button type="button" className="formation-dismiss" aria-label="Close selected aircraft" onClick={onCloseTarget}><X/></button>
       </div>
     </div> : null}

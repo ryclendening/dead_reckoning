@@ -1,6 +1,7 @@
 import { useProtectGesture, WAYPOINT_HEIGHT, WAYPOINT_HIT_RADIUS } from './useProtectGesture'
 import { debriefMapSites, primaryDebriefEvent } from '../game/debriefMap'
 import { DebriefSymbol } from './DebriefSymbols'
+import { reportedEnemyAsset, surveyedDefenseSites } from '../game/defenseIntel'
 import { UnitCard3D } from './UnitCard3D'
 import { GroundSiteLabels } from './GroundSiteLabel'
 import { FighterAirframe } from './FighterAirframe'
@@ -292,7 +293,7 @@ function RadarCoverage({asset,enemy,samGuidance,samPreview}:{asset:Asset;enemy:b
   const label=samGuidance?'RADAR · SAM COVERAGE':samPreview?'RADAR · SAM PREVIEW':'RADAR DETECTION'
   return <group position={to3(asset.position,.1)}>
     <Ring radius={radius} color={color} opacity={.78} dashSize={.4} gapSize={.23} lineWidth={guidesSam?2:1.5}/>
-    <DefenseRangeLabel radius={radius} color={color}>{`${enemy?'ENEMY ':''}${label} · ${formatDefenseRange(radius)}`}</DefenseRangeLabel>
+    <DefenseRangeLabel radius={radius} color={color}>{`${enemy?'ENEMY ':''}${label} · ${formatDefenseRange(radius)}${enemy && asset.defenseSurvey ? ` · SURVEY R${asset.defenseSurvey.round}` : ''}`}</DefenseRangeLabel>
   </group>
 }
 
@@ -309,7 +310,7 @@ function BatteryCoverage({asset,profile,enemy=false,preview=false}:{asset:Asset;
   const description=asset.kind==='sam'? `SAM LOCAL · ${formatDefenseRange(range)}`
     : linked? `AAA · ${formatDefenseRange(baseRange)} → ${formatDefenseRange(range)} · RADAR LINKED`
     : `AAA LOCAL · ${formatDefenseRange(range)}`
-  const label=`${preview?'PREVIEW · ':enemy?'ENEMY ':''}${description}`
+  const label=`${preview?'PREVIEW · ':enemy?'ENEMY ':''}${description}${enemy && asset.defenseSurvey ? ` · SURVEY R${asset.defenseSurvey.round}` : ''}`
   return <>
     <group position={to3(asset.position,.12)}><Ring radius={range} color={color} opacity={.68} dashed={false} lineWidth={1.5}/>
       <DefenseRangeLabel radius={range} color={color}>{label}</DefenseRangeLabel>
@@ -708,12 +709,12 @@ function BattlefieldScene({squadrons,assets,playerAssets,mappedAreas,terrain,pre
     return observations.length?observations:EMPTY_MAP_OBSERVATIONS
   },[friendlyProjections,phase,squadrons])
   const displayedPlayerAssets=playerAssets.map(asset=>phase==='execute'&&!groundAssetsProjected?projectGroundAssetAt(asset,executionResult,seconds):asset).filter(asset=>asset.health>0)
-  const displayedEnemyAssets=assets.map(asset=>{const timed=phase==='execute'&&!groundAssetsProjected?projectGroundAssetAt(asset,executionResult,seconds):asset;return observedAssetIds.has(asset.id)&&timed.intel==='unknown'?{...timed,intel:'probable' as const,confidence:70,hidden:false}:timed}).filter(asset=>asset.health>0&&!asset.hidden&&asset.intel!=='unknown')
+  const displayedEnemyAssets=assets.map(asset=>{const timed=phase==='execute'&&!groundAssetsProjected?projectGroundAssetAt(asset,executionResult,seconds):asset;return observedAssetIds.has(asset.id)&&timed.intel==='unknown'?{...timed,intel:'probable' as const,confidence:70,hidden:false}:timed}).filter(asset=>asset.health>0&&!asset.hidden&&asset.intel!=='unknown').map(reportedEnemyAsset)
   const recoveryById=useMemo(()=>new globalThis.Map((executionResult?.recoveryOutcomes??[]).map(outcome=>[outcome.formationId,outcome])),[executionResult])
   const friendlyDefenseSites=phase==='deploy'&&positionedPlacementIds
     ? displayedPlayerAssets.filter(asset=>positionedPlacementIds.includes(asset.id))
     : displayedPlayerAssets
-  const knownEnemyDefenseSites=displayedEnemyAssets.filter(asset=>!asset.hidden&&asset.intel==='confirmed')
+  const knownEnemyDefenseSites=surveyedDefenseSites(displayedEnemyAssets)
   const constructionPoint=construction?.placement??constructionHover
   const defenseConstruction=construction?.kind==='sam'||construction?.kind==='aaa'||construction?.kind==='radar'
   const previewBattery:Asset|undefined=constructionPoint&&construction&&defenseConstruction&&construction.isValid(constructionPoint)

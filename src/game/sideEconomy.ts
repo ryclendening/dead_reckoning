@@ -167,6 +167,9 @@ const ACTIONS: readonly EconomyActionDefinition[] = [
           : target.kind === 'asset' ? state.assets.find(item => item.id === target.id) : undefined
         const targetKind = target.kind === 'squadron' ? 'squadron' : target.kind === 'asset' && instance ? (instance as Asset).kind : undefined
         if (!instance || !targetKind || !definition.targets.includes(targetKind)) return undefined
+        if ('aircraft' in instance ? instance.aircraft <= 0 || instance.status === 'trapped'
+          || definition.roles && !definition.roles.includes(instance.role)
+          : instance.health <= 0 || instance.operational === false) return undefined
         const installed = instance.upgrades ?? []
         if (installed.includes(definition.id)) return undefined
         if (definition.group && installed.some(id => upgradeDefinition(id)?.group === definition.group)) return undefined
