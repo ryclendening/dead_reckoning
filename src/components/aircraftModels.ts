@@ -1,6 +1,7 @@
 import { ExtrudeGeometry, MeshBasicMaterial, MeshStandardMaterial, Shape, ShapeGeometry } from 'three'
 import type { Role } from '../game/types'
 import { joinModel, paintGeometry } from './battlefieldModelGeometry'
+import { aircraftStencil } from './flightRenderLayers'
 
 type Point2 = [number, number]
 type Paint = 'body' | 'wing' | 'glass' | 'engine' | 'marking'
@@ -102,11 +103,11 @@ const palettes: Record<'friendly' | 'hostile', Record<Paint, string>> = {
   friendly: { body: '#849a9d', wing: '#647f83', glass: '#1c333e', engine: '#475658', marking: '#64e0df' },
   hostile: { body: '#ada18e', wing: '#95846b', glass: '#342e31', engine: '#655a56', marking: '#f07d5d' },
 }
-const shadedMaterial = new MeshStandardMaterial({ vertexColors: true, roughness: .85 })
+const shadedMaterial = new MeshStandardMaterial({ vertexColors: true, roughness: .85, ...aircraftStencil })
 const silhouetteMaterials = {
-  friendly: new MeshBasicMaterial({ color: '#8ae5e4', toneMapped: false }),
-  hostile: new MeshBasicMaterial({ color: '#fb9a7c', toneMapped: false }),
-  reinforcement: new MeshBasicMaterial({ color: '#f1c65b', toneMapped: false }),
+  friendly: new MeshBasicMaterial({ color: '#8ae5e4', toneMapped: false, ...aircraftStencil }),
+  hostile: new MeshBasicMaterial({ color: '#fb9a7c', toneMapped: false, ...aircraftStencil }),
+  reinforcement: new MeshBasicMaterial({ color: '#f1c65b', toneMapped: false, ...aircraftStencil }),
 }
 
 function shape(points: Point2[], vertical = false) {

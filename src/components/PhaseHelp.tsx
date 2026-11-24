@@ -41,7 +41,7 @@ const help: Record<PlayPhase, { title: string; tips: [string, string][]; online?
   debrief: {
     title: 'Debrief',
     tips: [
-      ['Review the round', 'Scroll the event feed to review the round in time order. Tap a report to locate it on the map, or tap a stack on the map to fan out its icons. The totals include losses without a reported location.'],
+      ['Review the round', 'Scroll the event feed to review the round in time order. Tap a report to locate it. At wide zoom, tap a numbered circle to zoom into nearby sites. Tap a stack at one site to fan out its reports. The totals include losses without a reported location.'],
       ['Read your payout', 'Round pay, recovered site intelligence, and confirmed enemy aircraft losses appear separately. A Supply Depot adds to round pay.'],
     ],
   },

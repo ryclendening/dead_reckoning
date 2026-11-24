@@ -1,8 +1,9 @@
-import { Box3, OrthographicCamera, Vector3 } from 'three'
+import { Box3, NotEqualStencilFunc, OrthographicCamera, ReplaceStencilOp, Vector3 } from 'three'
 import { describe, expect, it } from 'vitest'
 import { ANGLED_BATTLEFIELD_CAMERA } from '../game/cameraPresentation'
 import type { Role } from '../game/types'
-import { aircraftModel, aircraftSilhouetteAtScale } from './aircraftModels'
+import { aircraftModel, aircraftSilhouetteAtScale, reinforcementSilhouetteMaterial } from './aircraftModels'
+import { flightLineLayer } from './flightRenderLayers'
 import { radarBase, radarPanel, runwayModels, samModel } from './groundModels'
 
 const airframes = ([false, true] as const).flatMap(hostile =>
@@ -66,6 +67,22 @@ describe('battlefield model geometry', () => {
     expect(aircraftSilhouetteAtScale(21, false)).toBe(false)
     expect(aircraftSilhouetteAtScale(21, true)).toBe(true)
     expect(aircraftSilhouetteAtScale(23, true)).toBe(false)
+  })
+
+  it('draws opaque aircraft into the same stencil bit that flight lines exclude', () => {
+    const { material, silhouetteMaterial } = aircraftModel('fighter', false)
+    for (const airframeMaterial of [material, silhouetteMaterial, reinforcementSilhouetteMaterial]) {
+      expect(airframeMaterial).toMatchObject({
+        transparent: false,
+        stencilWrite: true,
+        stencilRef: flightLineLayer.stencilRef,
+        stencilWriteMask: flightLineLayer.stencilFuncMask,
+        stencilZPass: ReplaceStencilOp,
+      })
+    }
+    expect(flightLineLayer).toMatchObject({
+      depthTest: false, depthWrite: false, stencilFunc: NotEqualStencilFunc, stencilWriteMask: 0,
+    })
   })
 
   it('batches small site parts and represents SAM ammunition in the rack geometry', () => {
