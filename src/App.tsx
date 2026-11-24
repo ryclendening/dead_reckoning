@@ -781,27 +781,35 @@ export function Debrief({match,focusedEvent,onFocus,onResupply,pending=false}:{
     const panel=feed.current,row=activeRow.current
     if(!focusedEvent||!panel||!row)return
     const viewport=panel.getBoundingClientRect(),entry=row.getBoundingClientRect()
-    if(entry.top<viewport.top||entry.bottom>viewport.bottom)panel.scrollTop+=entry.top-viewport.top
+    if(entry.top<viewport.top)panel.scrollTop+=entry.top-viewport.top
+    else if(entry.bottom>viewport.bottom)panel.scrollTop+=entry.bottom-viewport.bottom
   },[focusedEvent])
 
   return <section className="phase-panel debrief-summary" aria-label="After action summary">
     <header className="debrief-feed-heading">
       {isCampaign(match)?<div className="debrief-campaign" role="group" aria-label="Base health">
-        <span className={result.baseDamage>0?'base-damaged':undefined}>HOME BASE <b>{baseHealthChange(match.playerBaseHealth,result.baseDamage)}</b></span>
-        {enemyBase?<span className={result.enemyBaseDamage>0?'base-damaged':undefined}>ENEMY BASE <b>{baseHealthChange(enemyBase.health,result.enemyBaseDamage)}</b></span>:result.enemyBaseDamage>0?<span>ENEMY DAMAGE <b>−{Math.round(result.enemyBaseDamage)} HP</b></span>:null}
+        <span className={result.baseDamage>0?'base-damaged':undefined}>Home base <b>{baseHealthChange(match.playerBaseHealth,result.baseDamage)}</b></span>
+        {enemyBase?<span className={result.enemyBaseDamage>0?'base-damaged':undefined}>Enemy base <b>{baseHealthChange(enemyBase.health,result.enemyBaseDamage)}</b></span>:result.enemyBaseDamage>0?<span>Enemy damage <b>−{Math.round(result.enemyBaseDamage)} HP</b></span>:null}
       </div>:<h2>Round report</h2>}
-      <strong className="debrief-payout" aria-label="Round payout">+{formatCash(total)}</strong>
+      <span className="debrief-payout">Round payout <b>+{formatCash(total)}</b></span>
     </header>
     <div className="debrief-feed" ref={feed} aria-label="Round report">
       {message?<p className="debrief-message">{message.message}</p>:null}
-      <div className="debrief-metrics"><div><strong>{result.friendlyLosses}</strong><span>FRIENDLY LOST</span></div><div><strong>{result.enemyLosses}</strong><span>ENEMY LOST · CONFIRMED</span></div><div><strong>{intel.length}</strong><span>INTEL RECOVERED</span></div></div>
+      <div className="debrief-metrics" role="group" aria-label="Round totals">
+        <span><strong>{result.friendlyLosses}</strong> Friendly lost</span>
+        <span><strong>{result.enemyLosses}</strong> Confirmed enemy lost</span>
+        <span><strong>{intel.length}</strong> Intel recovered</span>
+      </div>
       {reports.length?<ol className="debrief-event-list" aria-label="Round events">
         {reports.map(({site,event})=><li key={event.id}>
           <button type="button" className={`debrief-site ${event.side}`} aria-pressed={event.id===focusedEvent} ref={event.id===focusedEvent?activeRow:undefined}
             onClick={()=>onFocus(site.position,event.id)}>
-            <span className="debrief-site-number" title={`Map site ${site.number}`}>{site.number}</span>
-            <DebriefSymbol kind={event.kind}/>
-            <span className="debrief-site-reports"><span><b>{event.title}</b><span>{event.detail}</span><time>{event.time.toFixed(1)}s</time></span></span>
+            <span className="debrief-event-icon"><DebriefSymbol kind={event.kind}/></span>
+            <span className="debrief-event-copy"><b>{event.title}</b><span>{event.detail}</span></span>
+            <span className="debrief-event-meta">
+              <time dateTime={`PT${event.time.toFixed(1)}S`}>{event.time.toFixed(1)}s</time>
+              <span>Site {site.number}</span>
+            </span>
           </button>
         </li>)}
       </ol>:<p className="phase-panel-copy">No combat, losses, or new intel.</p>}

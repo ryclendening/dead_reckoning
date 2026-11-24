@@ -97,19 +97,22 @@ export function PurchaseCatalog({ category, quotes, match, busy, initialUpgradeT
   const dialog = useRef<HTMLDialogElement>(null)
   const title = useId()
   const receipt = useId()
-  const [selectedIds, setSelectedIds] = useState<Partial<Record<PurchaseCategory, string>>>({})
+  const [selectedIds, setSelectedIds] = useState<Partial<Record<Exclude<PurchaseCategory, 'Upgrades'>, string>>>({})
   const [receiptOpen, setReceiptOpen] = useState(false)
   const [upgradeTargetId, setUpgradeTargetId] = useState(initialUpgradeTarget?.id)
-  const owners = category === 'Upgrades' ? upgradeTargets(match) : []
+  const [upgradeChoice, setUpgradeChoice] = useState<{ targetId: string; offerId: string }>()
+  const showUpgrades = category === 'Upgrades'
+  const owners = showUpgrades ? upgradeTargets(match) : []
   const owner = owners.find(item => item.target.id === upgradeTargetId) ?? owners[0]
-  const offers = category === 'Upgrades' ? upgradeOffers(match, owner) : storeOffers(category, quotes)
-  const selected = offers.find(offer => offer.id === selectedIds[category])
-    ?? offers.find(offer => offer.installed) ?? offers[0]
+  const offers = showUpgrades ? upgradeOffers(match, owner) : storeOffers(category, quotes)
+  const selectedUpgradeId = upgradeChoice?.targetId === owner?.target.id ? upgradeChoice?.offerId : undefined
+  const selectedId = showUpgrades ? selectedUpgradeId : selectedIds[category]
+  const installed = offers.find(offer => offer.installed)
+  const selected = installed ?? offers.find(offer => offer.id === selectedId) ?? (showUpgrades ? undefined : offers[0])
   const purchases = match.economy.statement.filter(entry => entry.round === match.round && entry.direction === 'spend')
   const spent = purchases.reduce((sum, entry) => sum + entry.amount, 0)
   const quote = selected?.quote
-  const action = category === 'Ground' ? 'Place' : category === 'Upgrades' ? 'Install' : 'Buy'
-  const showUpgrades = category === 'Upgrades'
+  const action = category === 'Ground' ? 'Place' : 'Buy'
 
   useEffect(() => {
     const store = dialog.current
@@ -136,32 +139,45 @@ export function PurchaseCatalog({ category, quotes, match, busy, initialUpgradeT
           <ul>{purchases.map(entry => <li key={entry.id}><span>{entry.label.toLowerCase()}</span><strong>{formatCash(entry.amount)}</strong></li>)}</ul>
         </section> : <div className={showUpgrades ? 'store-upgrades' : 'store-catalog'}>
           {showUpgrades ? <>
-            <div className="store-root">
-              <Wrench aria-hidden="true"/>
-              <select aria-label="Upgrade target" value={owner?.target.id ?? ''} onChange={event => {
+            <label className="store-root">
+              <span>Upgrade target</span>
+              <select value={owner?.target.id ?? ''} disabled={!owners.length || busy} onChange={event => {
                 setUpgradeTargetId(event.target.value)
-                setSelectedIds(ids => ({ ...ids, Upgrades: undefined }))
+                setUpgradeChoice(undefined)
               }}>
-                {owners.map(item => <option key={item.target.id} value={item.target.id}>{item.name}</option>)}
+                {!owners.length ? <option value="">No eligible units</option> : null}
+                {(['asset', 'squadron'] as const).map(kind => {
+                  const targets = owners.filter(item => item.target.kind === kind)
+                  return targets.length ? <optgroup key={kind} label={kind === 'asset' ? 'Ground sites' : 'Aircraft formations'}>
+                    {targets.map(item => <option key={item.target.id} value={item.target.id}>
+                      {item.name}{item.installed.length ? ' · Upgraded' : ''}
+                    </option>)}
+                  </optgroup> : null
+                })}
               </select>
-            </div>
-            <svg className="store-fork" viewBox="0 0 100 24" preserveAspectRatio="none" aria-hidden="true">
-              <path d="M50 0V12 M25 24V12H75V24" fill="none" vectorEffect="non-scaling-stroke"/>
-            </svg>
+            </label>
+            {owner ? <>
+              <p className="store-upgrade-rule">{installed ? 'Fully upgraded' : 'Choose one permanent upgrade'}<span>No further tiers</span></p>
+              <svg className="store-fork" viewBox="0 0 100 16" preserveAspectRatio="none" aria-hidden="true">
+                <path d="M50 0V8 M25 16V8H75V16" fill="none" vectorEffect="non-scaling-stroke"/>
+              </svg>
+            </> : null}
           </> : null}
           <div className="store-offers" role="group" aria-label={category}>
             {offers.map(offer => <button key={offer.id} type="button" className="store-offer"
-              data-status={offer.installed ? 'installed' : offer.reason ? 'locked' : undefined}
-              aria-pressed={offer.id === selected?.id} onClick={() =>
-                setSelectedIds(ids => ({ ...ids, [category]: offer.id }))
-              }>
+              data-status={offer.installed ? 'installed' : offer.reason ? (showUpgrades && offer.quote ? 'unavailable' : 'locked') : undefined}
+              disabled={showUpgrades && (busy || (!offer.quote && !offer.installed))}
+              aria-pressed={offer.id === selected?.id} onClick={() => {
+                if (showUpgrades && owner) setUpgradeChoice({ targetId: owner.target.id, offerId: offer.id })
+                else if (!showUpgrades) setSelectedIds(ids => ({ ...ids, [category]: offer.id }))
+              }}>
               <span className="store-offer-icon"><offer.icon aria-hidden="true"/></span>
               <span className="store-offer-label">
                 <b>{offer.label}</b>
-                {offer.deployment ? <small>{offer.deployment}</small> : null}
+                {showUpgrades ? <small>{offer.detail}</small> : offer.deployment ? <small>{offer.deployment}</small> : null}
               </span>
               <span className="store-offer-price">
-                {offer.installed ? <Check aria-hidden="true"/> : offer.reason ? <LockKeyhole aria-hidden="true"/> : null}
+                {offer.installed ? <Check aria-hidden="true"/> : offer.reason && (!showUpgrades || !offer.quote) ? <LockKeyhole aria-hidden="true"/> : null}
                 {offer.installed ? 'Installed' : offer.quote ? formatCash(offer.cost) : 'Locked'}
               </span>
             </button>)}
@@ -169,15 +185,26 @@ export function PurchaseCatalog({ category, quotes, match, busy, initialUpgradeT
         </div>}
       </div>
       <footer className="store-footer">
-        {selected && !receiptOpen ? <div className="store-selection">
+        {showUpgrades && owner && !receiptOpen ? <div className="store-upgrade-selection">
+          {selected?.installed ? <p role="status"><Check aria-hidden="true"/> {selected.label} installed</p> : <>
+            {selected ? <p className="store-upgrade-summary"><b>{selected.label}</b>
+              <span>{selected.reason ?? (quote ? `${formatCash(match.logistics - quote.cost)} left after purchase` : '')}</span>
+            </p> : null}
+            <button type="button" className="store-action" disabled={!quote?.eligible || busy}
+              onClick={() => { if (quote?.eligible && !busy) onChoose(quote) }}>
+              {quote ? (busy ? 'Installing…' : `Install · ${formatCash(quote.cost)}`) : 'Select an upgrade'}
+            </button>
+            {quote?.eligible ? <p className="store-upgrade-final">Installing permanently locks the other branch.</p> : null}
+          </>}
+        </div> : selected && !receiptOpen ? <div className="store-selection">
           <h3>{selected.label}</h3>
           {quote ? <button type="button" className="store-action" disabled={busy || !quote.eligible} onClick={() => onChoose(quote)}>
             {action} · {formatCash(quote.cost)}
-          </button> : selected.installed ? <span className="store-installed"><Check aria-hidden="true"/> Installed</span> : null}
+          </button> : null}
           <p>{selected.detail}</p>
           {selected.reason ? <p className="store-reason">{selected.reason.toLowerCase()}</p> : null}
         </div> : null}
-        {purchases.length ? <button type="button" className="store-round" aria-expanded={receiptOpen} aria-controls={receiptOpen ? receipt : undefined} onClick={() => setReceiptOpen(!receiptOpen)}>
+        {purchases.length ? <button type="button" className="store-round" aria-expanded={receiptOpen} aria-controls={receiptOpen ? receipt : undefined} onClick={() => setReceiptOpen(open => !open)}>
           <b>This round</b>
           <span aria-live="polite">{purchases.length} {purchases.length === 1 ? 'purchase' : 'purchases'} · {formatCash(spent)}</span>
           <ChevronRight aria-hidden="true"/>

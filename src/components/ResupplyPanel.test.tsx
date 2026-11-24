@@ -12,9 +12,9 @@ function render(match=state(),selectedTarget:EconomyTarget={kind:'campaign',id:'
   return renderToStaticMarkup(<ResupplyPanel match={match} selectedTarget={selectedTarget} purchaseCategory="Aircraft" onPurchaseCategoryChange={noop} onCloseTarget={noop} onPurchase={noop} onNextRound={noop} procurementMode={mode} onProcurementMode={noop} onProcurementAction={noop} hasPlacementPreview={false} onConfirmPlacement={noop} onCancelPlacement={noop}/> )
 }
 
-function renderCatalog(category: PurchaseCategory, match: MatchState = state()) {
+function renderCatalog(category: PurchaseCategory, match: MatchState = state(), initialUpgradeTarget?: EconomyTarget) {
   const quotes = economyQuotesFor(match, { kind: 'campaign', id: 'campaign' })
-  return renderToStaticMarkup(<PurchaseCatalog category={category} quotes={quotes} match={match} busy={false}
+  return renderToStaticMarkup(<PurchaseCatalog category={category} quotes={quotes} match={match} busy={false} initialUpgradeTarget={initialUpgradeTarget}
     onCategoryChange={noop} onChoose={noop} onClose={noop}/>)
 }
 
@@ -86,13 +86,28 @@ describe('Resupply',()=>{
     const match = state()
     const initial = renderCatalog('Upgrades', match)
     expect(initial).toContain('Main airfield')
-    expect(initial).toContain('Install · $120M')
-    expect(initial).toContain('<b>supply depot</b></span><span class="store-offer-price">$120M</span>')
+    expect(initial).toContain('Choose one permanent upgrade')
+    expect(initial).toContain('No further tiers')
+    expect(initial).toContain('class="store-action" disabled="">Select an upgrade')
+    expect(initial).toContain('<optgroup label="Aircraft formations">')
+    expect(initial).toContain('<b>maintenance wing</b><small>Formation repairs cost $10M less.</small>')
+    expect(initial).toMatch(/<b>supply depot<\/b><small>Future completed rounds pay an extra .*?<\/small><\/span><span class="store-offer-price">\$120M<\/span>/)
     const installed = purchaseEconomyAction(match, 'install-supply-depot', { kind: 'asset', id: 'p-base' })
     const upgraded = renderCatalog('Upgrades', installed)
     expect(upgraded).toMatch(/data-status="installed"[^>]*>.*?<b>supply depot<\/b>.*?Installed/)
     expect(upgraded).toMatch(/data-status="locked"[^>]*>.*?<b>maintenance wing<\/b>.*?Locked/)
-    expect(upgraded).not.toContain('Install · $120M')
+    expect(upgraded).toContain('Main airfield · Upgraded')
+    expect(upgraded).toContain('Fully upgraded')
+    expect(upgraded).not.toContain('class="store-action"')
+  })
+
+  it('opens a formation’s branch directly from its service card target', () => {
+    const markup = renderCatalog('Upgrades', state(), { kind: 'squadron', id: 'viper' })
+
+    expect(markup).toContain('value="viper" selected=""')
+    expect(markup).toContain('<b>extended tanks</b><small>Flight range +20%.</small>')
+    expect(markup).toContain('<b>precision ordnance</b>')
+    expect(markup).not.toContain('<b>maintenance wing</b>')
   })
 
   it('totals current-round purchases and leaves past spending and income out', () => {

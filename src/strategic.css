@@ -247,11 +247,6 @@
 .resupply-panel .adapt-based-flights > button, .resupply-panel .adapt-confirm button,
 .resupply-panel .campaign-placement-confirm button { min-height: 44px; font-size: 14px; }
 .debrief-cash { padding: 10px 12px; background: #16231b; border: 1px solid #435b48; font: 600 14px/1.35 Inter, sans-serif; }
-.debrief-campaign { font-size: 12px; gap: 4px 12px; }
-.debrief-campaign > span { display: flex; align-items: baseline; flex-wrap: wrap; gap: 2px 7px; padding: 4px 8px; border: 1px solid #435b48; background: #16231b; }
-.debrief-campaign b { font-size: 15px; white-space: nowrap; }
-.debrief-campaign > .base-damaged { color: #ffd291; border-color: #ac7751; background: #322218; }
-.debrief-metrics { grid-template-columns: repeat(3, minmax(0, 1fr)); }
 .debrief-cash > header, .debrief-cash dl > div { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; }
 .debrief-cash > header { padding-bottom: 6px; border-bottom: 1px solid #435b48; }
 .debrief-cash > header strong { color: #b7e6a6; font-size: 20px; }
