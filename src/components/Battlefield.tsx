@@ -2,7 +2,7 @@ import { useProtectGesture, WAYPOINT_HEIGHT, WAYPOINT_HIT_RADIUS } from './usePr
 import { debriefMapSites } from '../game/debriefMap'
 import { DebriefMapOverlay, type DebriefFocus } from './DebriefMapOverlay'
 import { flightLineLayer } from './flightRenderLayers'
-import { reportedEnemyAsset, surveyedDefenseSites } from '../game/defenseIntel'
+import { coverageSurveyFor, reportedEnemyAsset } from '../game/defenseIntel'
 import { UnitCard3D } from './UnitCard3D'
 import { GroundSiteLabels } from './GroundSiteLabel'
 import { FighterAirframe } from './FighterAirframe'
@@ -287,14 +287,14 @@ function DefenseRangeLabel({radius,color,children}:{radius:number;color:string;c
   return <Text position={[0,.14,-radius-.22]} rotation={[-Math.PI/2,0,0]} fontSize={.19} color={color} outlineWidth={.015} outlineColor="#0b1816">{children}</Text>
 }
 
-function RadarCoverage({asset,enemy,samGuidance,samPreview}:{asset:Asset;enemy:boolean;samGuidance:boolean;samPreview:boolean}){
+function RadarCoverage({asset,samGuidance,samPreview}:{asset:Asset;samGuidance:boolean;samPreview:boolean}){
   const radius=radarRange(asset)
   const guidesSam=samGuidance||samPreview
-  const color=enemy?'#f8a0a1':guidesSam?'#a9efae':'#75cfff'
+  const color=guidesSam?'#a9efae':'#75cfff'
   const label=samGuidance?'RADAR · SAM COVERAGE':samPreview?'RADAR · SAM PREVIEW':'RADAR DETECTION'
   return <group position={to3(asset.position,.1)}>
     <Ring radius={radius} color={color} opacity={.78} dashSize={.4} gapSize={.23} lineWidth={guidesSam?2:1.5}/>
-    <DefenseRangeLabel radius={radius} color={color}>{`${enemy?'ENEMY ':''}${label} · ${formatDefenseRange(radius)}${enemy && asset.defenseSurvey ? ` · SURVEY R${asset.defenseSurvey.round}` : ''}`}</DefenseRangeLabel>
+    <DefenseRangeLabel radius={radius} color={color}>{`${label} · ${formatDefenseRange(radius)}`}</DefenseRangeLabel>
   </group>
 }
 
@@ -304,20 +304,30 @@ function RadarLinkLine({battery,radar,color}:{battery:Point;radar:Point;color:st
   return <Line points={points} color={color} transparent opacity={.65} dashed dashSize={.18} gapSize={.12} depthTest={false}/>
 }
 
-function BatteryCoverage({asset,profile,enemy=false,preview=false}:{asset:Asset;profile:EffectiveDefenseProfile;enemy?:boolean;preview?:boolean}){
+function BatteryCoverage({asset,profile,preview=false}:{asset:Asset;profile:EffectiveDefenseProfile;preview?:boolean}){
   const {range,baseRange}=profile
   const linked=profile.radarLinks.length>0
-  const color=enemy?'#ff9b76':linked?'#a9efae':'#f1c878'
+  const color=linked?'#a9efae':'#f1c878'
   const description=asset.kind==='sam'? `SAM LOCAL · ${formatDefenseRange(range)}`
     : linked? `AAA · ${formatDefenseRange(baseRange)} → ${formatDefenseRange(range)} · RADAR LINKED`
     : `AAA LOCAL · ${formatDefenseRange(range)}`
-  const label=`${preview?'PREVIEW · ':enemy?'ENEMY ':''}${description}${enemy && asset.defenseSurvey ? ` · SURVEY R${asset.defenseSurvey.round}` : ''}`
+  const label=`${preview?'PREVIEW · ':''}${description}`
   return <>
     <group position={to3(asset.position,.12)}><Ring radius={range} color={color} opacity={.68} dashed={false} lineWidth={1.5}/>
       <DefenseRangeLabel radius={range} color={color}>{label}</DefenseRangeLabel>
     </group>
     {profile.radarLinks.map(radar=><RadarLinkLine key={radar.id} battery={asset.position} radar={radar.position} color={color}/>)}
   </>
+}
+function SurveyedCoverage({asset}:{asset:Asset}){
+  const survey=coverageSurveyFor(asset)
+  if(!survey)return null
+  const color=asset.kind==='radar'?'#f8a0a1':'#ff9b76'
+  const label=asset.kind==='radar'?'RADAR SCAN':asset.kind==='sam'?'SAM LOCAL':'AAA'
+  return <group position={to3(asset.position,.12)}>
+    <Ring radius={survey.range} color={color} opacity={.78} dashed={asset.kind==='radar'} lineWidth={1.5}/>
+    <DefenseRangeLabel radius={survey.range} color={color}>{`${label} · ${formatDefenseRange(survey.range)} · SURVEYED R${survey.round}`}</DefenseRangeLabel>
+  </group>
 }
 function SiteSelectionRing({selected}:{selected:boolean}){
   return selected?<mesh position={[0,.01,0]} rotation={[-Math.PI/2,0,0]} raycast={ignoreRaycast}>
@@ -677,7 +687,6 @@ function BattlefieldScene({squadrons,assets,playerAssets,mappedAreas,terrain,pre
   const friendlyDefenseSites=phase==='deploy'&&positionedPlacementIds
     ? displayedPlayerAssets.filter(asset=>positionedPlacementIds.includes(asset.id))
     : displayedPlayerAssets
-  const knownEnemyDefenseSites=surveyedDefenseSites(displayedEnemyAssets)
   const constructionPoint=construction?.placement??constructionHover
   const defenseConstruction=construction?.kind==='sam'||construction?.kind==='aaa'||construction?.kind==='radar'
   const previewBattery:Asset|undefined=constructionPoint&&construction&&defenseConstruction&&construction.isValid(constructionPoint)
@@ -685,21 +694,17 @@ function BattlefieldScene({squadrons,assets,playerAssets,mappedAreas,terrain,pre
   const previewDefense=previewBattery?effectiveDefenseProfile(previewBattery,friendlyDefenseSites):undefined
   const previewSamRadars=previewBattery?.kind==='sam'?previewDefense?.radarLinks??[]:[]
   const selectedDefenseId=phase==='adapt'?economySelectionId:selectedAssetId
-  const defenseOverlays=phase==='debrief'?[]:([
-    {sites:friendlyDefenseSites,enemy:false},{sites:knownEnemyDefenseSites,enemy:true}
-  ]).flatMap(({sites,enemy})=>{
-    if(phase==='deploy'&&enemy)return []
-    const profiles=sites.map(asset=>({asset,profile:effectiveDefenseProfile(asset,sites)}))
-    const samRadarIds=new Set(profiles.flatMap(({asset,profile})=>asset.kind==='sam'?profile?.radarLinks.map(radar=>radar.id)??[]:[]))
-    const selectedRadars=profiles.find(({asset})=>asset.id===selectedDefenseId)?.profile?.radarLinks??[]
-    return profiles.map(({asset,profile})=>{
-      const samPreview=!enemy&&previewSamRadars.some(radar=>radar.id===asset.id)
-      const show=showDefenseCoverage||phase==='deploy'||asset.id===selectedDefenseId||samPreview||selectedRadars.some(radar=>radar.id===asset.id)
-      if(!show)return null
-      if(profile)return <BatteryCoverage key={asset.id} asset={asset} profile={profile} enemy={enemy}/>
-      return asset.kind==='radar'&&isOperationalSite(asset)?<RadarCoverage key={asset.id} asset={asset} enemy={enemy} samGuidance={samRadarIds.has(asset.id)} samPreview={samPreview}/>:null
-    })
+  const friendlyProfiles=friendlyDefenseSites.map(asset=>({asset,profile:effectiveDefenseProfile(asset,friendlyDefenseSites)}))
+  const samRadarIds=new Set(friendlyProfiles.flatMap(({asset,profile})=>asset.kind==='sam'?profile?.radarLinks.map(radar=>radar.id)??[]:[]))
+  const selectedRadars=friendlyProfiles.find(({asset})=>asset.id===selectedDefenseId)?.profile?.radarLinks??[]
+  const defenseOverlays=phase==='debrief'?[]:friendlyProfiles.map(({asset,profile})=>{
+    const samPreview=previewSamRadars.some(radar=>radar.id===asset.id)
+    const show=showDefenseCoverage||phase==='deploy'||asset.id===selectedDefenseId||samPreview||selectedRadars.some(radar=>radar.id===asset.id)
+    if(!show)return null
+    if(profile)return <BatteryCoverage key={asset.id} asset={asset} profile={profile}/>
+    return asset.kind==='radar'&&isOperationalSite(asset)?<RadarCoverage key={asset.id} asset={asset} samGuidance={samRadarIds.has(asset.id)} samPreview={samPreview}/>:null
   })
+  const inspectedEnemyDefense=phase==='deploy'||phase==='debrief'?undefined:displayedEnemyAssets.find(asset=>asset.id===selectedDefenseId)
   const selectFriendlyAsset=(asset:Asset)=>{
     const airfield=asset.kind==='base'||asset.kind==='fob'
     if(phase==='deploy'){onPlacementSelect?.(asset.id);return}
@@ -796,7 +801,8 @@ function BattlefieldScene({squadrons,assets,playerAssets,mappedAreas,terrain,pre
     {placementValidator?<HexOverlay bounds={resolvedPlanningBounds} isValid={placementValidator} color={phase==='adapt'?'#7ceaf0':'#d9dbc0'} opacity={phase==='adapt'?.42:.2}/>:null}
     <TerritoryOverlay territory={executing?friendlyTerritoryForAssets(resolvedTerritory,displayedPlayerAssets):resolvedTerritory} showFobPlacementReach={phase==='adapt'&&construction?.kind==='fob'}/>{phase==='deploy'&&placement?<PlacementHex position={placement.position} placed={positionedPlacementIds?.includes(placement.id)??false}/>:null}{construction&&constructionPoint?<ConstructionPlacementGhost kind={construction.kind} position={constructionPoint} valid={construction.isValid(constructionPoint)}/>:null}
     {defenseOverlays}
-    {previewBattery?.kind==='radar'?<RadarCoverage asset={previewBattery} enemy={false} samGuidance={false} samPreview={false}/>:null}
+    {inspectedEnemyDefense?<SurveyedCoverage asset={inspectedEnemyDefense}/>:null}
+    {previewBattery?.kind==='radar'?<RadarCoverage asset={previewBattery} samGuidance={false} samPreview={false}/>:null}
     {previewBattery&&previewDefense?<BatteryCoverage asset={previewBattery} profile={previewDefense} preview/>:null}
     {protectPreview?<group position={to3(protectPreview.center,.19)}><Ring radius={protectPreview.radius} color="#7ceaf0" opacity={.95}/><Ring radius={.12} color="#7ceaf0" opacity={.9}/></group>:null}
     {armedProtectPoint&&!protectPreview?<Billboard position={to3(armedProtectPoint,.82)} follow lockZ={false}><Text fontSize={.29} color="#bafff7" anchorX="center" anchorY="bottom" outlineWidth={.02} outlineColor="#142a28">DRAG TO SIZE RING</Text></Billboard>:null}

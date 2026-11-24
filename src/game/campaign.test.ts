@@ -147,6 +147,24 @@ describe('campaign outcomes',()=>{
     expect(result.baseExposureDelta).toBe(20)
   })
 
+  it('loses a recorded defense measurement with the Survey Pod flight', () => {
+    const match = createScenario('recon-loss')
+    const home = match.playerAssets.find(asset => asset.kind === 'base')!.position
+    match.enemyAssets = match.enemyAssets.map(asset => {
+      if (asset.kind === 'radar') return { ...asset, position: [home[0] + .5, home[1]], intel: 'unknown', confidence: 0, hidden: true }
+      if (asset.kind === 'sam') return { ...asset, position: [home[0] + 1, home[1]] }
+      return asset
+    })
+    match.squadrons = match.squadrons.map(flight => flight.role === 'recon'
+      ? { ...flight, upgrades: ['survey-pod'], reconPosture: 'aggressive' } : flight)
+    const result = resolveRound(match)
+    const radar = result.assets.find(asset => asset.kind === 'radar')!
+
+    expect(result.intelReports).toContainEqual(expect.objectContaining({ assetId: radar.id, recovered: false }))
+    expect(radar.intel).toBe('unknown')
+    expect(radar.defenseSurvey).toBeUndefined()
+  })
+
   it('uses the prior round exposure threshold and never plots lost unknown coordinates',()=>{
     const base={...createMatch(),cpu:undefined},below=resolveRound({...base,baseExposure:59}),atThreshold=resolveRound({...base,baseExposure:60})
     expect(below.enemyFlights.find(flight=>flight.id==='red-fighter')?.route).toHaveLength(7)

@@ -749,10 +749,15 @@ function* simulateRoundTicks(state:MatchState, recordOpponentView:boolean):Gener
         const separation = distance(observer.position, asset.position)
         if (separation > siteObservationRange(observer.role, asset, observer.source)) continue
         observer.observed.add(asset.id)
-        if (observer.role === 'recon' && asset.health > 0 && isDefenseSite(asset)) {
+        if (observer.role === 'recon' && observer.source.upgrades?.includes('survey-pod') && isDefenseSite(asset)) {
           const surveys = defenseSurveysByObserver.get(observer.id) ?? new Map<string, DefenseSurvey>()
-          if (!surveys.has(asset.id)) surveys.set(asset.id, surveyDefense(asset, state.round))
-          defenseSurveysByObserver.set(observer.id, surveys)
+          if (!surveys.has(asset.id)) {
+            const survey = surveyDefense(asset, opposingSites, state.round)
+            if (survey) {
+              surveys.set(asset.id, survey)
+              defenseSurveysByObserver.set(observer.id, surveys)
+            }
+          }
         }
         if (recordOpponentView) recordGroundSighting(asset, observer.friendly ? 0 : 1, time)
         else if (observer.friendly) recordObservation(observer, asset, separation, time)

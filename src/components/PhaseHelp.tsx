@@ -20,7 +20,7 @@ const help: Record<PlayPhase, { title: string; tips: [string, string][]; online?
     tips: [
       ['Choose a formation', 'Tap the aircraft count above a runway, then choose a formation from the fan. Use the Airfield map control to find a runway. Tap the runway itself to set a destination while editing.'],
       ['Fighter orders', 'Tap the map to plot a patrol. Tap its last waypoint again to select it, then drag from it to size a Protect ring. Select P to resize the ring. Drag elsewhere to pan. Tap a friendly airfield for Transit or use Escort for a flight with a confirmed order.'],
-      ['Inspect a site', 'Tap a site to see HP and status. Enemy rings are dated estimates. Recon must land to update them.'],
+      ['Inspect a site', 'Tap a site to see HP and status. A recovered Survey Pod flight reveals the site’s range ring, dated to the round it was surveyed.'],
       ['Earn cash', 'Objectives shows the one-time payouts for destroying enemy defenses and recovering evidence of an upgrade.'],
       ['Ground targets', 'Tap a confirmed enemy site to finish a fighter’s approach as Ground Strike. Drag S inside the marked release circle to adjust. Bombers take up to three targets in tap order. Tap a selected site again to remove it.'],
       ['Recon and recovery', 'Recon flies the route you plot. Aggressive continues through threats. Passive returns when it sees a fighter or a SAM or AAA battery fires at it.'],

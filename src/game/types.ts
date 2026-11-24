@@ -79,7 +79,12 @@ export interface Asset {
 }
 /** String IDs are catalog-backed so new upgrade entries do not require widening this union. */
 export type UpgradeId = string
-export interface DefenseSurvey { round: number; upgrades: UpgradeId[] }
+export interface DefenseSurvey {
+  round: number
+  upgrades: UpgradeId[]
+  /** Exact site-centered radius measured by a Survey Pod. Legacy reports lack this measurement. */
+  range?: number
+}
 /** @deprecated Use UpgradeId; retained for save and import compatibility. */
 export type AssetUpgradeId = UpgradeId
 export type EconomyActionId = 'repair-formation' | 'replace-aircraft' | 'repair-defense' | 'repair-fob' | `install-${string}` | 'buy-fighter' | 'buy-recon' | 'buy-bomber' | 'build-fob' | 'build-decoy' | 'build-sam' | 'build-aaa' | 'build-radar'

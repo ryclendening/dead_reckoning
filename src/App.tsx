@@ -28,7 +28,7 @@ import { generateRouteTemplate, protectOrbit, validateBomberOrderForPlayer, vali
 import { normalizeMatch } from './game/persistence'
 import { planBombingTarget, removeBombingTarget } from './game/groundStrikePlanning'
 import { approachWaypoints, mapProtectOrder, mapStrikeOrder, resetMapOrder } from './game/mapPlanning'
-import { isDefenseSite, surveyedDefenseSites } from './game/defenseIntel'
+import { isDefenseSite } from './game/defenseIntel'
 import { aircraftInspectionAt } from './game/unitCards'
 import { debriefMapSites } from './game/debriefMap'
 import { DebriefSymbol } from './components/DebriefSymbols'
@@ -266,9 +266,8 @@ export default function App(){
       : inspectionAsset
     : undefined
   const inspectingEnemy=Boolean(inspectedAsset&&replayMatch.enemyAssets.some(asset=>asset.id===inspectedAsset.id))
-  const inspectionSites=inspectedAsset?(inspectingEnemy
-    ? surveyedDefenseSites(replayMatch.enemyAssets)
-    : replayMatch.playerAssets).map(asset=>visiblePhase==='execute'&&!projectedGround?projectGroundAssetAt(asset,executionResult,inspectionSeconds):asset):undefined
+  const inspectionSites=inspectedAsset&&!inspectingEnemy
+    ? replayMatch.playerAssets.map(asset=>visiblePhase==='execute'&&!projectedGround?projectGroundAssetAt(asset,executionResult,inspectionSeconds):asset):undefined
   const inspectedAircraft=visiblePhase==='execute'&&inspectedFlightId?aircraftInspectionAt(executionResult,inspectedFlightId,inspectionSeconds):undefined
   const inspectAsset=(id:string)=>{if(match.phase==='adapt'){selectEconomyTarget({kind:'asset',id},false);return}setSelectedAssetId(id);setInspectedFlightId(undefined)}
   const inspectFlight=(id:string)=>{setInspectedFlightId(id);setSelectedAssetId(undefined)}

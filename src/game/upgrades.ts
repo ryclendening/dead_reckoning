@@ -66,7 +66,7 @@ export const UPGRADE_CATALOG: readonly UpgradeDefinition[] = [
     modifiers: { 'aircraft.groundAttackDamage': { add: 15 } },
   },
   {
-    id: 'survey-pod', label: 'Survey Pod', detail: 'Recon observes ground sites from 2 map units farther away.', cost: 8, targets: ['squadron'], roles: ['recon'], group: 'aircraft',
+    id: 'survey-pod', label: 'Survey Pod', detail: '+2 ground observation range. Bring the flight home to reveal exact defense rings.', cost: 8, targets: ['squadron'], roles: ['recon'], group: 'aircraft',
     modifiers: { 'aircraft.reconSurveyRange': { add: 2 } },
   },
 ]

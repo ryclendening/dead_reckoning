@@ -27,6 +27,14 @@ describe('expanded tactical cards',()=>{
     expect(html).not.toContain('GROUND STRIKE')
   })
 
+  it('requires a recovered pod measurement and displays its dated range', () => {
+    const asset={...createMatch().enemyAssets.find(asset=>asset.kind==='aaa')!,intel:'confirmed' as const,hidden:false}
+    const render=(report: NonNullable<typeof asset.defenseSurvey>) =>
+      renderToStaticMarkup(<AssetInspector asset={{...asset,defenseSurvey:report}} enemy phase="plan" seconds={0} onClose={noop}/>)
+    expect(render({round:2,upgrades:['aaa-range']})).toContain('Survey Pod required for range')
+    expect(render({round:3,upgrades:[],range:2.85})).toContain('Range 2.85 · Surveyed R3')
+  })
+
   it('shows the current range and whether it is radar linked',()=>{
     const assets=createMatch().playerAssets
     const aaa={...assets.find(asset=>asset.kind==='aaa')!,position:[0,0] as [number,number]}

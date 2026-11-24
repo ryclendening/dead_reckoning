@@ -1,6 +1,6 @@
 import type { ReactNode } from 'react'
 import { X } from 'lucide-react'
-import { isDefenseSite, reportedEnemyAsset } from '../game/defenseIntel'
+import { coverageSurveyFor, isDefenseSite } from '../game/defenseIntel'
 import { samStatusForPhase } from '../game/airDefense'
 import { effectiveDefenseProfile, radarRange } from '../game/equipmentRules'
 import { upgradeDefinition } from '../game/upgrades'
@@ -32,21 +32,25 @@ function siteReadout({ asset, sites = [], phase, result, seconds, enemy }: Asset
   if (asset.health <= 0) return 'Destroyed'
   if (asset.operational === false) return 'Offline'
   if (enemy && asset.intel !== 'confirmed') return 'Unconfirmed site'
-  if (enemy && isDefenseSite(asset) && !asset.defenseSurvey) return 'Coverage unsurveyed'
-  const surveyed = enemy && asset.defenseSurvey ? ` · Survey R${asset.defenseSurvey.round}` : ''
-  const configuration = enemy ? reportedEnemyAsset(asset) : asset
-
-  if (asset.kind === 'radar') {
-    const range = formatDefenseRange(radarRange(configuration))
-    const linked = sites.filter(site => effectiveDefenseProfile(site, sites)?.radarLinks.some(radar => radar.id === asset.id)).length
-    return `Scan ${range} · ${linked} linked${surveyed}`
+  if (enemy) {
+    if (!isDefenseSite(asset)) return 'Confirmed site'
+    const survey = coverageSurveyFor(asset)
+    if (!survey) return 'Survey Pod required for range'
+    const label = asset.kind === 'radar' ? 'Scan' : asset.kind === 'sam' ? 'Local range' : 'Range'
+    return `${label} ${formatDefenseRange(survey.range)} · Surveyed R${survey.round}`
   }
 
-  const defense = effectiveDefenseProfile(configuration, sites)
+  if (asset.kind === 'radar') {
+    const range = formatDefenseRange(radarRange(asset))
+    const linked = sites.filter(site => effectiveDefenseProfile(site, sites)?.radarLinks.some(radar => radar.id === asset.id)).length
+    return `Scan ${range} · ${linked} linked`
+  }
+
+  const defense = effectiveDefenseProfile(asset, sites)
   if (defense) {
     const range = formatDefenseRange(defense.range)
     const guided = defense.radarLinks.length > 0
-    if (asset.kind === 'sam' && !enemy) {
+    if (asset.kind === 'sam') {
       const sam = samStatusForPhase(asset.id, phase, result?.weaponEffects, seconds, asset)
       const inventory = `${sam.remaining}/${sam.capacity} missiles`
       if (phase === 'debrief') return `${inventory} at round end`
@@ -54,10 +58,9 @@ function siteReadout({ asset, sites = [], phase, result, seconds, enemy }: Asset
       if (sam.cooldown > .001) return `${inventory} · Ready in ${sam.cooldown.toFixed(1)}s`
       return `${inventory} · ${guided ? 'Radar guided' : `Range ${range}`}`
     }
-    return `${enemy ? 'Known range' : 'Range'} ${range}${guided ? ' · Radar linked' : ''}${surveyed}`
+    return `Range ${range}${guided ? ' · Radar linked' : ''}`
   }
 
-  if (enemy) return 'Confirmed site'
   if (asset.kind === 'fob') return `${asset.basedFormationIds?.length ?? 0}/${asset.capacity ?? 2} formations based`
   if (asset.kind === 'base') {
     const upgrade = asset.upgrades?.map(upgradeDefinition).find(Boolean)
